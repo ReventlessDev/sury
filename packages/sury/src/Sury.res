@@ -425,7 +425,9 @@ and internal = {
   mutable serializer?: builder,
   // Builder refine that the value matches the schema
   // Applies for both parsing and serializing
-  mutable refiner?: builder,
+  mutable refiner?: refinerBuilder,
+  // Compiler for custom schema logic
+  mutable compiler?: builder,
   // A schema we transform to
   mutable to?: internal,
   mutable const?: char, // use char to avoid Caml_option.some
@@ -507,6 +509,7 @@ and has = {
   object?: bool,
 }
 and builder = (b, ~input: val, ~selfSchema: internal, ~path: Path.t) => val
+and refinerBuilder = (b, ~inputVar: string, ~selfSchema: internal, ~path: Path.t) => string
 and val = {
   @as("b")
   mutable b: b,
@@ -1897,14 +1900,19 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
     b->B.unsupportedTransform(~from=input.contents->Obj.magic, ~target=schema, ~path)
   }
 
-  switch schema.refiner {
-  | Some(refiner) =>
-    // Some refiners like union might return a new
-    // instance of value. This is used for an assumption
-    // that it's transformed.
-    input := refiner(b, ~input=input.contents, ~selfSchema=schema, ~path)
-  | _ => ()
+  switch schema.compiler {
+  | Some(compiler) => input := compiler(b, ~input=input.contents, ~selfSchema=schema, ~path)
+  | None => ()
   }
+
+  if input.contents.skipTo !== Some(true) {
+    switch schema.refiner {
+    | Some(refiner) =>
+      b.code = b.code ++ refiner(b, ~inputVar=input.contents.var(b), ~selfSchema=schema, ~path)
+    | None => ()
+    }
+  }
+
   switch schema.to {
   | Some(to) =>
     switch schema.parser {
@@ -2504,26 +2512,20 @@ let noValidation = (schema, value) => {
   mut->castToPublic
 }
 
+let appendRefiner = (maybeExistingRefiner, refiner) => {
+  switch maybeExistingRefiner {
+  | Some(existingRefiner) =>
+    (b, ~inputVar, ~selfSchema, ~path) => {
+      existingRefiner(b, ~inputVar, ~selfSchema, ~path) ++ refiner(b, ~inputVar, ~selfSchema, ~path)
+    }
+  | None => refiner
+  }
+}
+
 let internalRefine = (schema, refiner) => {
   let schema = schema->castToInternal
   updateOutput(schema, mut => {
-    let prevRefiner = mut.refiner
-    mut.refiner = Some(
-      Builder.make((b, ~input, ~selfSchema, ~path) => {
-        // FIXME: Should it be applied in more places?
-        b->B.transform(
-          ~input=switch prevRefiner {
-          | Some(prevRefiner) => prevRefiner(b, ~input, ~selfSchema, ~path)
-          | None => input
-          },
-          (b, ~input) => {
-            let rCode = refiner(b, ~inputVar=b->B.Val.var(input), ~selfSchema, ~path)
-            b.code = b.code ++ rCode
-            input
-          },
-        )
-      }),
-    )
+    mut.refiner = Some(appendRefiner(mut.refiner, refiner))
   })
 }
 
@@ -2614,7 +2616,7 @@ let neverBuilder = Builder.make((b, ~input, ~selfSchema, ~path) => {
 })
 
 let never = base(Never)
-never.refiner = Some(neverBuilder)
+never.compiler = Some(neverBuilder)
 let never: t<never> = never->castToPublic
 
 let nestedLoc = "BS_PRIVATE_NESTED_SOME_NONE"
@@ -2685,7 +2687,7 @@ module Union = {
     })
   }
 
-  let refiner = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let compiler = Builder.make((b, ~input, ~selfSchema, ~path) => {
     let schemas = selfSchema.anyOf->X.Option.getUnsafe
 
     switch input.anyOf {
@@ -2731,6 +2733,10 @@ module Union = {
           let schema = switch selfSchema.to {
           | Some(target) if !(selfSchema.parser->Obj.magic) && target.tag !== Union =>
             updateOutput(schemas->Js.Array2.unsafe_get(idx), mut => {
+              switch selfSchema.refiner {
+              | Some(refiner) => mut.refiner = Some(appendRefiner(mut.refiner, refiner))
+              | None => ()
+              }
               mut.to = Some(target)
             })->castToInternal
           | _ => schemas->Js.Array2.unsafe_get(idx)
@@ -3098,7 +3104,7 @@ module Union = {
       }
       let mut = base(Union)
       mut.anyOf = Some(anyOf->X.Set.toArray)
-      mut.refiner = Some(refiner)
+      mut.compiler = Some(compiler)
       mut.has = Some(has)
       mut->castToPublic
     }
@@ -3268,10 +3274,10 @@ module Option = {
             }),
           )
           let to = itemOutputSchema.contents->X.Option.getUnsafe->copyWithoutCache
-          switch to.refiner {
-          | Some(refiner) => {
-              to.serializer = Some(refiner)
-              %raw(`delete to.refiner`)
+          switch to.compiler {
+          | Some(compiler) => {
+              to.serializer = Some(compiler)
+              %raw(`delete to.compiler`)
             }
           | None => to.serializer = Some((_b, ~input, ~selfSchema as _, ~path as _) => input)
           }
@@ -3320,7 +3326,7 @@ module Array = {
     }
   }
 
-  let arrayRefiner = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let arrayCompiler = Builder.make((b, ~input, ~selfSchema, ~path) => {
     let item = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
     let inputVar = b->B.Val.var(input)
@@ -3361,7 +3367,7 @@ module Array = {
     let mut = base(Array)
     mut.additionalItems = Some(Schema(item->castToInternal->castToPublic))
     mut.items = Some(X.Array.immutableEmpty)
-    mut.refiner = Some(arrayRefiner)
+    mut.compiler = Some(arrayCompiler)
     mut->castToPublic
   }
 }
@@ -3426,7 +3432,7 @@ let deepStrict = schema => {
 }
 
 module Dict = {
-  let dictRefiner = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let dictCompiler = Builder.make((b, ~input, ~selfSchema, ~path) => {
     let item = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
     let inputVar = b->B.Val.var(input)
@@ -3476,7 +3482,7 @@ module Dict = {
     mut.properties = Some(X.Object.immutableEmpty)
     mut.items = Some(X.Array.immutableEmpty)
     mut.additionalItems = Some(Schema(item->castToPublic))
-    mut.refiner = Some(dictRefiner)
+    mut.compiler = Some(dictCompiler)
     mut->castToPublic
   }
 }
@@ -3556,7 +3562,7 @@ let enableJson = () => {
           "object": true,
           "array": true,
         },
-        refiner: Union.refiner,
+        compiler: Union.compiler,
       },
     )
     json.defs = Some(defs)
@@ -3586,7 +3592,7 @@ let enableJsonString = {
       jsonString.tag = String
       jsonString.format = Some(JSON)
       jsonString.name = Some(`${jsonName} string`)
-      jsonString.refiner = Some(
+      jsonString.compiler = Some(
         Builder.make((b, ~input as inputArg, ~selfSchema, ~path) => {
           let inputTagFlag = inputArg.tag->TagFlag.get
           let input = ref(inputArg)
@@ -4003,7 +4009,7 @@ module Schema = {
       },
     })
 
-  let rec schemaRefiner = (b, ~input: val, ~selfSchema, ~path) => {
+  let rec schemaCompiler = (b, ~input: val, ~selfSchema, ~path) => {
     let additionalItems = selfSchema.additionalItems
     let items = selfSchema.items->X.Option.getUnsafe
     let isArray = TagFlag.isArray(selfSchema.tag)
@@ -4118,6 +4124,7 @@ module Schema = {
 
     // This should be done in the parser/serializer
     let _ = %raw(`delete mut.refiner`)
+    let _ = %raw(`delete mut.compiler`)
 
     mut.serializer = Some(
       Builder.make((b, ~input, ~selfSchema, ~path) => {
@@ -4317,7 +4324,7 @@ module Schema = {
           schema.items = Some(items)
           schema.properties = Some(properties)
           schema.additionalItems = Some(globalConfig.defaultAdditionalItems)
-          schema.refiner = Some(schemaRefiner)
+          schema.compiler = Some(schemaCompiler)
           schema->castToPublic
         }
 
@@ -4645,7 +4652,7 @@ module Schema = {
         let mut = base(Array)
         mut.items = Some(items)
         mut.additionalItems = Some(Strict)
-        mut.refiner = Some(schemaRefiner)
+        mut.compiler = Some(schemaCompiler)
         mut
       } else {
         let cnstr = (definition->Obj.magic)["constructor"]
@@ -4674,7 +4681,7 @@ module Schema = {
           mut.items = Some(items)
           mut.properties = Some(node->(Obj.magic: dict<unknown> => dict<internal>))
           mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
-          mut.refiner = Some(schemaRefiner)
+          mut.compiler = Some(schemaCompiler)
           mut
         }
       }
@@ -5497,7 +5504,7 @@ let js_merge = (s1, s2) => {
     mut.items = Some(items)
     mut.properties = Some(properties)
     mut.additionalItems = Some(additionalItems1)
-    mut.refiner = Some(Schema.schemaRefiner)
+    mut.compiler = Some(Schema.schemaCompiler)
     Some(mut->castToPublic)
   | _ => None
   } {

@@ -420,3 +420,56 @@ test("Compiled async parse code snapshot", t => {
     `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="boolean"){e[2](v0)}return e[3](v0)}`,
   )
 })
+
+test("Can apply refinement to JSON string", t => {
+  let schema = S.jsonString->S.refine(s =>
+    v =>
+      if v !== "123" {
+        s.fail("Expected 123")
+      }
+  )
+
+  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[0](i)}try{JSON.parse(i)}catch(t){e[1](i)}e[2](i);return i}`,
+  )
+})
+
+test("Can apply refinement to JSON string with S.to after", t => {
+  let schema =
+    S.jsonString
+    ->S.refine(s =>
+      v =>
+        if v !== "123" {
+          s.fail("Expected 123")
+        }
+    )
+    ->S.to(S.int)
+
+  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}e[2](v0);if(typeof v0!=="number"||v0>2147483647||v0<-2147483648||v0%1!==0){e[3](v0)}return v0}`,
+  )
+})
+
+test("Can apply refinement to JSON string with S.to before", t => {
+  let schema = S.int->S.to(
+    S.jsonString->S.refine(s =>
+      v =>
+        if v !== "123" {
+          s.fail("Expected 123")
+        }
+    ),
+  )
+
+  t->U.assertThrowsMessage(() => 124->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[0](i)}let v0=""+i;e[1](v0);return v0}`,
+  )
+})

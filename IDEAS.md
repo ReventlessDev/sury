@@ -6,6 +6,7 @@
 - Fix https://github.com/DZakh/sury/issues/150
 - Add `S.brand` for TS API
 - Update Standard Schema error message to only include reason part
+- Fix refinement on union schema which also uses `S.to`
 
 ## v11
 
