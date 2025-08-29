@@ -615,7 +615,6 @@ module Flag = {
   @inline let assertOutput = 4
   @inline let jsonableOutput = 8
   @inline let jsonStringOutput = 16
-  @inline let reverse = 32
   @inline let flatten = 64
 
   external with: (flag, flag) => flag = "%orint"
@@ -954,24 +953,18 @@ type s<'value> = {
   fail: 'a. (string, ~path: Path.t=?) => 'a,
 }
 
-// Need to copy without operations cache
-// which use flag as a key.
-// k > "a" is hacky way to skip all numbers
-// Should actually benchmark whether it's faster
-let copyWithoutCache: internal => internal = %raw(`(schema) => {
+let copySchema: internal => internal = %raw(`(schema) => {
   let c = new Schema(schema.type)
   for (let k in schema) {
-    if (k > "a" || k === "$ref" || k === "$defs") {
-      c[k] = schema[k]
-    }
+    c[k] = schema[k]
   }
   return c
 }`)
 let updateOutput = (schema: internal, fn): t<'value> => {
-  let root = schema->copyWithoutCache
+  let root = schema->copySchema
   let mut = ref(root)
   while mut.contents.to->Obj.magic {
-    let next = mut.contents.to->X.Option.getUnsafe->copyWithoutCache
+    let next = mut.contents.to->X.Option.getUnsafe->copySchema
     mut.contents.to = Some(next)
     mut := next
   }
@@ -979,13 +972,6 @@ let updateOutput = (schema: internal, fn): t<'value> => {
   fn(mut.contents)
   root->castToPublic
 }
-let resetCacheInPlace: internal => unit = %raw(`(schema) => {
-  for (let k in schema) {
-    if (Number(k[0])) {
-      delete schema[k];
-    }
-  }
-}`)
 
 module ErrorClass = {
   type t
@@ -2014,19 +2000,33 @@ and internalCompile = (~schema, ~flag, ~defs) => {
     )
   }
 }
-and operationFn = (s, o) => {
-  let s = s->castToInternal
-  if %raw(`o in s`) {
-    %raw(`s[o]`)
+and val = Js.Dict.empty()
+and valKey = "value"
+and reverseKey = "r"
+and initOperation = (s, flag) => {
+  let f = internalCompile(~schema=s, ~flag, ~defs=%raw(`0`))
+  // Reusing the same object makes it a little bit faster
+  val->Js.Dict.set(valKey, f)
+  // Use defineProperty, so the cache keys are not enumerable
+  let _ = X.Object.defineProperty(s, flag->X.Int.unsafeToString, val->Obj.magic)
+  f
+}
+// This removes v8 optimization
+// TODO: Need to fix ReScript compiler and replace it with makeOperation
+@inline
+and makeMakeOperation = (s, o) => {
+  if s->Obj.magic->Stdlib.Dict.has(o->X.Int.unsafeToString) {
+    s->Obj.magic->Stdlib.Dict.getUnsafe(o->X.Int.unsafeToString)->Obj.magic
   } else {
-    let f = internalCompile(
-      ~schema=o->Flag.unsafeHas(Flag.reverse) ? s->reverse : s,
-      ~flag=o,
-      ~defs=%raw(`0`),
-    )
-    let _ = %raw(`s[o] = f`)
-    f
+    let s = s->castToInternal
+    initOperation(s, o)->Obj.magic
   }
+}
+@inline
+and makeOperation = (s, o) => {
+  let s = s->castToInternal
+  (s->Obj.magic->Stdlib.Dict.getUnsafe(o->X.Int.unsafeToString)->Obj.magic ||
+    initOperation(s, o)->Obj.magic)->Obj.magic
 }
 and getOutputSchema = (schema: internal) => {
   switch schema.to {
@@ -2036,101 +2036,110 @@ and getOutputSchema = (schema: internal) => {
 }
 // FIXME: Cache reverse results
 and reverse = (schema: internal) => {
-  let reversedHead = ref(None)
-  let current = ref(Some(schema))
+  if schema->Obj.magic->Stdlib.Dict.has(reverseKey)->Obj.magic {
+    schema->Obj.magic->Stdlib.Dict.getUnsafe(reverseKey)->Obj.magic
+  } else {
+    let reversedHead = ref(None)
+    let current = ref(Some(schema))
 
-  while current.contents->Obj.magic {
-    let mut = current.contents->X.Option.getUnsafe->copyWithoutCache
-    let next = mut.to
-    switch reversedHead.contents {
-    | None => %raw(`delete mut.to`)
-    | Some(to) => mut.to = Some(to)
-    }
-    let parser = mut.parser
-    switch mut.serializer {
-    | Some(serializer) => mut.parser = Some(serializer)
-    | None => %raw(`delete mut.parser`)
-    }
-    switch parser {
-    | Some(parser) => mut.serializer = Some(parser)
-    | None => %raw(`delete mut.serializer`)
-    }
-    let fromDefault = mut.fromDefault
-    switch mut.default {
-    | Some(default) => mut.fromDefault = Some(default)
-    | None => %raw(`delete mut.fromDefault`)
-    }
-    switch fromDefault {
-    | Some(fromDefault) => mut.default = Some(fromDefault)
-    | None => %raw(`delete mut.default`)
-    }
-    switch mut.items {
-    | Some(items) =>
-      let properties = Js.Dict.empty()
-      let newItems = Belt.Array.makeUninitializedUnsafe(items->Js.Array2.length)
-      for idx in 0 to items->Js.Array2.length - 1 {
-        let item = items->Js.Array2.unsafe_get(idx)
-        let reversed = {
-          ...item,
-          schema: item.schema->castToInternal->reverse->castToPublic,
-        }
-
-        // Keep ritem if it's present. Super unsafe and might break
-        // TODO: Test double reverse
-        if (item->Obj.magic)["r"] {
-          (reversed->Obj.magic)["r"] = (item->Obj.magic)["r"]
-        }
-        properties->Js.Dict.set(item.location, reversed.schema->castToInternal)
-        newItems->Js.Array2.unsafe_set(idx, reversed)
+    while current.contents->Obj.magic {
+      let mut = current.contents->X.Option.getUnsafe->copySchema
+      let next = mut.to
+      switch reversedHead.contents {
+      | None => %raw(`delete mut.to`)
+      | Some(to) => mut.to = Some(to)
       }
-      mut.items = Some(newItems)
-      switch mut.properties {
-      | Some(_) => mut.properties = Some(properties)
-      // Skip tuple
+      let parser = mut.parser
+      switch mut.serializer {
+      | Some(serializer) => mut.parser = Some(serializer)
+      | None => %raw(`delete mut.parser`)
+      }
+      switch parser {
+      | Some(parser) => mut.serializer = Some(parser)
+      | None => %raw(`delete mut.serializer`)
+      }
+      let fromDefault = mut.fromDefault
+      switch mut.default {
+      | Some(default) => mut.fromDefault = Some(default)
+      | None => %raw(`delete mut.fromDefault`)
+      }
+      switch fromDefault {
+      | Some(fromDefault) => mut.default = Some(fromDefault)
+      | None => %raw(`delete mut.default`)
+      }
+      switch mut.items {
+      | Some(items) =>
+        let properties = Js.Dict.empty()
+        let newItems = Belt.Array.makeUninitializedUnsafe(items->Js.Array2.length)
+        for idx in 0 to items->Js.Array2.length - 1 {
+          let item = items->Js.Array2.unsafe_get(idx)
+          let reversed = {
+            ...item,
+            schema: item.schema->castToInternal->reverse->castToPublic,
+          }
+
+          // Keep ritem if it's present. Super unsafe and might break
+          // TODO: Test double reverse
+          if (item->Obj.magic)["r"] {
+            (reversed->Obj.magic)["r"] = (item->Obj.magic)["r"]
+          }
+          properties->Js.Dict.set(item.location, reversed.schema->castToInternal)
+          newItems->Js.Array2.unsafe_set(idx, reversed)
+        }
+        mut.items = Some(newItems)
+        switch mut.properties {
+        | Some(_) => mut.properties = Some(properties)
+        // Skip tuple
+        | None => ()
+        }
       | None => ()
       }
-    | None => ()
-    }
-    if mut.additionalItems->Type.typeof === #object {
-      mut.additionalItems = Some(
-        Schema(
-          mut.additionalItems
-          ->(Obj.magic: option<additionalItems> => internal)
-          ->reverse
-          ->castToPublic,
-        ),
-      )
-    }
-    switch mut.anyOf {
-    | Some(anyOf) =>
-      let has = Js.Dict.empty()
-      let newAnyOf = []
-      for idx in 0 to anyOf->Js.Array2.length - 1 {
-        let s = anyOf->Js.Array2.unsafe_get(idx)
-        let reversed = s->reverse
-        newAnyOf->Js.Array2.push(reversed)->ignore
-        has->setHas(reversed.tag)
+      if mut.additionalItems->Type.typeof === #object {
+        mut.additionalItems = Some(
+          Schema(
+            mut.additionalItems
+            ->(Obj.magic: option<additionalItems> => internal)
+            ->reverse
+            ->castToPublic,
+          ),
+        )
       }
-      mut.has = Some(has)
-      mut.anyOf = Some(newAnyOf)
-    | None => ()
-    }
-    switch mut.defs {
-    | Some(defs) => {
-        let reversedDefs = Js.Dict.empty()
-        for idx in 0 to defs->Js.Dict.keys->Js.Array2.length - 1 {
-          let key = defs->Js.Dict.keys->Js.Array2.unsafe_get(idx)
-          reversedDefs->Js.Dict.set(key, defs->Js.Dict.unsafeGet(key)->reverse)
+      switch mut.anyOf {
+      | Some(anyOf) =>
+        let has = Js.Dict.empty()
+        let newAnyOf = []
+        for idx in 0 to anyOf->Js.Array2.length - 1 {
+          let s = anyOf->Js.Array2.unsafe_get(idx)
+          let reversed = s->reverse
+          newAnyOf->Js.Array2.push(reversed)->ignore
+          has->setHas(reversed.tag)
         }
-        mut.defs = Some(reversedDefs)
+        mut.has = Some(has)
+        mut.anyOf = Some(newAnyOf)
+      | None => ()
       }
-    | None => ()
+      switch mut.defs {
+      | Some(defs) => {
+          let reversedDefs = Js.Dict.empty()
+          for idx in 0 to defs->Js.Dict.keys->Js.Array2.length - 1 {
+            let key = defs->Js.Dict.keys->Js.Array2.unsafe_get(idx)
+            reversedDefs->Js.Dict.set(key, defs->Js.Dict.unsafeGet(key)->reverse)
+          }
+          mut.defs = Some(reversedDefs)
+        }
+      | None => ()
+      }
+      reversedHead := Some(mut)
+      current := next
     }
-    reversedHead := Some(mut)
-    current := next
-  }
 
-  reversedHead.contents->X.Option.getUnsafe
+    let r = reversedHead.contents->X.Option.getUnsafe
+    val->Js.Dict.set(valKey, r->Obj.magic)
+    let _ = X.Object.defineProperty(schema, reverseKey, val->Obj.magic)
+    val->Js.Dict.set(valKey, schema->Obj.magic)
+    let _ = X.Object.defineProperty(r, reverseKey, val->Obj.magic)
+    r
+  }
 }
 and jsonableValidation = (~output, ~parent, ~path, ~flag) => {
   let tagFlag = output.tag->TagFlag.get
@@ -2195,7 +2204,7 @@ X.Object.defineProperty(
           validate: input => {
             try {
               {
-                "value": (schema->castToPublic->operationFn(Flag.typeValidation))(
+                "value": (schema->castToPublic->makeOperation(Flag.typeValidation))(
                   input->Obj.magic,
                 )->Obj.magic,
               }
@@ -2287,10 +2296,12 @@ let compile = (
   if typeValidation {
     flag := flag.contents->Flag.with(Flag.typeValidation)
   }
-  if input === Output {
-    flag := flag.contents->Flag.with(Flag.reverse)
+  let schema = if input === Output {
+    schema->castToInternal->reverse->castToPublic
+  } else {
+    schema
   }
-  let fn = schema->operationFn(flag.contents)->Obj.magic
+  let fn = schema->makeOperation(flag.contents)->Obj.magic
 
   switch input {
   | JsonString =>
@@ -2311,9 +2322,13 @@ let compile = (
 // Operations
 // =============
 
+let makeParseOrThrow = schema => {
+  schema->makeMakeOperation(Flag.typeValidation)
+}
+
 @inline
 let parseOrThrow = (any, schema) => {
-  (schema->operationFn(Flag.typeValidation))(any)
+  (schema->makeOperation(Flag.typeValidation))(any)
 }
 
 let parseJsonOrThrow = parseOrThrow->Obj.magic
@@ -2334,32 +2349,32 @@ let parseJsonStringOrThrow = (jsonString: string, schema: t<'value>): 'value => 
 }
 
 let parseAsyncOrThrow = (any, schema) => {
-  (schema->operationFn(Flag.async->Flag.with(Flag.typeValidation)))(any)
+  (schema->makeOperation(Flag.async->Flag.with(Flag.typeValidation)))(any)
 }
 
 let convertOrThrow = (input, schema) => {
-  (schema->operationFn(Flag.none))(input)
+  (schema->makeOperation(Flag.none))(input)
 }
 
 let convertToJsonOrThrow = (any, schema) => {
-  (schema->operationFn(Flag.jsonableOutput))(any)
+  (schema->makeOperation(Flag.jsonableOutput))(any)
 }
 
 let convertToJsonStringOrThrow = (input, schema) => {
-  (schema->operationFn(Flag.jsonableOutput->Flag.with(Flag.jsonStringOutput)))(input)
+  (schema->makeOperation(Flag.jsonableOutput->Flag.with(Flag.jsonStringOutput)))(input)
 }
 
 let convertAsyncOrThrow = (any, schema) => {
-  (schema->operationFn(Flag.async))(any)
+  (schema->makeOperation(Flag.async))(any)
 }
 
 let reverseConvertOrThrow = (value, schema) => {
-  (schema->operationFn(Flag.reverse))(value)
+  (schema->castToInternal->reverse->castToPublic->makeOperation(Flag.none))(value)
 }
 
 @inline
 let reverseConvertToJsonOrThrow = (value, schema) => {
-  (schema->operationFn(Flag.jsonableOutput->Flag.with(Flag.reverse)))(value)
+  (schema->castToInternal->reverse->castToPublic->makeOperation(Flag.jsonableOutput))(value)
 }
 
 let reverseConvertToJsonStringOrThrow = (value: 'value, schema: t<'value>, ~space=0): string => {
@@ -2367,7 +2382,7 @@ let reverseConvertToJsonStringOrThrow = (value: 'value, schema: t<'value>, ~spac
 }
 
 let assertOrThrow = (any, schema) => {
-  (schema->operationFn(Flag.typeValidation->Flag.with(Flag.assertOutput)))(any)
+  (schema->makeOperation(Flag.typeValidation->Flag.with(Flag.assertOutput)))(any)
 }
 
 module Literal = {
@@ -2460,7 +2475,7 @@ module Metadata = {
 
   let set = (schema, ~id: Id.t<'metadata>, metadata: 'metadata) => {
     let schema = schema->castToInternal
-    let mut = schema->copyWithoutCache
+    let mut = schema->copySchema
     mut->setInPlace(~id, metadata)
     mut->castToPublic
   }
@@ -2504,7 +2519,7 @@ let recursive = (name, fn) => {
 
 let noValidation = (schema, value) => {
   let schema = schema->castToInternal
-  let mut = schema->copyWithoutCache
+  let mut = schema->copySchema
 
   // TODO: Test for discriminant literal
   // TODO: Better test reverse
@@ -3273,7 +3288,7 @@ module Option = {
               )
             }),
           )
-          let to = itemOutputSchema.contents->X.Option.getUnsafe->copyWithoutCache
+          let to = itemOutputSchema.contents->X.Option.getUnsafe->copySchema
           switch to.compiler {
           | Some(compiler) => {
               to.serializer = Some(compiler)
@@ -3286,7 +3301,7 @@ module Option = {
           switch default {
           | Value(v) =>
             try mut.default =
-              operationFn(item->castToPublic, Flag.reverse)(v)->(
+              makeOperation(item->reverse->castToPublic, Flag.none)(v)->(
                 Obj.magic: unknown => option<internalDefault>
               ) catch {
             | _ => ()
@@ -3387,7 +3402,7 @@ module Object = {
     | {additionalItems: currentAdditionalItems, ?items}
       if currentAdditionalItems !== additionalItems &&
         currentAdditionalItems->Js.typeof !== "object" =>
-      let mut = schema->copyWithoutCache
+      let mut = schema->copySchema
       mut.additionalItems = Some(additionalItems)
       if deep {
         let items = items->X.Option.getUnsafe
@@ -3695,7 +3710,7 @@ let enableJsonString = {
 }
 
 let jsonStringWithSpace = (space: int) => {
-  let mut = jsonString->copyWithoutCache
+  let mut = jsonString->copySchema
   mut.space = Some(space)
   mut->castToPublic
 }
@@ -3788,7 +3803,7 @@ let instance = class_ => {
 // TODO: Better test reverse
 let meta = (schema: t<'value>, data: meta<'value>) => {
   let schema = schema->castToInternal
-  let mut = schema->copyWithoutCache
+  let mut = schema->copySchema
   switch data.name {
   | Some("") => mut.name = None
   | Some(name) => mut.name = Some(name)
@@ -3811,7 +3826,9 @@ let meta = (schema: t<'value>, data: meta<'value>) => {
   switch data.examples {
   | Some([]) => mut.examples = None
   | Some(examples) =>
-    mut.examples = Some(examples->X.Array.map(schema->castToPublic->operationFn(Flag.reverse)))
+    mut.examples = Some(
+      examples->X.Array.map(schema->reverse->castToPublic->makeOperation(Flag.none)),
+    )
   | None => ()
   }
   mut->castToPublic
@@ -3819,7 +3836,7 @@ let meta = (schema: t<'value>, data: meta<'value>) => {
 
 let brand = (schema: t<'value>, id: string) => {
   let schema = schema->castToInternal
-  let mut = schema->copyWithoutCache
+  let mut = schema->copySchema
   mut.name = Some(id)
   mut->castToPublic
 }
@@ -4039,7 +4056,8 @@ module Schema = {
       b->objectStrictModeCheck(~input, ~items, ~selfSchema, ~path)
 
       if (
-        (additionalItems !== Some(Strip) || b.global.flag->Flag.unsafeHas(Flag.reverse)) &&
+        (additionalItems !== Some(Strip) ||
+          !(b.global.flag->Flag.unsafeHas(Flag.typeValidation))) &&
           // A hacky way to detect that the schema is not transformed
           // If we don't Strip or perform a reverse operation, return the original
           // instance of Val, so other code also think that the schema value is not transformed
@@ -4549,7 +4567,7 @@ module Schema = {
     if definition->Definition.isNode {
       switch definition->Definition.toEmbededItem {
       | Some(item) =>
-        let ritemSchema = item->getDitemSchema->getOutputSchema->copyWithoutCache
+        let ritemSchema = item->getDitemSchema->getOutputSchema->copySchema
         let _ = %raw(`delete ritemSchema.serializer`)
         let ritem = Registred({
           path,
@@ -4626,7 +4644,7 @@ module Schema = {
     } else {
       Discriminant({
         path,
-        schema: Literal.parse(definition->Definition.toConstant)->copyWithoutCache,
+        schema: Literal.parse(definition->Definition.toConstant)->copySchema,
       })
     }
   }
@@ -5519,13 +5537,9 @@ let global = override => {
   | Some(defaultAdditionalItems) => defaultAdditionalItems
   | None => initialOnAdditionalItems
   } :> additionalItems)
-  let prevDisableNanNumberCheck = globalConfig.disableNanNumberValidation
   globalConfig.disableNanNumberValidation = switch override.disableNanNumberValidation {
   | Some(disableNanNumberValidation) => disableNanNumberValidation
   | None => initialDisableNanNumberProtection
-  }
-  if prevDisableNanNumberCheck != globalConfig.disableNanNumberValidation {
-    resetCacheInPlace(float) // FIXME: Should it be done for int?
   }
 }
 

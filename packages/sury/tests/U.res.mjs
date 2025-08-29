@@ -27,20 +27,18 @@ function throwTestException() {
 function error(param) {
   let tmp;
   switch (param.operation) {
-    case "Parse" :
-      tmp = S.Flag.typeValidation;
-      break;
     case "ParseAsync" :
       tmp = S.Flag.typeValidation | S.Flag.async;
       break;
     case "ReverseConvertToJson" :
-      tmp = S.Flag.reverse | S.Flag.jsonableOutput;
+      tmp = S.Flag.jsonableOutput;
       break;
+    case "Parse" :
     case "ReverseParse" :
-      tmp = S.Flag.reverse | S.Flag.typeValidation;
+      tmp = S.Flag.typeValidation;
       break;
     case "ReverseConvert" :
-      tmp = S.Flag.reverse;
+      tmp = S.Flag.none;
       break;
     case "Assert" :
       tmp = S.Flag.typeValidation | S.Flag.assertOutput;

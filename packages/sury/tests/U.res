@@ -42,9 +42,9 @@ let error = ({operation, code, path}: errorPayload): S.error => {
     ~code,
     ~flag=switch operation {
     | Parse => S.Flag.typeValidation
-    | ReverseParse => S.Flag.reverse->S.Flag.with(S.Flag.typeValidation)
-    | ReverseConvertToJson => S.Flag.reverse->S.Flag.with(S.Flag.jsonableOutput)
-    | ReverseConvert => S.Flag.reverse
+    | ReverseParse => S.Flag.typeValidation
+    | ReverseConvertToJson => S.Flag.jsonableOutput
+    | ReverseConvert => S.Flag.none
     | ParseAsync => S.Flag.typeValidation->S.Flag.with(S.Flag.async)
     | Assert => S.Flag.typeValidation->S.Flag.with(S.Flag.assertOutput)
     },

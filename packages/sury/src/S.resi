@@ -277,7 +277,6 @@ module Flag: {
   @inline let assertOutput: flag
   @inline let jsonableOutput: flag
   @inline let jsonStringOutput: flag
-  @inline let reverse: flag
 
   external with: (flag, flag) => flag = "%orint"
   let has: (flag, flag) => bool
@@ -355,6 +354,8 @@ let compile: (
   ~mode: mode<'transformedOutput, 'output>,
   ~typeValidation: bool=?,
 ) => 'input => 'output
+
+let makeParseOrThrow: t<'value> => 'any => 'value
 
 let parseOrThrow: ('any, t<'value>) => 'value
 let parseJsonOrThrow: (Js.Json.t, t<'value>) => 'value

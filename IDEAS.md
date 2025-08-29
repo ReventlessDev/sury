@@ -14,6 +14,17 @@
 
 - Add `promise` type and `S.promise` (instead of async flag internally)
 
+TODO:
+
+- Keep current operationFn approach. Rename to makeOperation
+- Use define property to be enumerable and simplify copy
+- Add counter and set unique id to each schema
+- Use the unique id to cache the operationFn (from/to) in the schema (partially solves garbage collection problem)
+- Also cache reverse result
+- makeParseOrThrow
+- parseOrThrow(schema)(data) for ts api
+- deprecate compile
+
 ```diff
 const userSchema = S.schema({
   id: S.string,
@@ -21,32 +32,42 @@ const userSchema = S.schema({
 })
 
 S.parseOrThrow(data, userSchema)
++ ts: S.parseOrThrow(userSchema)(data)
 
 - S.parseJsonOrThrow(data, userSchema)
-+ S.convertFromOrThrow(data, S.json, userSchema)
++ res: S.decodeOrThrow(data, S.json, userSchema)
++ ts:  S.decodeOrThrow(S.json, userSchema)(data)
 
 - S.parseJsonStringOrThrow(data, userSchema)
-+ S.convertFromOrThrow(data, S.jsonString, userSchema)
++ res: S.decodeOrThrow(data, S.jsonString, userSchema)
++ ts:  S.decodeOrThrow(S.jsonString, userSchema)(data)
 
 - S.reverseConvertOrThrow(user, userSchema)
-+ S.convertOrThrow(user, S.reverse(userSchema))
++ res: S.encodeOrThrow(user, userSchema, S.unknown)
++ ts:  S.encodeOrThrow(userSchema)(user)
 
 - S.reverseConvertToJsonOrThrow(user, userSchema)
-+ S.convertFromOrThrow(user, userSchema, S.json)
++ res: S.encodeOrThrow(user, userSchema, S.json)
++ ts:  S.encodeOrThrow(userSchema, S.json)(user)
 
 - S.reverseConvertToJsonStringOrThrow(user, userSchema)
-+ S.convertFromOrThrow(user, userSchema, S.jsonString)
++ res: S.encodeOrThrow(user, userSchema, S.jsonString)
++ ts:  S.encodeOrThrow(userSchema, S.jsonString)(user)
 
 - S.reverseConvertToJsonStringOrThrow(user, userSchema, 2)
-+ S.convertFromOrThrow(user, userSchema, S.jsonStringWithSpace(2))
++ res: S.encodeOrThrow(user, userSchema, S.jsonStringWithSpace(2))
++ ts:  S.encodeOrThrow(userSchema, S.jsonStringWithSpace(2))(user)
 
-S.convertOrThrow(data, userSchema)
+- S.convertOrThrow(data, userSchema)
++ ts:  S.decodeOrThrow(userSchema)(data) (when single from Input to Output, when multiple from Output to Output)
++ res: S.decodeOrThrow(data, S.unknown, userSchema) (from Output to Output)
 
 - S.convertToJsonOrThrow(data, userSchema)
-+ S.convertOrThrow(data, userSchema.with(S.to, S.json))
++ res: S.decodeOrThrow(data, S.unknown, userSchema) + S.decodeOrThrow(data, userSchema, S.json)
+// Because it was from input before
 
 - S.convertToJsonStringOrThrow(data, userSchema)
-+ S.convertOrThrow(data, userSchema.with(S.to, S.jsonString))
++ res: S.decodeOrThrow(data, S.unknown, userSchema) + S.decodeFromOrThrow(data, userSchema, S.jsonString)
 ```
 
 - rename `serializer` to reverse parser ?

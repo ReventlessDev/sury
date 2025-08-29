@@ -364,35 +364,25 @@ let unit = new Schema("undefined");
 
 unit.const = (void 0);
 
-let copyWithoutCache = ((schema) => {
+let copySchema = ((schema) => {
   let c = new Schema(schema.type)
   for (let k in schema) {
-    if (k > "a" || k === "$ref" || k === "$defs") {
-      c[k] = schema[k]
-    }
+    c[k] = schema[k]
   }
   return c
 });
 
 function updateOutput(schema, fn) {
-  let root = copyWithoutCache(schema);
+  let root = copySchema(schema);
   let mut = root;
   while (mut.to) {
-    let next = copyWithoutCache(mut.to);
+    let next = copySchema(mut.to);
     mut.to = next;
     mut = next;
   };
   fn(mut);
   return root;
 }
-
-let resetCacheInPlace = ((schema) => {
-  for (let k in schema) {
-    if (Number(k[0])) {
-      delete schema[k];
-    }
-  }
-});
 
 let value = SuryError;
 
@@ -1135,16 +1125,63 @@ function parse(prevB, schema, inputArg, path) {
   return input;
 }
 
-function getOutputSchema(_schema) {
-  while (true) {
-    let schema = _schema;
-    let to = schema.to;
-    if (to === undefined) {
-      return schema;
-    }
-    _schema = to;
-    continue;
+function internalCompile(schema, flag, defs) {
+  let b = rootScope(flag, defs);
+  if (flag & 8) {
+    let output = reverse(schema);
+    jsonableValidation(output, output, "", flag);
+  }
+  let input = {
+    b: b,
+    v: _var,
+    i: "i",
+    f: 0,
+    type: "unknown"
   };
+  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
+      let t = new Schema(unit.type);
+      t.const = unit.const;
+      t.noValidation = true;
+      mut.to = t;
+    }) : (
+      flag & 16 ? updateOutput(schema, mut => {
+          mut.to = jsonString;
+        }) : schema
+    );
+  let output$1 = parse(b, schema$1, input, "");
+  let code = allocateScope(b);
+  let isAsync = has(output$1.f, 2);
+  schema$1.isAsync = isAsync;
+  if (code === "" && output$1 === input && !(flag & 2)) {
+    return noopOperation;
+  }
+  let inlinedOutput = output$1.i;
+  if (flag & 2 && !isAsync && !defs) {
+    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
+  }
+  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
+  let ctxVarValue1 = b.g.e;
+  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
+}
+
+function isAsyncInternal(schema, defs) {
+  try {
+    let b = rootScope(2, defs);
+    let input = {
+      b: b,
+      v: _var,
+      i: "i",
+      f: 0,
+      type: "unknown"
+    };
+    let output = parse(b, schema, input, "");
+    let isAsync = has(output.f, 2);
+    schema.isAsync = isAsync;
+    return isAsync;
+  } catch (exn) {
+    getOrRethrow(exn);
+    return false;
+  }
 }
 
 function jsonableValidation(output, parent, path, flag) {
@@ -1181,10 +1218,13 @@ function jsonableValidation(output, parent, path, flag) {
 }
 
 function reverse(schema) {
+  if (reverseKey in schema) {
+    return schema[reverseKey];
+  }
   let reversedHead;
   let current = schema;
   while (current) {
-    let mut = copyWithoutCache(current);
+    let mut = copySchema(current);
     let next = mut.to;
     let to = reversedHead;
     if (to !== undefined) {
@@ -1269,74 +1309,36 @@ function reverse(schema) {
     reversedHead = mut;
     current = next;
   };
-  return reversedHead;
+  let r = reversedHead;
+  val$1[valKey] = r;
+  d(schema, reverseKey, val$1);
+  val$1[valKey] = schema;
+  d(r, reverseKey, val$1);
+  return r;
 }
 
-function internalCompile(schema, flag, defs) {
-  let b = rootScope(flag, defs);
-  if (flag & 8) {
-    let output = reverse(schema);
-    jsonableValidation(output, output, "", flag);
-  }
-  let input = {
-    b: b,
-    v: _var,
-    i: "i",
-    f: 0,
-    type: "unknown"
+function getOutputSchema(_schema) {
+  while (true) {
+    let schema = _schema;
+    let to = schema.to;
+    if (to === undefined) {
+      return schema;
+    }
+    _schema = to;
+    continue;
   };
-  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
-      let t = new Schema(unit.type);
-      t.const = unit.const;
-      t.noValidation = true;
-      mut.to = t;
-    }) : (
-      flag & 16 ? updateOutput(schema, mut => {
-          mut.to = jsonString;
-        }) : schema
-    );
-  let output$1 = parse(b, schema$1, input, "");
-  let code = allocateScope(b);
-  let isAsync = has(output$1.f, 2);
-  schema$1.isAsync = isAsync;
-  if (code === "" && output$1 === input && !(flag & 2)) {
-    return noopOperation;
-  }
-  let inlinedOutput = output$1.i;
-  if (flag & 2 && !isAsync && !defs) {
-    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
-  }
-  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
-  let ctxVarValue1 = b.g.e;
-  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
 }
 
-function isAsyncInternal(schema, defs) {
-  try {
-    let b = rootScope(2, defs);
-    let input = {
-      b: b,
-      v: _var,
-      i: "i",
-      f: 0,
-      type: "unknown"
-    };
-    let output = parse(b, schema, input, "");
-    let isAsync = has(output.f, 2);
-    schema.isAsync = isAsync;
-    return isAsync;
-  } catch (exn) {
-    getOrRethrow(exn);
-    return false;
-  }
-}
+let reverseKey = "r";
 
-function operationFn(s, o) {
-  if ((o in s)) {
-    return (s[o]);
-  }
-  let f = internalCompile(o & 32 ? reverse(s) : s, o, 0);
-  ((s[o] = f));
+let valKey = "value";
+
+let val$1 = {};
+
+function initOperation(s, flag) {
+  let f = internalCompile(s, flag, 0);
+  val$1[valKey] = f;
+  d(s, flag, val$1);
   return f;
 }
 
@@ -1349,7 +1351,7 @@ d(sp, "~standard", {
       validate: input => {
         try {
           return {
-            value: operationFn(schema, 1)(input)
+            value: (schema[1] || initOperation(schema, 1))(input)
           };
         } catch (exn) {
           let error = getOrRethrow(exn);
@@ -1393,10 +1395,9 @@ function compile(schema, input, output, mode, typeValidationOpt) {
   if (typeValidation) {
     flag = flag | 1;
   }
-  if (input === "Output") {
-    flag = flag | 32;
-  }
-  let fn = operationFn(schema, flag);
+  let schema$1 = input === "Output" ? reverse(schema) : schema;
+  let o = flag;
+  let fn = schema$1[o] || initOperation(schema$1, o);
   if (input !== "JsonString") {
     return fn;
   }
@@ -1413,8 +1414,16 @@ function compile(schema, input, output, mode, typeValidationOpt) {
   };
 }
 
+function makeParseOrThrow(schema) {
+  if (1 in schema) {
+    return schema[1];
+  } else {
+    return initOperation(schema, 1);
+  }
+}
+
 function parseOrThrow(any, schema) {
-  return operationFn(schema, 1)(any);
+  return (schema[1] || initOperation(schema, 1))(any);
 }
 
 function parseJsonStringOrThrow(jsonString, schema) {
@@ -1431,31 +1440,33 @@ function parseJsonStringOrThrow(jsonString, schema) {
 }
 
 function parseAsyncOrThrow(any, schema) {
-  return operationFn(schema, 3)(any);
+  return (schema[3] || initOperation(schema, 3))(any);
 }
 
 function convertOrThrow(input, schema) {
-  return operationFn(schema, 0)(input);
+  return (schema[0] || initOperation(schema, 0))(input);
 }
 
 function convertToJsonOrThrow(any, schema) {
-  return operationFn(schema, 8)(any);
+  return (schema[8] || initOperation(schema, 8))(any);
 }
 
 function convertToJsonStringOrThrow(input, schema) {
-  return operationFn(schema, 24)(input);
+  return (schema[24] || initOperation(schema, 24))(input);
 }
 
 function convertAsyncOrThrow(any, schema) {
-  return operationFn(schema, 2)(any);
+  return (schema[2] || initOperation(schema, 2))(any);
 }
 
 function reverseConvertOrThrow(value, schema) {
-  return operationFn(schema, 32)(value);
+  let s = reverse(schema);
+  return (s[0] || initOperation(s, 0))(value);
 }
 
 function reverseConvertToJsonOrThrow(value, schema) {
-  return operationFn(schema, 40)(value);
+  let s = reverse(schema);
+  return (s[8] || initOperation(s, 8))(value);
 }
 
 function reverseConvertToJsonStringOrThrow(value, schema, spaceOpt) {
@@ -1464,7 +1475,7 @@ function reverseConvertToJsonStringOrThrow(value, schema, spaceOpt) {
 }
 
 function assertOrThrow(any, schema) {
-  return operationFn(schema, 5)(any);
+  return (schema[5] || initOperation(schema, 5))(any);
 }
 
 let $$null = new Schema("null");
@@ -1551,7 +1562,7 @@ function get$1(schema, id) {
 }
 
 function set$1(schema, id, metadata) {
-  let mut = copyWithoutCache(schema);
+  let mut = copySchema(schema);
   mut[id] = metadata;
   return mut;
 }
@@ -1586,7 +1597,7 @@ function recursive(name, fn) {
 }
 
 function noValidation(schema, value) {
-  let mut = copyWithoutCache(schema);
+  let mut = copySchema(schema);
   mut.noValidation = value;
   return mut;
 }
@@ -2148,7 +2159,7 @@ function getWithDefault(schema, $$default) {
         let operationCode = allocateScope(bb);
         return asyncVal(input.b, input.i + ".then(" + operationInput.v(b) + "=>{" + operationCode + "return " + operationOutputVal.i + "})");
       };
-      let to = copyWithoutCache(itemOutputSchema);
+      let to = copySchema(itemOutputSchema);
       let compiler = to.compiler;
       if (compiler !== undefined) {
         to.serializer = compiler;
@@ -2161,7 +2172,8 @@ function getWithDefault(schema, $$default) {
         return;
       }
       try {
-        mut.default = operationFn(item$1, 32)($$default._0);
+        let s$1 = reverse(item$1);
+        mut.default = (s$1[0] || initOperation(s$1, 0))($$default._0);
         return;
       } catch (exn) {
         return;
@@ -2245,7 +2257,7 @@ function setAdditionalItems(schema, additionalItems, deep) {
   if (currentAdditionalItems === additionalItems || typeof currentAdditionalItems === "object") {
     return schema;
   }
-  let mut = copyWithoutCache(schema);
+  let mut = copySchema(schema);
   mut.additionalItems = additionalItems;
   if (deep) {
     let newItems = [];
@@ -2475,7 +2487,7 @@ function enableJsonString() {
 }
 
 function jsonStringWithSpace(space) {
-  let mut = copyWithoutCache(jsonString);
+  let mut = copySchema(jsonString);
   mut.space = space;
   return mut;
 }
@@ -2526,7 +2538,7 @@ function instance(class_) {
 }
 
 function meta(schema, data) {
-  let mut = copyWithoutCache(schema);
+  let mut = copySchema(schema);
   let name = data.name;
   if (name !== undefined) {
     if (name === "") {
@@ -2558,7 +2570,8 @@ function meta(schema, data) {
   let examples = data.examples;
   if (examples !== undefined) {
     if (examples.length !== 0) {
-      mut.examples = examples.map(operationFn(schema, 32));
+      let s = reverse(schema);
+      mut.examples = examples.map(s[0] || initOperation(s, 0));
     } else {
       mut.examples = undefined;
     }
@@ -2567,7 +2580,7 @@ function meta(schema, data) {
 }
 
 function brand(schema, id) {
-  let mut = copyWithoutCache(schema);
+  let mut = copySchema(schema);
   mut.name = id;
   return mut;
 }
@@ -2678,12 +2691,63 @@ function schemaCompiler(b, input, selfSchema, path) {
     add(objectVal$1, location$1, parse(b, match$1.schema, itemInput, path$1));
   }
   objectStrictModeCheck(b, input, items, selfSchema, path);
-  if ((additionalItems !== "strip" || b.g.o & 32) && items.every(item => objectVal$1.properties[item.location] === input.properties[item.location])) {
+  if ((additionalItems !== "strip" || !(b.g.o & 1)) && items.every(item => objectVal$1.properties[item.location] === input.properties[item.location])) {
     input.additionalItems = "strip";
     return input;
   } else {
     return complete(objectVal$1, isArray);
   }
+}
+
+function definitionToSchema(definition) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse$1(definition);
+  }
+  if (definition["~standard"]) {
+    return definition;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = definitionToSchema(definition[idx]);
+      let location = idx.toString();
+      definition[idx] = {
+        schema: schema,
+        location: location
+      };
+    }
+    let mut = new Schema("array");
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.compiler = schemaCompiler;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    return {
+      type: "instance",
+      const: definition,
+      class: cnstr
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  let items = [];
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let schema$1 = definitionToSchema(definition[location$1]);
+    let item = {
+      schema: schema$1,
+      location: location$1
+    };
+    definition[location$1] = schema$1;
+    items[idx$1] = item;
+  }
+  let mut$1 = new Schema("object");
+  mut$1.items = items;
+  mut$1.properties = definition;
+  mut$1.additionalItems = globalConfig.a;
+  mut$1.compiler = schemaCompiler;
+  return mut$1;
 }
 
 function nested(fieldName) {
@@ -2761,68 +2825,17 @@ function nested(fieldName) {
   return ctx$1;
 }
 
-function definitionToSchema(definition) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse$1(definition);
-  }
-  if (definition["~standard"]) {
-    return definition;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = definitionToSchema(definition[idx]);
-      let location = idx.toString();
-      definition[idx] = {
-        schema: schema,
-        location: location
-      };
-    }
-    let mut = new Schema("array");
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.compiler = schemaCompiler;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    return {
-      type: "instance",
-      const: definition,
-      class: cnstr
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  let items = [];
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let schema$1 = definitionToSchema(definition[location$1]);
-    let item = {
-      schema: schema$1,
-      location: location$1
-    };
-    definition[location$1] = schema$1;
-    items[idx$1] = item;
-  }
-  let mut$1 = new Schema("object");
-  mut$1.items = items;
-  mut$1.properties = definition;
-  mut$1.additionalItems = globalConfig.a;
-  mut$1.compiler = schemaCompiler;
-  return mut$1;
-}
-
 function definitionToRitem(definition, path, ritemsByItemPath) {
   if (typeof definition !== "object" || definition === null) {
     return {
       k: 1,
       p: path,
-      s: copyWithoutCache(parse$1(definition))
+      s: copySchema(parse$1(definition))
     };
   }
   let item = definition[itemSymbol];
   if (item !== undefined) {
-    let ritemSchema = copyWithoutCache(getOutputSchema(item.schema));
+    let ritemSchema = copySchema(getOutputSchema(item.schema));
     ((delete ritemSchema.serializer));
     let ritem = {
       k: 0,
@@ -3617,13 +3630,8 @@ function js_merge(s1, s2) {
 function global(override) {
   let defaultAdditionalItems = override.defaultAdditionalItems;
   globalConfig.a = defaultAdditionalItems !== undefined ? defaultAdditionalItems : "strip";
-  let prevDisableNanNumberCheck = globalConfig.n;
   let disableNanNumberValidation = override.disableNanNumberValidation;
   globalConfig.n = disableNanNumberValidation !== undefined ? disableNanNumberValidation : false;
-  if (prevDisableNanNumberCheck !== globalConfig.n) {
-    return resetCacheInPlace(float);
-  }
-  
 }
 
 let jsonSchemaMetadataId = "m:JSONSchema";
@@ -4271,7 +4279,6 @@ let Flag = {
   assertOutput: 4,
   jsonableOutput: 8,
   jsonStringOutput: 16,
-  reverse: 32,
   has: has
 };
 
@@ -4369,6 +4376,7 @@ export {
   shape,
   to,
   compile,
+  makeParseOrThrow,
   parseOrThrow,
   parseJsonOrThrow,
   parseJsonStringOrThrow,
