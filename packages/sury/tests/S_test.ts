@@ -647,7 +647,7 @@ test("Fails to serialize never", (t) => {
 });
 
 test("Successfully parses with transform to another type", (t) => {
-  const schema = S.string.with(S.transform, (string) => Number(string));
+  const schema = S.string.with(S.to, S.number, (string) => Number(string));
   const value = S.parseOrThrow("123", schema);
 
   t.deepEqual(value, 123);
@@ -655,11 +655,33 @@ test("Successfully parses with transform to another type", (t) => {
   expectType<TypeEqual<typeof value, number>>(true);
 });
 
+test("Handles errors during custom encoding", (t) => {
+  const schema = S.string.with(S.to, S.number, undefined, (number) => {
+    if (number < 100) {
+      throw new Error("Number is too small");
+    }
+    return number.toString();
+  });
+
+  const output = S.parseOrThrow("80", schema);
+  t.deepEqual<number, 80>(output, 80);
+
+  t.throws(
+    () => {
+      S.reverseConvertOrThrow(output, schema);
+    },
+    {
+      name: "SuryError",
+      message: "Failed converting: Number is too small",
+    }
+  );
+});
+
 test("Fails to parse with transform with user error", (t) => {
-  const schema = S.string.with(S.transform, (string, s) => {
+  const schema = S.string.with(S.to, S.number, (string) => {
     const number = Number(string);
     if (Number.isNaN(number)) {
-      s.fail("Invalid number");
+      throw new Error("Invalid number");
     }
     return number;
   });
@@ -679,7 +701,7 @@ test("Fails to parse with transform with user error", (t) => {
 });
 
 test("Successfully converts reversed schema with transform to another type", (t) => {
-  const schema = S.string.with<number>(S.transform, undefined, (number) => {
+  const schema = S.string.with(S.to, S.number, undefined, (number) => {
     expectType<TypeEqual<typeof number, number>>(true);
     return number.toString();
   });
@@ -986,7 +1008,7 @@ test("Successfully parses advanced object with all features", (t) => {
 
 test("Successfully parses object with transformed field", (t) => {
   const schema = S.schema({
-    foo: S.string.with(S.transform, (string) => Number(string)),
+    foo: S.string.with(S.to, S.number, (string) => Number(string)),
     bar: S.boolean,
   });
   const value = S.parseOrThrow(
@@ -1704,7 +1726,7 @@ test("Shape union", (t) => {
 
 test("Successfully parses union with transformed items", (t) => {
   const schema = S.union([
-    S.string.with(S.transform, (string) => Number(string)),
+    S.string.with(S.to, S.number, (string) => Number(string)),
     S.number,
   ]);
   const value = S.safe(() => S.parseOrThrow("123", schema));
@@ -1819,7 +1841,7 @@ test("Tuple literal", (t) => {
 });
 
 test("Correctly infers type", (t) => {
-  const schema = S.string.with(S.transform, Number);
+  const schema = S.string.with(S.to, S.number, Number);
   expectType<SchemaEqual<typeof schema, number, string>>(true);
   expectType<TypeEqual<S.Input<typeof schema>, string>>(true);
   expectType<TypeEqual<S.Output<typeof schema>, number>>(true);
@@ -1926,7 +1948,7 @@ test("Creates schema with deprecation", (t) => {
 });
 
 test("Tuple with single element", (t) => {
-  const schema = S.schema([S.string.with(S.transform, (s) => Number(s))]);
+  const schema = S.schema([S.string.with(S.to, S.number, (s) => Number(s))]);
 
   t.deepEqual(S.parseOrThrow(["123"], schema), [123]);
 
@@ -2108,11 +2130,18 @@ test("Set schema", (t) => {
 
 test("Full Set schema", (t) => {
   const mySet = <T>(itemSchema: S.Schema<T>): S.Schema<Set<T>> =>
-    S.instance(Set)
-      .with(S.transform, (input) => {
+    S.instance(Set<unknown>)
+      .with(S.to, S.instance(Set<T>), (input) => {
         const output = new Set<T>();
-        input.forEach((item) => {
-          output.add(S.parseOrThrow(item, itemSchema));
+        input.forEach((item, index) => {
+          try {
+            output.add(S.parseOrThrow(item, itemSchema));
+          } catch (e) {
+            if (e instanceof S.Error) {
+              throw new Error(`At item ${index} - ${e.reason}`);
+            }
+            throw e;
+          }
         });
         return output;
       })
@@ -2135,7 +2164,7 @@ test("Full Set schema", (t) => {
   });
   t.throws(() => S.parseOrThrow(new Set([1, 2, "3"]), numberSetSchema), {
     name: "SuryError",
-    message: `Failed parsing: Expected number, received "3"`,
+    message: `Failed parsing: At item 3 - Expected number, received "3"`,
   });
 });
 
@@ -2698,8 +2727,9 @@ test("Preprocess nested fields", (t) => {
     schema: S.Schema<string, Input>,
     prefix: string
   ): S.Schema<string, Input> =>
-    S.transform(
+    S.to(
       schema,
+      S.string,
       (v) => {
         if (v.startsWith(prefix)) {
           return v.slice(1);
@@ -2708,7 +2738,7 @@ test("Preprocess nested fields", (t) => {
         }
       },
       (v) => prefix + v
-    ).with(S.to, S.string);
+    );
 
   const schema = S.schema({
     nested: {
@@ -2788,20 +2818,23 @@ test("Overwrite error message", (t) => {
   const schema = S.string.with(S.min, 3, "Invalid string");
 
   const fieldSchema = <O, I>(schema: S.Schema<O, I>): S.Schema<O, I> => {
-    return S.unknown.with(S.transform, (v) => {
+    return S.any.with(S.to, schema, (v) => {
       try {
-        return S.parseOrThrow(v, schema);
+        S.assertOrThrow(v, schema);
+        return v;
       } catch (e) {
         if (e instanceof S.Error) {
           throw new Error(e.reason);
         }
         throw e;
       }
-    }) satisfies S.Schema<O, unknown> as S.Schema<O, I>;
+    });
   };
 
+  // Doesn't work starting from 11.0.0-alpha.4
+  // The error is always wrapped in SuryError
   t.throws(() => S.parseOrThrow("hi", fieldSchema(schema)), {
-    name: "Error",
-    message: "Invalid string",
+    name: "SuryError",
+    message: "Failed parsing: Invalid string",
   });
 });

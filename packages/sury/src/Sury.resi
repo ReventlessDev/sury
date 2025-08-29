@@ -258,6 +258,7 @@ and errorCode =
   | OperationFailed(string)
   | InvalidOperation({description: string})
   | InvalidType({expected: schema<unknown>, received: unknown, unionErrors?: array<error>})
+  | FailedTransformation({from: schema<unknown>, to: schema<unknown>, error: exn})
   | UnsupportedTransformation({from: schema<unknown>, to: schema<unknown>})
   | ExcessField(string)
   | UnexpectedAsync
@@ -562,11 +563,12 @@ let js_nullable: (t<'v>, option<unknown>) => t<option<'v>>
 let js_asyncParserRefine: (t<'output>, ('output, s<'output>) => promise<unit>) => t<'output>
 let js_refine: (t<'output>, ('output, s<'output>) => unit) => t<'output>
 
-let js_transform: (
-  t<'output>,
-  ~parser: ('output, s<'transformed>) => 'transformed=?,
-  ~serializer: ('transformed, s<'transformed>) => 'output=?,
-) => t<'transformed>
+let js_to: (
+  t<'value>,
+  t<'target>,
+  ~decoder: 'value => 'target=?,
+  ~encoder: 'target => 'value=?,
+) => t<'target>
 
 let js_schema: unknown => t<unknown>
 

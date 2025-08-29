@@ -573,6 +573,7 @@ and errorCode =
   | OperationFailed(string)
   | InvalidOperation({description: string})
   | InvalidType({expected: schema<unknown>, received: unknown, unionErrors?: array<error>})
+  | FailedTransformation({from: schema<unknown>, to: schema<unknown>, error: exn})
   | UnsupportedTransformation({from: schema<unknown>, to: schema<unknown>})
   | ExcessField(string)
   | UnexpectedAsync
@@ -829,6 +830,14 @@ Schema.prototype = sp;
       `Unsupported transformation from ${from->toExpression} to ${to->toExpression}`
     | UnexpectedAsync => "Encountered unexpected async transform or refine. Use parseAsyncOrThrow operation instead"
     | ExcessField(fieldName) => `Unrecognized key "${fieldName}"`
+    | FailedTransformation(_) => {
+        let text = %raw(`"" + reason$1.error`)
+        if text->String.startsWith("Error: ") {
+          text->String.slice(~start=7)
+        } else {
+          text
+        }
+      }
     | InvalidType({expected: schema, received, ?unionErrors}) =>
       let m = ref(`Expected ${schema->toExpression}, received ${received->stringify}`)
       switch unionErrors {
@@ -5431,19 +5440,48 @@ let js_union = values =>
     values->Js.Array2.map(Schema.definitionToSchema)->(Obj.magic: array<internal> => array<'a>),
   )
 
-let js_transform = (schema, ~parser as maybeParser=?, ~serializer as maybeSerializer=?) => {
-  schema->transform(s => {
-    {
-      parser: ?switch maybeParser {
-      | Some(parser) => Some(v => parser(v, s))
-      | None => None
-      },
-      serializer: ?switch maybeSerializer {
-      | Some(serializer) => Some(v => serializer(v, s))
-      | None => None
-      },
-    }
-  })
+let js_to = {
+  // FIXME: Test how it'll work if we have async var as input
+  let customBuilder = (~from, ~target, ~fn) => {
+    Builder.make((b, ~input, ~selfSchema as _, ~path) => {
+      let output = b->B.allocateVal(~schema=target)
+      b.code = `try{${output.inline}=${b->B.embed(fn)}(${input.inline})}catch(x){${b->B.failWithArg(
+          ~path,
+          e => FailedTransformation({
+            from: from->castToPublic,
+            to: target->castToPublic,
+            error: e,
+          }),
+          `x`,
+        )}}`
+      output
+    })
+  }
+
+  (
+    schema,
+    target,
+    ~decoder as maybeDecoder: option<'value => 'target>=?,
+    ~encoder as maybeEncoder: option<'target => 'value>=?,
+  ) => {
+    updateOutput(schema->castToInternal, mut => {
+      let target = target->castToInternal
+      let target = switch maybeEncoder {
+      | Some(fn) =>
+        let targetMut = target->copySchema
+        targetMut.serializer = Some(
+          customBuilder(~from=target, ~target=schema->castToInternal, ~fn),
+        )
+        targetMut
+      | None => target
+      }
+      mut.to = Some(target)
+      switch maybeDecoder {
+      | Some(fn) => mut.parser = Some(customBuilder(~from=schema->castToInternal, ~target, ~fn))
+      | None => ()
+      }
+    })
+  }
 }
 
 let js_refine = (schema, refiner) => {

@@ -100,7 +100,7 @@ var filesMapping = [
   ["tuple", "S.tuple"],
   ["asyncParserRefine", "S.js_asyncParserRefine"],
   ["refine", "S.js_refine"],
-  ["transform", "S.js_transform"],
+  ["transform", "S.js_to"],
   ["meta", "S.meta"],
   ["toExpression", "S.toExpression"],
   ["noValidation", "S.noValidation"],

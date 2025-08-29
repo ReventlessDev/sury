@@ -96,26 +96,29 @@ export type JSON =
   | JSON[];
 
 export type Schema<Output, Input = unknown> = {
-  with<Transformed>(
-    transform: (
+  with<TargetOutput = unknown, TargetInput = unknown>(
+    to: (
       schema: Schema<unknown, unknown>,
-      parser:
-        | ((value: unknown, s: EffectCtx<unknown, unknown>) => unknown)
-        | undefined,
-      serializer?: (value: unknown, s: EffectCtx<unknown, unknown>) => Input
+      target: Schema<unknown, unknown>,
+      decode?: ((value: unknown) => unknown) | undefined,
+      encode?: (value: unknown) => Output
     ) => Schema<unknown, unknown>,
-    parser:
-      | ((value: Output, s: EffectCtx<unknown, unknown>) => Transformed)
-      | undefined,
-    serializer?: (value: Transformed, s: EffectCtx<unknown, unknown>) => Input
-  ): Schema<Transformed, Input>;
-  with(
+    target: Schema<TargetOutput, TargetInput>,
+    decode?: ((value: Output) => TargetInput) | undefined,
+    encode?: (value: TargetInput) => Output
+  ): Schema<TargetOutput, Input>;
+  // I don't know how, but it makes both S.refine and S.shape work
+  with<Shape>(
     refine: (
       schema: Schema<unknown, unknown>,
-      refiner: (value: unknown, s: EffectCtx<unknown, unknown>) => Promise<void>
+      refiner:
+        | ((value: unknown, s: EffectCtx<unknown, unknown>) => unknown)
+        | undefined
     ) => Schema<unknown, unknown>,
-    refiner: (value: Output, s: EffectCtx<Output, Input>) => Promise<void>
-  ): Schema<Output, Input>;
+    refiner:
+      | ((value: Output, s: EffectCtx<unknown, unknown>) => Shape)
+      | undefined
+  ): Schema<Shape, Input>;
   // with(message: string): t<Output, Input>; TODO: implement
   with<O, I>(fn: (schema: Schema<Output, Input>) => Schema<O, I>): Schema<O, I>;
   with<O, I, A1 extends string>(
@@ -619,14 +622,6 @@ export function refine<Output, Input>(
   refiner: (value: Output, s: EffectCtx<Output, Input>) => void
 ): Schema<Output, Input>;
 
-export function transform<Transformed, Output = unknown, Input = unknown>(
-  schema: Schema<Output, Input>,
-  parser:
-    | ((value: Output, s: EffectCtx<unknown, unknown>) => Transformed)
-    | undefined,
-  serializer?: (value: Transformed, s: EffectCtx<unknown, unknown>) => Output
-): Schema<Transformed, Input>;
-
 export const min: <Output extends string | number | unknown[], Input>(
   schema: Schema<Output, Input>,
   length: number,
@@ -726,20 +721,22 @@ export function compile<
   ? Promise<CompileOutputMappings<Input, Output>[OutputOption]>
   : never;
 
-export function shape<Output, Input, Shape>(
+export function shape<Shape = unknown, Output = unknown, Input = unknown>(
   schema: Schema<Output, Input>,
   shaper: (value: Output) => Shape
 ): Schema<Shape, Input>;
 
 export function to<
-  FromInput,
-  ToOutput,
-  FromOutput = FromInput,
-  ToInput = ToOutput
+  Output = unknown,
+  Input = unknown,
+  TargetInput = unknown,
+  TargetOutput = unknown
 >(
-  from: Schema<FromOutput, FromInput>,
-  to: Schema<ToOutput, ToInput>
-): Schema<ToOutput, FromInput>;
+  schema: Schema<Output, Input>,
+  target: Schema<TargetOutput, TargetInput>,
+  decode?: ((value: Output) => TargetInput) | undefined,
+  encode?: (value: TargetOutput) => Output
+): Schema<TargetOutput, Input>;
 
 export function toJSONSchema<Output, Input>(
   schema: Schema<Output, Input>

@@ -227,7 +227,7 @@ let filesMapping = [
   ],
   [
     "to",
-    "S.to"
+    "S.js_to"
   ],
   [
     "toJSONSchema",
@@ -256,10 +256,6 @@ let filesMapping = [
   [
     "refine",
     "S.js_refine"
-  ],
-  [
-    "transform",
-    "S.js_transform"
   ],
   [
     "meta",
