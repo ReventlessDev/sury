@@ -5435,8 +5435,24 @@ let parser = schema => {
   schema->makeMakeOperation(Flag.typeValidation)
 }
 
-let decoder = schema => {
-  schema->makeMakeOperation(Flag.none)
+let decoder = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->castToPublic->makeMakeOperation(Flag.none)
+  | _ => {
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      schema.contents->castToPublic->makeMakeOperation(Flag.none)
+    }
+  }
 }
 
 let encoder = schema => {

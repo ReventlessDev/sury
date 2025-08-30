@@ -630,8 +630,7 @@ test("Fails to serialize never", (t) => {
 
   t.throws(
     () => {
-      // @ts-ignore
-      S.convertOrThrow("123", S.reverse(schema));
+      S.encoder(schema)("123" as never);
     },
     {
       name: "SuryError",
@@ -2425,18 +2424,26 @@ test("Example", (t) => {
   expectType<TypeEqual<LoginData, { email: string; password: string }>>(true);
 });
 
-test("parseJsonOrThrow", async (t) => {
+test("Decode from json", async (t) => {
   const schema = S.string.with(S.nullable);
 
-  t.deepEqual(S.parseJsonOrThrow("hello", schema), "hello");
-  t.deepEqual(S.parseJsonOrThrow(null, schema), undefined);
+  t.deepEqual(S.decoder(S.json, schema)("hello"), "hello");
+  t.deepEqual(S.decoder(S.json, schema)(null), undefined);
 });
 
-test("parseJsonStringOrThrow", async (t) => {
+test("Decode from json string", async (t) => {
   const schema = S.nullable(S.string);
 
-  t.deepEqual(S.parseJsonStringOrThrow(`"hello"`, schema), "hello");
-  t.deepEqual(S.parseJsonStringOrThrow("null", schema), undefined);
+  t.deepEqual(S.decoder(S.jsonString, schema)(`"hello"`), "hello");
+  t.deepEqual(S.decoder(S.jsonString, schema)("null"), undefined);
+});
+
+test("Decode from json string, convert to number", async (t) => {
+  const fn = S.decoder(S.jsonString, S.string, S.number);
+
+  expectType<TypeEqual<typeof fn, (data: string) => number>>(true);
+
+  t.deepEqual(fn(`"123"`), 123);
 });
 
 test("ArkType pattern matching", async (t) => {

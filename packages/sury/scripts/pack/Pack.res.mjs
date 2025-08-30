@@ -186,14 +186,6 @@ let filesMapping = [
     "S.encoder"
   ],
   [
-    "parseJsonOrThrow",
-    "S.parseJsonOrThrow"
-  ],
-  [
-    "parseJsonStringOrThrow",
-    "S.parseJsonStringOrThrow"
-  ],
-  [
     "parseAsyncOrThrow",
     "S.parseAsyncOrThrow"
   ],

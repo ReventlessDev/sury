@@ -3517,11 +3517,29 @@ function parser$1(schema) {
   }
 }
 
-function decoder(schema) {
-  if (0 in schema) {
-    return schema[0];
+function decoder(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: args[args.length - 1 | 0]
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(args[i], mut => {
+        mut.to = schema.contents;
+      });
+    }
+    let s = schema.contents;
+    if (0 in s) {
+      return s[0];
+    } else {
+      return initOperation(s, 0);
+    }
+  }
+  let s$1 = args[0];
+  if (0 in s$1) {
+    return s$1[0];
   } else {
-    return initOperation(schema, 0);
+    return initOperation(s$1, 0);
   }
 }
 

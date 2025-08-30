@@ -145,8 +145,6 @@ let filesMapping = [
   ("parser", "S.parser"),
   ("decoder", "S.decoder"),
   ("encoder", "S.encoder"),
-  ("parseJsonOrThrow", "S.parseJsonOrThrow"),
-  ("parseJsonStringOrThrow", "S.parseJsonStringOrThrow"),
   ("parseAsyncOrThrow", "S.parseAsyncOrThrow"),
   ("assert", "S.js_assert"),
   ("recursive", "S.recursive"),

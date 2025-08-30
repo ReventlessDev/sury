@@ -265,6 +265,19 @@ export type Output<T> = T extends Schema<infer Output, unknown>
 export type Infer<T> = Output<T>;
 export type Input<T> = T extends Schema<unknown, infer Input> ? Input : never;
 
+// Utility types for decoder function with multiple schemas
+type ExtractFirstInput<T extends readonly Schema<any, any>[]> =
+  T extends readonly [Schema<any, infer FirstInput>, ...any[]]
+    ? FirstInput
+    : never;
+
+type ExtractLastOutput<T extends readonly Schema<any, any>[]> =
+  T extends readonly [...any[], Schema<infer LastOutput, any>]
+    ? LastOutput
+    : T extends readonly [Schema<infer SingleOutput, any>]
+    ? SingleOutput
+    : never;
+
 export type UnknownToOutput<T> = T extends Schema<infer Output, unknown>
   ? Output
   : T extends (...args: any[]) => any
@@ -439,6 +452,15 @@ export function parser<Output, Input>(
 export function decoder<Output, Input>(
   schema: Schema<Output, Input>
 ): (data: Input) => Output;
+export function decoder<Output, Input>(
+  from: Schema<unknown, Input>,
+  target: Schema<Output, unknown>
+): (data: Input) => Output;
+export function decoder<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(
+  ...schemas: Schemas
+): (data: ExtractFirstInput<Schemas>) => ExtractLastOutput<Schemas>;
 
 export function encoder<Output, Input>(
   schema: Schema<Output, Input>
@@ -449,14 +471,6 @@ export function assert<Output, Input>(
   data: unknown
 ): asserts data is Input;
 
-export function parseJsonOrThrow<Output, Input>(
-  json: JSON,
-  schema: Schema<Output, Input>
-): Output;
-export function parseJsonStringOrThrow<Output, Input>(
-  jsonString: string,
-  schema: Schema<Output, Input>
-): Output;
 export function parseAsyncOrThrow<Output, Input>(
   data: unknown,
   schema: Schema<Output, Input>
