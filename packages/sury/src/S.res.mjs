@@ -74,8 +74,6 @@ let to = Sury.to;
 
 let compile = Sury.compile;
 
-let makeParseOrThrow = Sury.makeParseOrThrow;
-
 let parseOrThrow = Sury.parseOrThrow;
 
 let parseJsonOrThrow = Sury.parseJsonOrThrow;
@@ -221,7 +219,6 @@ export {
   shape,
   to,
   compile,
-  makeParseOrThrow,
   parseOrThrow,
   parseJsonOrThrow,
   parseJsonStringOrThrow,

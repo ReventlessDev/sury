@@ -89,14 +89,14 @@ const Player = S.schema({
 The most basic use-case for a schema is to parse unknown data. If the data is valid, the function will return a strongly-typed deep clone of the input. (With stripped fields by default)
 
 ```ts
-S.parseOrThrow({ username: "billie", xp: 100 }, Player);
+S.parser(Player)({ username: "billie", xp: 100 });
 // => returns { username: "billie", xp: 100 }
 ```
 
 If the data is invalid, the function will throw an error.
 
 ```ts
-S.parseOrThrow({ username: "billie", xp: "not a number" }, Player);
+S.parser(Player)({ username: "billie", xp: "not a number" });
 // => throws S.Error: Failed parsing at ["xp"]: Expected number, got string
 ```
 
@@ -104,7 +104,7 @@ S.parseOrThrow({ username: "billie", xp: "not a number" }, Player);
 
 ```ts
 const result = S.safe(() =>
-  S.parseOrThrow({ username: "billie", xp: "not a number" }, Player)
+  S.parser(Player)({ username: "billie", xp: "not a number" })
 );
 // Or for async operations:
 const result = await S.safeAsync(() =>
@@ -119,7 +119,7 @@ if (!result.success) {
 }
 ```
 
-> 🧠 Besides `parseOrThrow` there are also built-in operations to transform the data without validation, assert without allocating output, serialize back to the initial format and more. If somebody is missing in built-in operations, you can use `S.compile` to create a custom one.
+> 🧠 Besides `parser` there are also built-in operations to transform the data without validation, assert without allocating output, serialize back to the initial format and more. If somebody is missing in built-in operations, you can use `S.compile` to create a custom one.
 
 ### Inferred types
 
@@ -181,24 +181,18 @@ const User = S.schema({
 // }>
 
 // 2. You can use it for parsing Input to Output
-S.parseOrThrow(
-  {
-    USER_ID: "0",
-    USER_NAME: "Dmitry",
-  },
-  userSchema
-);
+S.parser(userSchema)({
+  USER_ID: "0",
+  USER_NAME: "Dmitry",
+});
 // { id: 0n, name: "Dmitry" }
 // See how "0" is turned into 0n and fields are renamed
 
 // 3. And reverse the schema and use it for parsing Output to Input
-S.parseOrThrow(
-  {
-    id: 0n,
-    name: "Dmitry",
-  },
-  S.reverse(userSchema)
-);
+S.parser(S.reverse(userSchema))({
+  id: 0n,
+  name: "Dmitry",
+});
 // { USER_ID: "0", USER_NAME: "Dmitry" }
 // Just use `S.reverse` and get a full-featured schema with switched `Output` and `Input` types
 // Note: You can use `S.reverseConvertOrThrow(data, schema)` if you don't need to perform validation
@@ -209,7 +203,7 @@ S.parseOrThrow(
 This is not really about usage, but what you should be aware of is that **Sury** will most likely outperform not only other libraries, but also your own hand-rolled validation logic.
 
 ```ts
-// This is how S.parseOrThrow(data, userSchema) is compiled
+// This is how S.parser(userSchema)(data) is compiled
 (i) => {
   if (typeof i !== "object" || !i) {
     e[3](i);
@@ -289,12 +283,12 @@ See how all the properties and examples are in the Input format. It's just askin
 If that's not cool enough for you, you can also turn a JSON Schema into a **Sury** schema:
 
 ```ts
-S.assertOrThrow(
-  "example.com",
+S.assert(
   S.fromJSONSchema({
     type: "string",
     format: "email",
-  })
+  }),
+  "example.com"
 );
 // Throws S.Error: Failed asserting: Invalid email address
 ```
@@ -442,10 +436,10 @@ const datetimeSchema = S.datetime(S.string);
 // The datetimeSchema has the type S.Schema<Date, string>
 // String is transformed to the Date instance
 
-S.parseOrThrow("2020-01-01T00:00:00Z", datetimeSchema); // pass
-S.parseOrThrow("2020-01-01T00:00:00.123Z", datetimeSchema); // pass
-S.parseOrThrow("2020-01-01T00:00:00.123456Z", datetimeSchema); // pass (arbitrary precision)
-S.parseOrThrow("2020-01-01T00:00:00+02:00", datetimeSchema); // fail (no offsets allowed)
+S.parser(datetimeSchema)("2020-01-01T00:00:00Z"); // pass
+S.parser(datetimeSchema)("2020-01-01T00:00:00.123Z"); // pass
+S.parser(datetimeSchema)("2020-01-01T00:00:00.123456Z"); // pass (arbitrary precision)
+S.parser(datetimeSchema)("2020-01-01T00:00:00+02:00"); // fail (no offsets allowed)
 ```
 
 ## Numbers
@@ -470,7 +464,7 @@ You can make any schema optional with `S.optional`.
 ```ts
 const schema = S.optional(S.string);
 
-S.parseOrThrow(undefined, schema); // => returns undefined
+S.parser(schema)(undefined); // => returns undefined
 type A = S.Infer<typeof schema>; // string | undefined
 ```
 
@@ -479,7 +473,7 @@ You can pass a default value to the second argument of `S.optional`.
 ```ts
 const stringWithDefaultSchema = S.optional(S.string, "tuna");
 
-S.parseOrThrow(undefined, stringWithDefaultSchema); // => returns "tuna"
+S.parser(stringWithDefaultSchema)(undefined); // => returns "tuna"
 type A = S.Infer<typeof stringWithDefaultSchema>; // string
 ```
 
@@ -488,9 +482,9 @@ Optionally, you can pass a function as a default value that will be re-executed 
 ```ts
 const numberWithRandomDefault = S.optional(S.number, Math.random);
 
-S.parseOrThrow(undefined, numberWithRandomDefault); // => 0.4413456736055323
-S.parseOrThrow(undefined, numberWithRandomDefault); // => 0.1871840107401901
-S.parseOrThrow(undefined, numberWithRandomDefault); // => 0.7223408162401552
+S.parser(numberWithRandomDefault)(undefined); // => 0.4413456736055323
+S.parser(numberWithRandomDefault)(undefined); // => 0.1871840107401901
+S.parser(numberWithRandomDefault)(undefined); // => 0.7223408162401552
 ```
 
 Conceptually, this is how **Sury** processes default values:
@@ -504,8 +498,8 @@ Similarly, you can create nullable types with `S.nullable`.
 
 ```ts
 const nullableStringSchema = S.nullable(S.string);
-S.parseOrThrow("asdf", nullableStringSchema); // => "asdf"
-S.parseOrThrow(null, nullableStringSchema); // => undefined
+S.parser(nullableStringSchema)("asdf"); // => "asdf"
+S.parser(nullableStringSchema)(null); // => undefined
 ```
 
 Notice how the `null` input transformed to `undefined`.
@@ -516,9 +510,9 @@ A convenience method that returns a "nullish" version of a schema. Nullish schem
 
 ```ts
 const nullishStringSchema = S.nullish(S.string);
-S.parseOrThrow("asdf", nullishStringSchema); // => "asdf"
-S.parseOrThrow(null, nullishStringSchema); // => null
-S.parseOrThrow(undefined, nullishStringSchema); // => undefined
+S.parser(nullishStringSchema)("asdf"); // => "asdf"
+S.parser(nullishStringSchema)(null); // => null
+S.parser(nullishStringSchema)(undefined); // => undefined
 ```
 
 ## Objects
@@ -579,20 +573,17 @@ const userSchema = S.object((s) => ({
   name: s.field("USER_NAME", S.string),
 }));
 
-S.parseOrThrow(
-  {
-    USER_ID: 1,
-    USER_NAME: "John",
-  },
-  userSchema
-);
+S.parser(userSchema)({
+  USER_ID: 1,
+  USER_NAME: "John",
+});
 // => returns { id: 1, name: "John" }
 
 // Infer output TypeScript type of the userSchema
 type User = S.Infer<typeof userSchema>; // { id: number; name: string }
 ```
 
-Compared to using `S.transform`, the approach has 0 performance overhead. Also, you can use the same schema to convert the parsed data back to the initial format:
+Compared to using custom transformation functions, the approach has 0 performance overhead. Also, you can use the same schema to convert the parsed data back to the initial format:
 
 ```ts
 S.reverseConvertOrThrow(
@@ -616,7 +607,7 @@ const personSchema = S.strict(
   })
 );
 
-S.parseOrThrow(
+S.parser(
   {
     name: "bob dylan",
     extraKey: 61,
@@ -797,8 +788,8 @@ The schema function `union` creates an OR relationship between any number of sch
 
 const stringOrNumberSchema = S.union([S.string, S.number]);
 
-S.parseOrThrow("foo", stringOrNumberSchema); // passes
-S.parseOrThrow(14, stringOrNumberSchema); // passes
+S.parser(stringOrNumberSchema)("foo"); // passes
+S.parser(stringOrNumberSchema)(14); // passes
 ```
 
 ### Discriminated unions
@@ -862,8 +853,8 @@ class Test {
 const TestSchema = S.instance(Test);
 
 const blob: any = "whatever";
-S.parseOrThrow(new Test(), TestSchema); // passes
-S.parseOrThrow(blob, TestSchema); // throws S.Error: Failed parsing: Expected Test, received "whatever"
+S.parser(TestSchema)(new Test()); // passes
+S.parser(TestSchema)(blob); // throws S.Error: Failed parsing: Expected Test, received "whatever"
 ```
 
 ## Meta
@@ -899,7 +890,7 @@ Use `S.brand` to attach a nominal brand to a schema's output. This is a TypeScri
 const UserId = S.string.with(S.brand, "UserId");
 type UserId = S.Infer<typeof UserId>; // S.Brand<string, "UserId">
 
-const id: UserId = S.parseOrThrow("u_123", UserId); // OK
+const id: UserId = S.parser(UserId)("u_123"); // OK
 const asString: string = id; // OK: branded value is assignable to string
 // @ts-expect-error - A plain string is not assignable to a branded string
 const notId: UserId = "u_123";
@@ -916,7 +907,7 @@ const even = S.number
 
 type Even = S.Infer<typeof even>; // S.Brand<number, "even">
 
-const good: Even = S.parseOrThrow(2, even); // OK
+const good: Even = S.parser(even)(2); // OK
 // @ts-expect-error - number is not assignable to brand "even"
 const bad: Even = 5;
 ```
@@ -928,16 +919,23 @@ For more information on branding in general, check out [this excellent article](
 **Sury** might not have many built-in schemas for your use case. In this case you can create a custom schema for any TypeScript type.
 
 1. Choose a base schema which is the closest to your type. Most likely it'll be `S.instance`.
-2. Use `S.transform` to add a custom parser and serializer.
+2. Use `S.to` to add a custom decode and encode logic.
 3. Optionally, use `S.meta` to add customize the name of the schema and additional metadata.
 
 ```ts
 const mySet = <T>(itemSchema: S.Schema<T>): S.Schema<Set<T>> =>
-  S.instance(Set)
-    .with(S.transform, (input) => {
+  S.instance(Set<unknown>)
+    .with(S.to, S.instance(Set<T>), (input) => {
       const output = new Set<T>();
-      input.forEach((item) => {
-        output.add(S.parseOrThrow(item, itemSchema));
+      input.forEach((item, index) => {
+        try {
+          output.add(S.parser(itemSchema)(item));
+        } catch (e) {
+          if (e instanceof S.Error) {
+            throw new Error(`At item ${index} - ${e.reason}`);
+          }
+          throw e;
+        }
       });
       return output;
     })
@@ -948,9 +946,9 @@ const mySet = <T>(itemSchema: S.Schema<T>): S.Schema<Set<T>> =>
 const numberSetSchema = mySet(S.number);
 type NumberSet = S.Infer<typeof numberSetSchema>; // Set<number>
 
-S.parseOrThrow(new Set([1, 2, 3]), numberSetSchema); // passes
-S.parseOrThrow(new Set([1, 2, "3"]), numberSetSchema); // throws S.Error: Failed parsing: Expected number, received "3"
-S.parseOrThrow([1, 2, 3], numberSetSchema); // throws S.Error: Failed parsing: Expected Set<number>, received [1, 2, 3]
+S.parser(numberSetSchema)(new Set([1, 2, 3])); // passes
+S.parser(numberSetSchema)(new Set([1, 2, "3"])); // throws S.Error: Failed parsing: At item 3 - Expected number, received "3"
+S.parser(numberSetSchema)([1, 2, 3]); // throws S.Error: Failed parsing: Expected Set<number>, received [1, 2, 3]
 ```
 
 ## Recursive schemas
@@ -1012,32 +1010,11 @@ await S.parseAsyncOrThrow(
 );
 ```
 
-## Transforms
-
-**Sury** allows to augment schema with transformation logic, letting you transform value during parsing and serializing. This is most commonly used when you need to access the value in runtime and perform some transformation logic. For cases when you only want to change the shape of the data, it's better to use `S.shape` instead.
-
-```ts
-const intToString = (schema) =>
-  S.transform(
-    schema,
-    (int) => int.toString(),
-    (string, s) => {
-      const int = parseInt(string, 10);
-      if (isNaN(int)) {
-        s.fail("Can't convert string to int");
-      }
-      return int;
-    }
-  );
-```
-
-> 🧠 You can use `S.int32.with(S.to, S.string)` which is a better version of the above example.
-
 ### **`shape`**
 
 The `S.shape` schema is a helper function that allows you to transform the value to a desired shape. It'll statically derive required data transformations to perform the change in the most optimal way.
 
-> ⚠️ Even though it looks like you operate with a real value, it's actually a dummy proxy object. So conditions or any other runtime logic won't work. Please use `S.transform` for such cases.
+> ⚠️ Even though it looks like you operate with a real value, it's actually a dummy proxy object. So conditions or any other runtime logic won't work. Please use `S.to` for such cases.
 
 ```typescript
 const circleSchema = S.number.with(S.shape, (radius) => ({
@@ -1045,7 +1022,7 @@ const circleSchema = S.number.with(S.shape, (radius) => ({
   radius: radius,
 }));
 
-S.parseOrThrow(1, circleSchema); //? { kind: "circle", radius: 1 }
+S.parser(circleSchema)(1); //? { kind: "circle", radius: 1 }
 
 // Also works in reverse 🔄
 S.reverseConvertOrThrow({ kind: "circle", radius: 1 }, circleSchema); //? 1
@@ -1059,12 +1036,12 @@ The library provides a bunch of built-in operations that can be used to parse, c
 
 Parsing means that the input value is validated against the schema and transformed to the expected output type. You can use the following operations to parse values:
 
-| Operation                | Interface                                             | Description                                                   |
-| ------------------------ | ----------------------------------------------------- | ------------------------------------------------------------- |
-| S.parseOrThrow           | `(unknown, Schema<Output, Input>) => Output`          | Parses any value with the schema                              |
-| S.parseJsonOrThrow       | `(Json, Schema<Output, Input>) => Output`             | Parses JSON value with the schema                             |
-| S.parseJsonStringOrThrow | `(string, Schema<Output, Input>) => Output`           | Parses JSON string with the schema                            |
-| S.parseAsyncOrThrow      | `(unknown, Schema<Output, Input>) => Promise<Output>` | Parses any value with the schema having async transformations |
+| Operation                | Interface                                              | Description                                                   |
+| ------------------------ | ------------------------------------------------------ | ------------------------------------------------------------- |
+| S.parser                 | `(Schema<Output, Input>) => (data: unknown) => Output` | Parses any value with the schema                              |
+| S.parseJsonOrThrow       | `(Json, Schema<Output, Input>) => Output`              | Parses JSON value with the schema                             |
+| S.parseJsonStringOrThrow | `(string, Schema<Output, Input>) => Output`            | Parses JSON string with the schema                            |
+| S.parseAsyncOrThrow      | `(unknown, Schema<Output, Input>) => Promise<Output>`  | Parses any value with the schema having async transformations |
 
 For advanced users you can only transform to the output type without type validations. But be careful, since the input type is not checked:
 
@@ -1089,16 +1066,16 @@ More often than converting input to output, you'll need to perform the reversed 
 
 This is literally the same as convert operations applied to the reversed schema.
 
-For some cases you might want to simply assert the input value is valid. For this there's `S.assertOrThrow` operation:
+For some cases you might want to simply assert the input value is valid. For this there's `S.assert` operation:
 
-| Operation       | Interface                                                      | Description                                                                                                                                          |
-| --------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S.assertOrThrow | `(data: unknown, Schema<Output, Input>) asserts data is Input` | Asserts that the input value is valid. Since the operation doesn't return a value, it's 2-3 times faster than `parseOrThrow` depending on the schema |
+| Operation | Interface                                                      | Description                                                                                                                                    |
+| --------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| S.assert  | `(Schema<Output, Input>, data: unknown) asserts data is Input` | Asserts that the input value is valid. Since the operation doesn't return a value, it's 2-3 times faster than `parser` depending on the schema |
 
 All operations either return the output value or throw an error. For convinient error handling you can use the `S.safe` and `S.safeAsync` helpers, which would catch the error an wrap it into a `Result` type:
 
 ```ts
-const result = S.safe(() => S.parseOrThrow(123, S.string));
+const result = S.safe(() => S.parser(S.string)(123));
 ```
 
 ### **`compile`**
@@ -1150,15 +1127,15 @@ S.reverse(S.nullable(S.string));
 ```ts
 const schema = S.object((s) => s.field("foo", S.string));
 
-S.parseOrThrow({ foo: "bar" }, schema);
+S.parser(schema)({ foo: "bar" });
 // "bar"
 
 const reversed = S.reverse(schema);
 
-S.parseOrThrow("bar", reversed);
+S.parser(reversed)("bar");
 // {"foo": "bar"}
 
-S.parseOrThrow(123, reversed);
+S.parser(reversed)(123);
 // throws S.error with the message: `Failed parsing: Expected string, received 123`
 ```
 
@@ -1171,12 +1148,42 @@ This very powerful API allows you to coerce another data type in a declarative w
 ```ts
 const schema = S.string.with(S.to, S.number);
 
-S.parseOrThrow("123", schema); //? 123.
-S.parseOrThrow("abc", schema); //? throws: Failed parsing: Expected number, received "abc"
+S.parser(schema)("123"); //? 123.
+S.parser(schema)("abc"); //? throws: Failed parsing: Expected number, received "abc"
 
 // Reverse works correctly as well 🔥
 S.reverseConvertOrThrow(123, schema); //? "123"
 ```
+
+#### Custom transformations
+
+You can also provide a custom transformation function to the `S.to` operation. This is useful when you need to perform a more complex transformation than the built-in ones.
+
+```ts
+const schema = S.string.with(
+  S.to,
+  S.number,
+  // Custom decode function
+  (string) => {
+    const number = parseInt(string, 10);
+    if (Number.isNaN(number)) {
+      throw new Error("Invalid number");
+    }
+    return number;
+  },
+  // Custom encode function
+  (number) => {
+    return number.toString();
+  }
+);
+
+S.parser(schema)("123"); //? 123
+S.parser(schema)("abc"); //? throws: Failed parsing: Invalid number
+
+S.encodeOrThrow(schema)(123); //? "123"
+```
+
+> 🧠 Prefer to use built-in `S.string.with(S.to, S.number)` instead of custom transformation functions when possible.
 
 ### **`name`**
 
@@ -1207,14 +1214,14 @@ Used internally for readable error messages.
 **Sury** throws `S.Error` which is a subclass of Error class. It contains detailed information about the operation problem.
 
 ```ts
-S.parseOrThrow(true, S.schema(false));
+S.parser(S.schema(false))(true);
 // => Throws S.Error with the following message: Failed parsing: Expected false, received true".
 ```
 
 You can catch the error using `S.safe` and `S.safeAsync` helpers:
 
 ```ts
-const result = S.safe(() => S.parseOrThrow(true, S.schema(false)));
+const result = S.safe(() => S.parser(S.schema(false))(true));
 
 if (result.success) {
   console.log(result.value);

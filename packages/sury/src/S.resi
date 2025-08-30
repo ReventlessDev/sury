@@ -356,8 +356,6 @@ let compile: (
   ~typeValidation: bool=?,
 ) => 'input => 'output
 
-let makeParseOrThrow: t<'value> => 'any => 'value
-
 let parseOrThrow: ('any, t<'value>) => 'value
 let parseJsonOrThrow: (Js.Json.t, t<'value>) => 'value
 let parseJsonStringOrThrow: (string, t<'value>) => 'value

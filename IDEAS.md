@@ -9,6 +9,11 @@
 - Fix refinement on union schema which also uses `S.to`
 - TS API: Removed `S.transform` in favor of `S.to`
 
+### TS
+
+- `S.parseOrThrow` -> `S.parser`
+- `S.assertOrThrow` -> `S.assert`
+
 ## v11
 
 ### ideas

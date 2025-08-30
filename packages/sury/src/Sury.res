@@ -2331,10 +2331,6 @@ let compile = (
 // Operations
 // =============
 
-let makeParseOrThrow = schema => {
-  schema->makeMakeOperation(Flag.typeValidation)
-}
-
 @inline
 let parseOrThrow = (any, schema) => {
   (schema->makeOperation(Flag.typeValidation))(any)
@@ -5435,6 +5431,14 @@ let nullableAsOption = schema => {
 // JS/TS API
 // =============
 
+let js_parser = schema => {
+  schema->makeMakeOperation(Flag.typeValidation)
+}
+
+let js_assert = (schema, data) => {
+  (schema->makeOperation(Flag.typeValidation->Flag.with(Flag.assertOutput)))(data)
+}
+
 let js_union = values =>
   Union.factory(
     values->Js.Array2.map(Schema.definitionToSchema)->(Obj.magic: array<internal> => array<'a>),
@@ -5442,6 +5446,7 @@ let js_union = values =>
 
 let js_to = {
   // FIXME: Test how it'll work if we have async var as input
+  // FIXME: Might not good well with object targets
   let customBuilder = (~from, ~target, ~fn) => {
     Builder.make((b, ~input, ~selfSchema as _, ~path) => {
       let output = b->B.allocateVal(~schema=target)

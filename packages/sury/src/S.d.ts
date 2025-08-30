@@ -432,10 +432,15 @@ export function reverse<Output, Input>(
   schema: Schema<Output, Input>
 ): Schema<Input, Output>;
 
-export function parseOrThrow<Output, Input>(
-  data: unknown,
+export function parser<Output, Input>(
   schema: Schema<Output, Input>
-): Output;
+): (data: unknown) => Output;
+
+export function assert<Output, Input>(
+  schema: Schema<Output, Input>,
+  data: unknown
+): asserts data is Input;
+
 export function parseJsonOrThrow<Output, Input>(
   json: JSON,
   schema: Schema<Output, Input>
@@ -474,11 +479,6 @@ export function reverseConvertToJsonStringOrThrow<Output, Input>(
   value: Output,
   schema: Schema<Output, Input>
 ): string;
-
-export function assertOrThrow<Output, Input>(
-  data: unknown,
-  schema: Schema<Output, Input>
-): asserts data is Input;
 
 export function tuple<Output, Input extends unknown[]>(
   definer: (s: {

@@ -356,8 +356,6 @@ let compile: (
   ~typeValidation: bool=?,
 ) => 'input => 'output
 
-let makeParseOrThrow: t<'value> => 'any => 'value
-
 let parseOrThrow: ('any, t<'value>) => 'value
 let parseJsonOrThrow: (Js.Json.t, t<'value>) => 'value
 let parseJsonStringOrThrow: (string, t<'value>) => 'value
@@ -551,6 +549,9 @@ let global: globalConfigOverride => unit
 type jsResult<'value>
 
 let brand: (t<'value>, string) => t<'value>
+
+let js_parser: t<'value> => 'any => 'value
+let js_assert: (t<'value>, 'any) => unit
 
 let js_safe: (unit => 'v) => jsResult<'v>
 let js_safeAsync: (unit => promise<'v>) => promise<jsResult<'v>>

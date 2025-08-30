@@ -182,8 +182,8 @@ let filesMapping = [
     "  S.reverseConvertToJsonStringOrThrow"
   ],
   [
-    "parseOrThrow",
-    "S.parseOrThrow"
+    "parser",
+    "S.js_parser"
   ],
   [
     "parseJsonOrThrow",
@@ -198,8 +198,8 @@ let filesMapping = [
     "S.parseAsyncOrThrow"
   ],
   [
-    "assertOrThrow",
-    "S.assertOrThrow"
+    "assert",
+    "S.js_assert"
   ],
   [
     "recursive",
