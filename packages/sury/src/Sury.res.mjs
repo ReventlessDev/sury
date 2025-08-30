@@ -3509,11 +3509,28 @@ function nullableAsOption(schema) {
   ]);
 }
 
-function js_parser(schema) {
+function parser$1(schema) {
   if (1 in schema) {
     return schema[1];
   } else {
     return initOperation(schema, 1);
+  }
+}
+
+function decoder(schema) {
+  if (0 in schema) {
+    return schema[0];
+  } else {
+    return initOperation(schema, 0);
+  }
+}
+
+function encoder(schema) {
+  let s = reverse(schema);
+  if (0 in s) {
+    return s[0];
+  } else {
+    return initOperation(s, 0);
   }
 }
 
@@ -4467,7 +4484,9 @@ export {
   extendJSONSchema,
   global,
   brand,
-  js_parser,
+  parser$1 as parser,
+  decoder,
+  encoder,
   js_assert,
   js_safe,
   js_safeAsync,

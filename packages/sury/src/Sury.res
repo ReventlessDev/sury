@@ -5431,8 +5431,16 @@ let nullableAsOption = schema => {
 // JS/TS API
 // =============
 
-let js_parser = schema => {
+let parser = schema => {
   schema->makeMakeOperation(Flag.typeValidation)
+}
+
+let decoder = schema => {
+  schema->makeMakeOperation(Flag.none)
+}
+
+let encoder = schema => {
+  schema->castToInternal->reverse->castToPublic->makeMakeOperation(Flag.none)
 }
 
 let js_assert = (schema, data) => {

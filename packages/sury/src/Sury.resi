@@ -550,7 +550,9 @@ type jsResult<'value>
 
 let brand: (t<'value>, string) => t<'value>
 
-let js_parser: t<'value> => 'any => 'value
+let parser: t<'value> => 'any => 'value
+let decoder: t<'value> => 'any => 'value
+let encoder: t<'value> => 'any => 'value
 let js_assert: (t<'value>, 'any) => unit
 
 let js_safe: (unit => 'v) => jsResult<'v>

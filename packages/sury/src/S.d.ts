@@ -436,6 +436,14 @@ export function parser<Output, Input>(
   schema: Schema<Output, Input>
 ): (data: unknown) => Output;
 
+export function decoder<Output, Input>(
+  schema: Schema<Output, Input>
+): (data: Input) => Output;
+
+export function encoder<Output, Input>(
+  schema: Schema<Output, Input>
+): (data: Output) => Input;
+
 export function assert<Output, Input>(
   schema: Schema<Output, Input>,
   data: unknown
@@ -454,10 +462,6 @@ export function parseAsyncOrThrow<Output, Input>(
   schema: Schema<Output, Input>
 ): Promise<Output>;
 
-export function convertOrThrow<Output, Input>(
-  data: Input,
-  schema: Schema<Output, Input>
-): Output;
 export function convertToJsonOrThrow<Output, Input>(
   data: Input,
   schema: Schema<Output, Input>
@@ -467,10 +471,6 @@ export function convertToJsonStringOrThrow<Output, Input>(
   schema: Schema<Output, Input>
 ): string;
 
-export function reverseConvertOrThrow<Output, Input>(
-  value: Output,
-  schema: Schema<Output, Input>
-): Input;
 export function reverseConvertToJsonOrThrow<Output, Input>(
   value: Output,
   schema: Schema<Output, Input>

@@ -13,6 +13,8 @@
 
 - `S.parseOrThrow` -> `S.parser`
 - `S.assertOrThrow` -> `S.assert`
+- `S.convertOrThrow` -> `S.decoder`
+- `S.reverseConvertOrThrow` -> `S.encoder`
 
 ## v11
 

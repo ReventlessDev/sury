@@ -30,7 +30,7 @@ test("JSON string demo", (t) => {
   // i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="number"||Number.isNaN(v0)){e[2](v0)}return v0}
 
   const schemaWithTo2 = S.number.with(S.to, S.jsonString);
-  t.deepEqual(S.convertOrThrow(123, schemaWithTo2), "123");
+  t.deepEqual(S.decoder(schemaWithTo2)(123), "123");
   // i=>{return ""+i}
 });
 
@@ -370,10 +370,7 @@ test("Parse JSON string, extract a field, and serialize it back to JSON string",
     message: `Failed parsing at ["value"]: Expected number, received "123"`,
   });
 
-  t.deepEqual(
-    S.reverseConvertOrThrow("123", schema),
-    `{"type":"info","value":123}`
-  );
+  t.deepEqual(S.encoder(schema)("123"), `{"type":"info","value":123}`);
 
   expectType<SchemaEqual<typeof schema, string, string>>(true);
 });
@@ -383,13 +380,10 @@ test("Successfully serialized JSON object", (t) => {
   const schema = S.jsonString.with(S.to, objectSchema);
   const schemaWithSpace = S.jsonStringWithSpace(2).with(S.to, objectSchema);
 
-  const value = S.convertOrThrow({ foo: [1, 2] }, S.reverse(schema));
+  const value = S.encoder(schema)({ foo: [1, 2] });
   t.deepEqual(value, '{"foo":[1,2]}');
 
-  const valueWithSpace = S.reverseConvertOrThrow(
-    { foo: [1, 2] },
-    schemaWithSpace
-  );
+  const valueWithSpace = S.encoder(schemaWithSpace)({ foo: [1, 2] });
   t.deepEqual(valueWithSpace, '{\n  "foo": [\n    1,\n    2\n  ]\n}');
 
   expectType<
@@ -606,7 +600,7 @@ test("Test extended JSON Schema", (t) => {
 
 test("Successfully reverse converts with valid value", (t) => {
   const schema = S.string;
-  const result = S.reverseConvertOrThrow("123", schema);
+  const result = S.encoder(schema)("123");
 
   t.deepEqual(result, "123");
 
@@ -668,7 +662,7 @@ test("Handles errors during custom encoding", (t) => {
 
   t.throws(
     () => {
-      S.reverseConvertOrThrow(output, schema);
+      S.encoder(schema)(output);
     },
     {
       name: "SuryError",
@@ -705,7 +699,7 @@ test("Successfully converts reversed schema with transform to another type", (t)
     expectType<TypeEqual<typeof number, number>>(true);
     return number.toString();
   });
-  const result = S.convertOrThrow(123, S.reverse(schema));
+  const result = S.encoder(schema)(123);
 
   t.deepEqual(result, "123");
 
@@ -727,7 +721,7 @@ test("Successfully reverse converts with refine", (t) => {
   const schema = S.string.with(S.refine, (string) => {
     expectType<TypeEqual<typeof string, string>>(true);
   });
-  const result = S.convertOrThrow("123", S.reverse(schema));
+  const result = S.encoder(schema)("123");
 
   t.deepEqual(result, "123");
 
@@ -894,7 +888,7 @@ test("Successfully parses and reverse convert object with optional field", (t) =
   const value = S.parser(schema)({ baz: true });
   t.deepEqual(value, { bar: undefined, baz: true });
 
-  const reversed = S.convertOrThrow({ baz: true }, S.reverse(schema));
+  const reversed = S.encoder(schema)({ baz: true });
   t.deepEqual(reversed, { bar: undefined, baz: true });
 
   expectType<
@@ -1321,14 +1315,11 @@ test("Successfully serializes S.merge", (t) => {
     `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return i}`
   );
 
-  const value = S.reverseConvertOrThrow(
-    {
-      foo: "bar",
-      baz: "baz",
-      bar: true,
-    },
-    schema
-  );
+  const value = S.encoder(schema)({
+    foo: "bar",
+    baz: "baz",
+    bar: true,
+  });
   expectType<TypeEqual<typeof value, Record<string, unknown>>>(true);
 
   t.deepEqual(value, {
@@ -1563,7 +1554,7 @@ test("Successfully parses and returns result", (t) => {
 
 test("Successfully reverse converts and returns result", (t) => {
   const schema = S.string;
-  const value = S.safe(() => S.convertOrThrow("123", S.reverse(schema)));
+  const value = S.safe(() => S.encoder(schema)("123"));
 
   t.deepEqual(value, { success: true, value: "123" });
 
@@ -2020,13 +2011,10 @@ test("Unnest schema", (t) => {
     })
   );
 
-  const value = S.reverseConvertOrThrow(
-    [
-      { id: "0", name: "Hello", deleted: false },
-      { id: "1", name: undefined, deleted: true },
-    ],
-    schema
-  );
+  const value = S.encoder(schema)([
+    { id: "0", name: "Hello", deleted: false },
+    { id: "1", name: undefined, deleted: true },
+  ]);
 
   let expected: typeof value = [
     ["0", "1"],
@@ -2122,14 +2110,14 @@ test("Coerce string to number", (t) => {
 
   t.deepEqual(S.parser(schema)("123"), 123);
   t.deepEqual(S.parser(schema)("123.4"), 123.4);
-  t.deepEqual(S.reverseConvertOrThrow(123, schema), "123");
+  t.deepEqual(S.encoder(schema)(123), "123");
 });
 
 test("Shape string to object", (t) => {
   const schema = S.shape(S.string, (string) => ({ foo: string }));
 
   t.deepEqual(S.parser(schema)("bar"), { foo: "bar" });
-  t.deepEqual(S.reverseConvertOrThrow({ foo: "bar" }, schema), "bar");
+  t.deepEqual(S.encoder(schema)({ foo: "bar" }), "bar");
 });
 
 test("Tuple with transform to object", (t) => {
@@ -2188,7 +2176,7 @@ test("Schema of object with empty prototype", (t) => {
     foo: "bar",
   };
   t.deepEqual(S.parser(schema)(data), data);
-  t.deepEqual(S.reverseConvertOrThrow(data, schema), data);
+  t.deepEqual(S.encoder(schema)(data), data);
 });
 
 test("Successfully parses recursive object", (t) => {
@@ -2392,7 +2380,7 @@ test("Port schema", (t) => {
       },
       "Should prevent non-integer numbers"
     );
-    t.deepEqual(S.reverseConvertOrThrow(10, portCoercedFromString), "10");
+    t.deepEqual(S.encoder(portCoercedFromString)(10), "10");
   } else {
     t.fail("portCoercedFromString should be a number");
   }
@@ -2466,8 +2454,8 @@ test("ArkType pattern matching", async (t) => {
   t.deepEqual(S.parser(schema)(`foo`), "foo");
   t.deepEqual(S.parser(schema)(5n), "5");
   t.deepEqual(S.parser(schema)({ nested: 5n }), { nested: "5" });
-  t.deepEqual(S.reverseConvertOrThrow("5", schema), 5n);
-  t.deepEqual(S.reverseConvertOrThrow("foo", schema), "foo");
+  t.deepEqual(S.encoder(schema)("5"), 5n);
+  t.deepEqual(S.encoder(schema)("foo"), "foo");
 });
 
 test("Example of transformed schema", (t) => {
@@ -2676,7 +2664,7 @@ test("Preprocess nested fields", (t) => {
     },
   }).with(S.shape, (_) => undefined);
 
-  const value = S.reverseConvertOrThrow(undefined, schema);
+  const value = S.encoder(schema)(undefined);
   t.deepEqual(value, {
     nested: {
       numberTag: "~1",

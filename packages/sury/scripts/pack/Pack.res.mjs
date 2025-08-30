@@ -158,20 +158,12 @@ let filesMapping = [
     "S.reverse"
   ],
   [
-    "convertOrThrow",
-    "S.convertOrThrow"
-  ],
-  [
     "convertToJsonOrThrow",
     "S.convertToJsonOrThrow"
   ],
   [
     "convertToJsonStringOrThrow",
     "S.convertToJsonStringOrThrow"
-  ],
-  [
-    "reverseConvertOrThrow",
-    "S.reverseConvertOrThrow"
   ],
   [
     "reverseConvertToJsonOrThrow",
@@ -183,7 +175,15 @@ let filesMapping = [
   ],
   [
     "parser",
-    "S.js_parser"
+    "S.parser"
+  ],
+  [
+    "decoder",
+    "S.decoder"
+  ],
+  [
+    "encoder",
+    "S.encoder"
   ],
   [
     "parseJsonOrThrow",

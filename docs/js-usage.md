@@ -143,7 +143,7 @@ const player: Player = { username: "billie", xp: 100 };
 If you wonder why the schema needs an `Input` type, it's because **Sury** supports serializing data back to the initial format.
 
 ```ts
-S.reverseConvertOrThrow({ username: "billie", xp: 100 }, Player);
+S.encoder(Player)({ username: "billie", xp: 100 });
 // => returns { username: "billie", xp: 100 }
 ```
 
@@ -195,7 +195,7 @@ S.parser(S.reverse(userSchema))({
 });
 // { USER_ID: "0", USER_NAME: "Dmitry" }
 // Just use `S.reverse` and get a full-featured schema with switched `Output` and `Input` types
-// Note: You can use `S.reverseConvertOrThrow(data, schema)` if you don't need to perform validation
+// Note: You can use `S.encoder(schema)(data)` if you don't need to perform validation
 ```
 
 ### Performance
@@ -227,7 +227,7 @@ This is not really about usage, but what you should be aware of is that **Sury**
 ```
 
 ```ts
-// This is how S.reverseConvertOrThrow(data, userSchema) is compiled
+// This is how S.encoder(userSchema)(data) is compiled
 (i) => {
   let v0 = i["id"];
   return { USER_ID: "" + v0, USER_NAME: i["name"] };
@@ -586,13 +586,10 @@ type User = S.Infer<typeof userSchema>; // { id: number; name: string }
 Compared to using custom transformation functions, the approach has 0 performance overhead. Also, you can use the same schema to convert the parsed data back to the initial format:
 
 ```ts
-S.reverseConvertOrThrow(
-  {
-    id: 1,
-    name: "John",
-  },
-  userSchema
-);
+S.encoder(userSchema)({
+  id: 1,
+  name: "John",
+});
 // => returns { USER_ID: 1, USER_NAME: "John" }
 ```
 
@@ -683,13 +680,10 @@ const schema = S.unnest(
   })
 );
 
-const value = S.reverseConvertOrThrow(
-  [
-    { id: "0", name: "Hello", deleted: false },
-    { id: "1", name: undefined, deleted: true },
-  ],
-  schema
-);
+const value = S.encoder(schema)([
+  { id: "0", name: "Hello", deleted: false },
+  { id: "1", name: undefined, deleted: true },
+]);
 // [["0", "1"], ["Hello", null], [false, true]]
 ```
 
@@ -1025,7 +1019,7 @@ const circleSchema = S.number.with(S.shape, (radius) => ({
 S.parser(circleSchema)(1); //? { kind: "circle", radius: 1 }
 
 // Also works in reverse 🔄
-S.reverseConvertOrThrow({ kind: "circle", radius: 1 }, circleSchema); //? 1
+S.encoder(circleSchema)({ kind: "circle", radius: 1 }); //? 1
 ```
 
 ## Functions on schema
@@ -1045,11 +1039,11 @@ Parsing means that the input value is validated against the schema and transform
 
 For advanced users you can only transform to the output type without type validations. But be careful, since the input type is not checked:
 
-| Operation                    | Interface                                  | Description                             |
-| ---------------------------- | ------------------------------------------ | --------------------------------------- |
-| S.convertOrThrow             | `(Input, Schema<Output, Input>) => Output` | Converts input value to the output type |
-| S.convertToJsonOrThrow       | `(Input, Schema<Output, Input>) => Json`   | Converts input value to JSON            |
-| S.convertToJsonStringOrThrow | `(Input, Schema<Output, Input>) => string` | Converts input value to JSON string     |
+| Operation                    | Interface                                      | Description                             |
+| ---------------------------- | ---------------------------------------------- | --------------------------------------- |
+| S.decoder                    | `(Schema<Output, Input>) => (Input) => Output` | Converts input value to the output type |
+| S.convertToJsonOrThrow       | `(Input, Schema<Output, Input>) => Json`       | Converts input value to JSON            |
+| S.convertToJsonStringOrThrow | `(Input, Schema<Output, Input>) => string`     | Converts input value to JSON string     |
 
 Note, that in this case only type validations are skipped. If your schema has refinements or transforms, they will be applied.
 
@@ -1059,7 +1053,7 @@ More often than converting input to output, you'll need to perform the reversed 
 
 | Operation                           | Interface                                           | Description                                                           |
 | ----------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
-| S.reverseConvertOrThrow             | `(Output, Schema<Output, Input>) => Input`          | Converts schema value to the output type                              |
+| S.encoder                           | `(Schema<Output, Input>) => (Output) => Input`      | Converts schema value to the output type                              |
 | S.reverseConvertToJsonOrThrow       | `(Output, Schema<Output, Input>) => Json`           | Converts schema value to JSON                                         |
 | S.reverseConvertToJsonStringOrThrow | `(Output, Schema<Output, Input>) => string`         | Converts schema value to JSON string                                  |
 | S.reverseConvertAsyncOrThrow        | `(Output, Schema<Output, Input>) => promise<Input>` | Converts schema value to the output type having async transformations |
@@ -1152,7 +1146,7 @@ S.parser(schema)("123"); //? 123.
 S.parser(schema)("abc"); //? throws: Failed parsing: Expected number, received "abc"
 
 // Reverse works correctly as well 🔥
-S.reverseConvertOrThrow(123, schema); //? "123"
+S.encoder(schema)(123); //? "123"
 ```
 
 #### Custom transformations
