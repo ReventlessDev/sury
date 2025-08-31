@@ -271,11 +271,24 @@ type ExtractFirstInput<T extends readonly Schema<any, any>[]> =
     ? FirstInput
     : never;
 
+// Utility types for encoder function with multiple schemas
+type ExtractFirstOutput<T extends readonly Schema<any, any>[]> =
+  T extends readonly [Schema<infer FirstOutput, any>, ...any[]]
+    ? FirstOutput
+    : never;
+
 type ExtractLastOutput<T extends readonly Schema<any, any>[]> =
   T extends readonly [...any[], Schema<infer LastOutput, any>]
     ? LastOutput
     : T extends readonly [Schema<infer SingleOutput, any>]
     ? SingleOutput
+    : never;
+
+type ExtractLastInput<T extends readonly Schema<any, any>[]> =
+  T extends readonly [...any[], Schema<any, infer LastInput>]
+    ? LastInput
+    : T extends readonly [Schema<any, infer SingleInput>]
+    ? SingleInput
     : never;
 
 export type UnknownToOutput<T> = T extends Schema<infer Output, unknown>
@@ -445,9 +458,16 @@ export function reverse<Output, Input>(
   schema: Schema<Output, Input>
 ): Schema<Input, Output>;
 
-export function parser<Output, Input>(
-  schema: Schema<Output, Input>
+export function parser<Output>(
+  schema: Schema<Output, unknown>
 ): (data: unknown) => Output;
+export function parser<Output>(
+  from: Schema<unknown>,
+  target: Schema<Output, unknown>
+): (data: unknown) => Output;
+export function parser<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(...schemas: Schemas): (data: unknown) => ExtractLastOutput<Schemas>;
 
 export function decoder<Output, Input>(
   schema: Schema<Output, Input>
@@ -465,6 +485,15 @@ export function decoder<
 export function encoder<Output, Input>(
   schema: Schema<Output, Input>
 ): (data: Output) => Input;
+export function encoder<Output, Input>(
+  from: Schema<Output, unknown>,
+  target: Schema<unknown, Input>
+): (data: Output) => Input;
+export function encoder<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(
+  ...schemas: Schemas
+): (data: ExtractFirstOutput<Schemas>) => ExtractLastInput<Schemas>;
 
 export function assert<Output, Input>(
   schema: Schema<Output, Input>,
@@ -475,24 +504,6 @@ export function parseAsyncOrThrow<Output, Input>(
   data: unknown,
   schema: Schema<Output, Input>
 ): Promise<Output>;
-
-export function convertToJsonOrThrow<Output, Input>(
-  data: Input,
-  schema: Schema<Output, Input>
-): JSON;
-export function convertToJsonStringOrThrow<Output, Input>(
-  data: Input,
-  schema: Schema<Output, Input>
-): string;
-
-export function reverseConvertToJsonOrThrow<Output, Input>(
-  value: Output,
-  schema: Schema<Output, Input>
-): JSON;
-export function reverseConvertToJsonStringOrThrow<Output, Input>(
-  value: Output,
-  schema: Schema<Output, Input>
-): string;
 
 export function tuple<Output, Input extends unknown[]>(
   definer: (s: {
@@ -694,46 +705,6 @@ export type GlobalConfigOverride = {
 };
 
 export function global(globalConfigOverride: GlobalConfigOverride): void;
-
-type CompileInputMappings<Input, Output> = {
-  Input: Input;
-  Output: Output;
-  Any: unknown;
-  Json: JSON;
-  JsonString: string;
-};
-
-type CompileOutputMappings<Input, Output> = {
-  Output: Output;
-  Input: Input;
-  Assert: void;
-  Json: JSON;
-  JsonString: string;
-};
-
-export type CompileInputOption = keyof CompileInputMappings<unknown, unknown>;
-export type CompileOutputOption = keyof CompileOutputMappings<unknown, unknown>;
-export type CompileModeOption = "Sync" | "Async";
-
-export function compile<
-  Output,
-  Input,
-  InputOption extends CompileInputOption,
-  OutputOption extends CompileOutputOption,
-  ModeOption extends CompileModeOption
->(
-  schema: Schema<Output, Input>,
-  input: InputOption,
-  output: OutputOption,
-  mode: ModeOption,
-  typeValidation?: boolean
-): (
-  input: CompileInputMappings<Input, Output>[InputOption]
-) => ModeOption extends "Sync"
-  ? CompileOutputMappings<Input, Output>[OutputOption]
-  : ModeOption extends "Async"
-  ? Promise<CompileOutputMappings<Input, Output>[OutputOption]>
-  : never;
 
 export function shape<Shape = unknown, Output = unknown, Input = unknown>(
   schema: Schema<Output, Input>,

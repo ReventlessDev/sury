@@ -5431,15 +5431,12 @@ let nullableAsOption = schema => {
 // JS/TS API
 // =============
 
-let parser = schema => {
-  schema->makeMakeOperation(Flag.typeValidation)
-}
-
-let decoder = _ => {
+let parser = _ => {
   let args = %raw(`arguments`)
   switch args {
-  | [s] => s->castToPublic->makeMakeOperation(Flag.none)
+  | [s] => s->castToPublic->makeMakeOperation(Flag.typeValidation)
   | _ => {
+      // FIXME: Add cache
       let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
       for i in args->Js.Array2.length - 2 downto 0 {
         schema :=
@@ -5450,13 +5447,52 @@ let decoder = _ => {
           })
           ->castToInternal
       }
-      schema.contents->castToPublic->makeMakeOperation(Flag.none)
+      internalCompile(~schema=schema.contents, ~flag=Flag.typeValidation, ~defs=%raw(`0`))
     }
   }
 }
 
-let encoder = schema => {
-  schema->castToInternal->reverse->castToPublic->makeMakeOperation(Flag.none)
+let decoder = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->castToPublic->makeMakeOperation(Flag.none)
+  | _ => {
+      // FIXME: Add cache
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
+    }
+  }
+}
+
+let encoder = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->reverse->castToPublic->makeMakeOperation(Flag.none)
+  | _ => {
+      // FIXME: Add cache
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1)->reverse)
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->reverse
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
+    }
+  }
 }
 
 let js_assert = (schema, data) => {

@@ -609,7 +609,7 @@ test("Successfully reverse converts with valid value", (t) => {
 
 test("Successfully reverse converts to Json with valid value", (t) => {
   const schema = S.string;
-  const result = S.reverseConvertToJsonOrThrow("123", schema);
+  const result = S.encoder(schema, S.json)("123");
 
   t.deepEqual(result, "123");
 
@@ -618,7 +618,7 @@ test("Successfully reverse converts to Json with valid value", (t) => {
 
 test("Successfully reverse converts to Json string with valid value", (t) => {
   const schema = S.int32;
-  const result = S.reverseConvertToJsonStringOrThrow(123, schema);
+  const result = S.encoder(schema, S.jsonString)(123);
 
   t.deepEqual(result, `123`);
 
@@ -1190,7 +1190,7 @@ test("Successfully parses intersected objects", (t) => {
   );
 
   t.deepEqual(
-    S.compile(schema, "Input", "Output", "Sync", true).toString(),
+    S.parser(schema).toString(),
     `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
   );
 
@@ -1310,7 +1310,7 @@ test("Successfully serializes S.merge", (t) => {
   );
 
   t.deepEqual(
-    S.compile(schema, "Output", "Input", "Sync", true).toString(),
+    S.parser(S.reverse(schema)).toString(),
     `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return i}`
   );
 
@@ -1993,7 +1993,7 @@ test("Env schema: Reggression version", (t) => {
   };
 
   t.deepEqual(
-    S.compile(env(S.boolean), "Input", "Output", "Sync", true).toString(),
+    S.parser(env(S.boolean)).toString(),
     `i=>{if(typeof i==="string"){if(i==="t"){i=true}else if(i==="1"){i=true}else if(i==="f"){i=false}else if(i==="0"){i=false}else{try{let v0;(v0=i==="true")||i==="false"||e[0](i);i=v0}catch(e4){e[1](i,e4)}}}else{e[2](i)}return i}`
   );
 
@@ -2045,7 +2045,7 @@ test("Set schema", (t) => {
     t.is(schema.class, Set);
   }
 
-  const parser = S.compile(schema, "Any", "Output", "Sync", true);
+  const parser = S.parser(schema);
   expectType<TypeEqual<typeof parser, (input: unknown) => Set<unknown>>>(true);
 
   t.is(parser.toString(), "i=>{if(!(i instanceof e[0])){e[1](i)}return i}");
@@ -2446,6 +2446,20 @@ test("Decode from json string, convert to number", async (t) => {
   t.deepEqual(fn(`"123"`), 123);
 });
 
+test("Parse to literal with no validation to emulate assert", async (t) => {
+  const fn = S.parser(
+    S.schema({ foo: S.string }),
+    S.schema(true).with(S.noValidation, true)
+  );
+
+  expectType<TypeEqual<typeof fn, (data: unknown) => true>>(true);
+  t.deepEqual(fn({ foo: "bar" }), true);
+  t.deepEqual(
+    fn.toString(),
+    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="string"){e[1](v0)}return true}`
+  );
+});
+
 test("ArkType pattern matching", async (t) => {
   const schema = S.recursive("DbJSON", (self) =>
     S.union([
@@ -2582,66 +2596,67 @@ test("Compile types", async (t) => {
     S.schema(null).with(S.to, S.schema(undefined)),
   ]);
 
-  const fn1 = S.compile(schema, "Input", "Output", "Sync");
+  const fn1 = S.decoder(schema);
   expectType<
     TypeEqual<typeof fn1, (input: string | null) => string | undefined>
   >(true);
   t.deepEqual(fn1("hello"), "hello");
   t.deepEqual(fn1(null), undefined);
 
-  const fn2 = S.compile(schema, "Output", "Input", "Sync", false);
+  const fn2 = S.encoder(schema);
   expectType<
     TypeEqual<typeof fn2, (input: string | undefined) => string | null>
   >(true);
   t.deepEqual(fn2("hello"), "hello");
   t.deepEqual(fn2(undefined), null);
 
-  const fn3 = S.compile(schema, "Any", "Output", "Sync", true);
+  const fn3 = S.parser(schema);
   expectType<TypeEqual<typeof fn3, (input: unknown) => string | undefined>>(
     true
   );
   t.deepEqual(fn3("hello"), "hello");
   t.deepEqual(fn3(null), undefined);
 
-  const fn4 = S.compile(schema, "Json", "Output", "Sync");
+  const fn4 = S.decoder(S.json, schema);
   expectType<TypeEqual<typeof fn4, (input: S.JSON) => string | undefined>>(
     true
   );
   t.deepEqual(fn4("hello"), "hello");
   t.deepEqual(fn4(null), undefined);
 
-  const fn5 = S.compile(schema, "JsonString", "Output", "Sync");
+  const fn5 = S.decoder(S.jsonString, schema);
   expectType<TypeEqual<typeof fn5, (input: string) => string | undefined>>(
     true
   );
   t.deepEqual(fn5(`"hello"`), "hello");
   t.deepEqual(fn5("null"), undefined);
 
-  const fn6 = S.compile(schema, "Output", "Json", "Sync");
+  const fn6 = S.encoder(schema, S.json);
   expectType<TypeEqual<typeof fn6, (input: string | undefined) => S.JSON>>(
     true
   );
   t.deepEqual(fn6("hello"), "hello");
   t.deepEqual(fn6(undefined), null);
 
-  const fn7 = S.compile(schema, "Output", "JsonString", "Sync");
+  const fn7 = S.encoder(schema, S.jsonString);
   expectType<TypeEqual<typeof fn7, (input: string | undefined) => string>>(
     true
   );
   t.deepEqual(fn7("hello"), `"hello"`);
   t.deepEqual(fn7(undefined), "null");
 
-  const fn8 = S.compile(schema, "Output", "Assert", "Sync", true);
-  expectType<TypeEqual<typeof fn8, (input: string | undefined) => void>>(true);
-  t.deepEqual(fn8("hello"), undefined);
-  t.deepEqual(fn8(undefined), undefined);
+  // FIXME:
+  // const fn8 = S.compile(schema, "Output", "Assert", "Sync", true);
+  // expectType<TypeEqual<typeof fn8, (input: string | undefined) => void>>(true);
+  // t.deepEqual(fn8("hello"), undefined);
+  // t.deepEqual(fn8(undefined), undefined);
 
-  const fn9 = S.compile(schema, "Output", "JsonString", "Async");
-  expectType<
-    TypeEqual<typeof fn9, (input: string | undefined) => Promise<string>>
-  >(true);
-  t.deepEqual(await fn9("hello"), `"hello"`);
-  t.deepEqual(await fn9(undefined), "null");
+  // const fn9 = S.compile(schema, "Output", "JsonString", "Async");
+  // expectType<
+  //   TypeEqual<typeof fn9, (input: string | undefined) => Promise<string>>
+  // >(true);
+  // t.deepEqual(await fn9("hello"), `"hello"`);
+  // t.deepEqual(await fn9(undefined), "null");
 
   t.pass();
 });

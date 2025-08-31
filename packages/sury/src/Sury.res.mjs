@@ -3509,11 +3509,24 @@ function nullableAsOption(schema) {
   ]);
 }
 
-function parser$1(schema) {
-  if (1 in schema) {
-    return schema[1];
+function parser$1(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: args[args.length - 1 | 0]
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(args[i], mut => {
+        mut.to = schema.contents;
+      });
+    }
+    return internalCompile(schema.contents, 1, 0);
+  }
+  let s = args[0];
+  if (1 in s) {
+    return s[1];
   } else {
-    return initOperation(schema, 1);
+    return initOperation(s, 1);
   }
 }
 
@@ -3528,27 +3541,35 @@ function decoder(param) {
         mut.to = schema.contents;
       });
     }
-    let s = schema.contents;
-    if (0 in s) {
-      return s[0];
-    } else {
-      return initOperation(s, 0);
-    }
+    return internalCompile(schema.contents, 0, 0);
   }
-  let s$1 = args[0];
-  if (0 in s$1) {
-    return s$1[0];
-  } else {
-    return initOperation(s$1, 0);
-  }
-}
-
-function encoder(schema) {
-  let s = reverse(schema);
+  let s = args[0];
   if (0 in s) {
     return s[0];
   } else {
     return initOperation(s, 0);
+  }
+}
+
+function encoder(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: reverse(args[args.length - 1 | 0])
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(reverse(args[i]), mut => {
+        mut.to = schema.contents;
+      });
+    }
+    return internalCompile(schema.contents, 0, 0);
+  }
+  let s = args[0];
+  let s$1 = reverse(s);
+  if (0 in s$1) {
+    return s$1[0];
+  } else {
+    return initOperation(s$1, 0);
   }
 }
 
