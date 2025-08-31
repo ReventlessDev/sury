@@ -551,8 +551,11 @@ type jsResult<'value>
 let brand: (t<'value>, string) => t<'value>
 
 let parser: t<unknown> => unknown => unknown
+let asyncParser: t<unknown> => unknown => unknown
 let decoder: t<unknown> => unknown => unknown
+let asyncDecoder: t<unknown> => unknown => unknown
 let encoder: t<unknown> => unknown => unknown
+let asyncEncoder: t<unknown> => unknown => unknown
 let js_assert: (t<unknown>, unknown) => unit
 
 let js_safe: (unit => 'v) => jsResult<'v>

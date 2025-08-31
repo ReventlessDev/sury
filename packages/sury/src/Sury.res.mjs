@@ -3530,6 +3530,27 @@ function parser$1(param) {
   }
 }
 
+function asyncParser(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: args[args.length - 1 | 0]
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(args[i], mut => {
+        mut.to = schema.contents;
+      });
+    }
+    return internalCompile(schema.contents, 3, 0);
+  }
+  let s = args[0];
+  if (3 in s) {
+    return s[3];
+  } else {
+    return initOperation(s, 3);
+  }
+}
+
 function decoder(param) {
   let args = arguments;
   if (args.length !== 1) {
@@ -3548,6 +3569,27 @@ function decoder(param) {
     return s[0];
   } else {
     return initOperation(s, 0);
+  }
+}
+
+function asyncDecoder(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: args[args.length - 1 | 0]
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(args[i], mut => {
+        mut.to = schema.contents;
+      });
+    }
+    return internalCompile(schema.contents, 2, 0);
+  }
+  let s = args[0];
+  if (2 in s) {
+    return s[2];
+  } else {
+    return initOperation(s, 2);
   }
 }
 
@@ -3570,6 +3612,28 @@ function encoder(param) {
     return s$1[0];
   } else {
     return initOperation(s$1, 0);
+  }
+}
+
+function asyncEncoder(param) {
+  let args = arguments;
+  if (args.length !== 1) {
+    let schema = {
+      contents: reverse(args[args.length - 1 | 0])
+    };
+    for (let i = args.length - 2 | 0; i >= 0; --i) {
+      schema.contents = updateOutput(reverse(args[i]), mut => {
+        mut.to = schema.contents;
+      });
+    }
+    return internalCompile(schema.contents, 2, 0);
+  }
+  let s = args[0];
+  let s$1 = reverse(s);
+  if (2 in s$1) {
+    return s$1[2];
+  } else {
+    return initOperation(s$1, 2);
   }
 }
 
@@ -4524,8 +4588,11 @@ export {
   global,
   brand,
   parser$1 as parser,
+  asyncParser,
   decoder,
+  asyncDecoder,
   encoder,
+  asyncEncoder,
   js_assert,
   js_safe,
   js_safeAsync,

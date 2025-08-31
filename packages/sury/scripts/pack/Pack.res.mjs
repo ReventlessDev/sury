@@ -162,16 +162,24 @@ let filesMapping = [
     "S.parser"
   ],
   [
+    "asyncParser",
+    "S.asyncParser"
+  ],
+  [
     "decoder",
     "S.decoder"
+  ],
+  [
+    "asyncDecoder",
+    "S.asyncDecoder"
   ],
   [
     "encoder",
     "S.encoder"
   ],
   [
-    "parseAsyncOrThrow",
-    "S.parseAsyncOrThrow"
+    "asyncEncoder",
+    "S.asyncEncoder"
   ],
   [
     "assert",

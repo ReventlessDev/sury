@@ -14,7 +14,7 @@
 - `S.parseOrThrow` -> `S.parser(schema)(data)`
 - `S.parseJsonOrThrow` -> `S.decoder(S.json, schema)(data)`
 - `S.parseJsonStringOrThrow` -> `S.decoder(S.jsonString, schema)(data)`
-<!-- - `S.parseAsyncOrThrow` -> `S.parser(schema, S.async)(data)` -->
+- `S.parseAsyncOrThrow` -> `S.asyncParser(schema)(data)`
 - `S.convertOrThrow` -> `S.decoder(schema)(data)`
 - `S.convertToJsonOrThrow` -> `S.decoder(schema, S.json)(data)`
 - `S.convertToJsonStringOrThrow` -> `S.decoder(schema, S.jsonString)(data)`

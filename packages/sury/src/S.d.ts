@@ -469,6 +469,17 @@ export function parser<
   Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
 >(...schemas: Schemas): (data: unknown) => ExtractLastOutput<Schemas>;
 
+export function asyncParser<Output>(
+  schema: Schema<Output, unknown>
+): (data: unknown) => Promise<Output>;
+export function asyncParser<Output>(
+  from: Schema<unknown>,
+  target: Schema<Output, unknown>
+): (data: unknown) => Promise<Output>;
+export function asyncParser<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(...schemas: Schemas): (data: unknown) => Promise<ExtractLastOutput<Schemas>>;
+
 export function decoder<Output, Input>(
   schema: Schema<Output, Input>
 ): (data: Input) => Output;
@@ -481,6 +492,19 @@ export function decoder<
 >(
   ...schemas: Schemas
 ): (data: ExtractFirstInput<Schemas>) => ExtractLastOutput<Schemas>;
+
+export function asyncDecoder<Output, Input>(
+  schema: Schema<Output, Input>
+): (data: Input) => Promise<Output>;
+export function asyncDecoder<Output, Input>(
+  from: Schema<unknown, Input>,
+  target: Schema<Output, unknown>
+): (data: Input) => Promise<Output>;
+export function decoder<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(
+  ...schemas: Schemas
+): (data: ExtractFirstInput<Schemas>) => Promise<ExtractLastOutput<Schemas>>;
 
 export function encoder<Output, Input>(
   schema: Schema<Output, Input>
@@ -495,15 +519,23 @@ export function encoder<
   ...schemas: Schemas
 ): (data: ExtractFirstOutput<Schemas>) => ExtractLastInput<Schemas>;
 
+export function asyncEncoder<Output, Input>(
+  schema: Schema<Output, Input>
+): (data: Output) => Promise<Input>;
+export function asyncEncoder<Output, Input>(
+  from: Schema<Output, unknown>,
+  target: Schema<unknown, Input>
+): (data: Output) => Promise<Input>;
+export function asyncEncoder<
+  Schemas extends readonly [Schema<any, any>, ...Schema<any, any>[]]
+>(
+  ...schemas: Schemas
+): (data: ExtractFirstOutput<Schemas>) => Promise<ExtractLastInput<Schemas>>;
+
 export function assert<Output, Input>(
   schema: Schema<Output, Input>,
   data: unknown
 ): asserts data is Input;
-
-export function parseAsyncOrThrow<Output, Input>(
-  data: unknown,
-  schema: Schema<Output, Input>
-): Promise<Output>;
 
 export function tuple<Output, Input extends unknown[]>(
   definer: (s: {

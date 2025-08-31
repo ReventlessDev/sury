@@ -5452,6 +5452,31 @@ let parser = _ => {
   }
 }
 
+let asyncParser = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->castToPublic->makeMakeOperation(Flag.typeValidation->Flag.with(Flag.async))
+  | _ => {
+      // FIXME: Add cache
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      internalCompile(
+        ~schema=schema.contents,
+        ~flag=Flag.typeValidation->Flag.with(Flag.async),
+        ~defs=%raw(`0`),
+      )
+    }
+  }
+}
+
 let decoder = _ => {
   let args = %raw(`arguments`)
   switch args {
@@ -5469,6 +5494,31 @@ let decoder = _ => {
           ->castToInternal
       }
       internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
+    }
+  }
+}
+
+let asyncDecoder = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->castToPublic->makeMakeOperation(Flag.none->Flag.with(Flag.async))
+  | _ => {
+      // FIXME: Add cache
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      internalCompile(
+        ~schema=schema.contents,
+        ~flag=Flag.none->Flag.with(Flag.async),
+        ~defs=%raw(`0`),
+      )
     }
   }
 }
@@ -5491,6 +5541,32 @@ let encoder = _ => {
           ->castToInternal
       }
       internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
+    }
+  }
+}
+
+let asyncEncoder = _ => {
+  let args = %raw(`arguments`)
+  switch args {
+  | [s] => s->reverse->castToPublic->makeMakeOperation(Flag.none->Flag.with(Flag.async))
+  | _ => {
+      // FIXME: Add cache
+      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1)->reverse)
+      for i in args->Js.Array2.length - 2 downto 0 {
+        schema :=
+          args
+          ->Js.Array2.unsafe_get(i)
+          ->reverse
+          ->updateOutput(mut => {
+            mut.to = Some(schema.contents)
+          })
+          ->castToInternal
+      }
+      internalCompile(
+        ~schema=schema.contents,
+        ~flag=Flag.none->Flag.with(Flag.async),
+        ~defs=%raw(`0`),
+      )
     }
   }
 }

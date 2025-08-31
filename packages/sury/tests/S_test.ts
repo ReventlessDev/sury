@@ -747,7 +747,7 @@ test("Successfully parses async schema", async (t) => {
   const schema = S.string.with(S.asyncParserRefine, async (string) => {
     expectType<TypeEqual<typeof string, string>>(true);
   });
-  const value = await S.safeAsync(() => S.parseAsyncOrThrow("123", schema));
+  const value = await S.safeAsync(() => S.asyncParser(schema)("123"));
 
   t.deepEqual(value, { success: true, value: "123" });
 
@@ -761,7 +761,7 @@ test("Fails to parses async schema", async (t) => {
     });
   });
 
-  const result = await S.safeAsync(() => S.parseAsyncOrThrow("123", schema));
+  const result = await S.safeAsync(() => S.asyncParser(schema)("123"));
 
   if (result.success) {
     t.fail("Should fail");
@@ -888,7 +888,7 @@ test("Successfully parses and reverse convert object with optional field", (t) =
   t.deepEqual(value, { bar: undefined, baz: true });
 
   const reversed = S.encoder(schema)({ baz: true });
-  t.deepEqual(reversed, { bar: undefined, baz: true });
+  t.deepEqual(reversed, { baz: true });
 
   expectType<
     SchemaEqual<
@@ -1311,7 +1311,11 @@ test("Successfully serializes S.merge", (t) => {
 
   t.deepEqual(
     S.parser(S.reverse(schema)).toString(),
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return i}`
+    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
+  );
+  t.deepEqual(
+    S.encoder(schema).toString().startsWith("function noopOperation(i) {"),
+    true
   );
 
   const value = S.encoder(schema)({
