@@ -374,6 +374,7 @@ Enable the schemas you need at the project root:
 ```ts
 S.enableJson();
 S.enableJsonString();
+S.enableUint8Array();
 ```
 
 And use them as usual:
@@ -386,18 +387,21 @@ And use them as usual:
 S.json;
 
 // JSON string
-
 // Asserts that the input is a valid JSON string
 S.jsonString;
 S.jsonStringWithSpace(2);
-
 // Parses JSON string and validates that it's a number
 // JSON string -> number
 S.jsonString.with(S.to, S.number);
-
 // Serializes number to JSON string
-// number -> JSON string
 S.number.with(S.to, S.jsonString);
+
+// Asserts that the input is an instance of Uint8Array
+S.uint8Array;
+// Decodes Uint8Array to utf-8 string
+S.uint8Array.with(S.to, S.string);
+// Encodes utf-8 string to Uint8Array
+S.string.with(S.to, S.uint8Array);
 ```
 
 ## Strings

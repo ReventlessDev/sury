@@ -1103,12 +1103,11 @@ function parse(prevB, schema, inputArg, path) {
     }
     
   }
-  if (isUnsupported) {
-    unsupportedTransform(b, input, schema, path);
-  }
   let compiler = schema.compiler;
   if (compiler !== undefined) {
     input = compiler(b, input, schema, path);
+  } else if (isUnsupported) {
+    unsupportedTransform(b, input, schema, path);
   }
   if (input.t !== true) {
     let refiner = schema.refiner;
@@ -2489,6 +2488,38 @@ function jsonStringWithSpace(space) {
   let mut = copySchema(jsonString);
   mut.space = space;
   return mut;
+}
+
+let uint8Array = shaken("uint8Array");
+
+function enableUint8Array() {
+  if (uint8Array[shakenRef]) {
+    ((delete uint8Array.as));
+    uint8Array.type = "instance";
+    uint8Array.class = (Uint8Array);
+    uint8Array.compiler = (b, inputArg, selfSchema, param) => {
+      let inputTagFlag = flags[inputArg.type];
+      let input = inputArg;
+      if (inputTagFlag & 2) {
+        input = val(b, embed(b, (new TextEncoder())) + ".encode(" + input.i + ")", uint8Array);
+      }
+      let match = selfSchema.parser;
+      if (match !== undefined) {
+        return input;
+      }
+      let to = selfSchema.to;
+      if (to === undefined) {
+        return input;
+      }
+      let toTagFlag = flags[to.type];
+      if (toTagFlag & 2) {
+        input = val(b, embed(b, (new TextDecoder())) + ".decode(" + input.i + ")", string);
+      }
+      return input;
+    };
+    return;
+  }
+  
 }
 
 let metadataId$2 = "m:Int.refinements";
@@ -4514,6 +4545,8 @@ export {
   jsonString,
   jsonStringWithSpace,
   enableJsonString,
+  uint8Array,
+  enableUint8Array,
   literal,
   array,
   unnest,

@@ -82,10 +82,6 @@ let filesMapping = [
     "S.symbol"
   ],
   [
-    "json",
-    "S.json"
-  ],
-  [
     "never",
     "S.never"
   ],
@@ -126,12 +122,32 @@ let filesMapping = [
     "S.dict"
   ],
   [
+    "json",
+    "S.json"
+  ],
+  [
+    "enableJson",
+    "S.enableJson"
+  ],
+  [
     "jsonString",
     "S.jsonString"
   ],
   [
+    "enableJsonString",
+    "S.enableJsonString"
+  ],
+  [
     "jsonStringWithSpace",
     "S.jsonStringWithSpace"
+  ],
+  [
+    "uint8Array",
+    "S.uint8Array"
+  ],
+  [
+    "enableUint8Array",
+    "S.enableUint8Array"
   ],
   [
     "union",
@@ -300,14 +316,6 @@ let filesMapping = [
   [
     "trim",
     "S.trim"
-  ],
-  [
-    "enableJson",
-    "S.enableJson"
-  ],
-  [
-    "enableJsonString",
-    "S.enableJsonString"
   ],
   [
     "global",

@@ -38,6 +38,10 @@ let jsonStringWithSpace = Sury.jsonStringWithSpace;
 
 let enableJsonString = Sury.enableJsonString;
 
+let uint8Array = Sury.uint8Array;
+
+let enableUint8Array = Sury.enableUint8Array;
+
 let literal = Sury.literal;
 
 let array = Sury.array;
@@ -201,6 +205,8 @@ export {
   jsonString,
   jsonStringWithSpace,
   enableJsonString,
+  uint8Array,
+  enableUint8Array,
   literal,
   array,
   unnest,

@@ -2781,3 +2781,30 @@ test("Overwrite error message", (t) => {
     message: "Failed parsing: Invalid string",
   });
 });
+
+test("Uint8Array", (t) => {
+  S.enableUint8Array();
+
+  let data = new Uint8Array([1, 2, 3]);
+
+  t.deepEqual(S.parser(S.uint8Array)(data), data);
+  t.deepEqual(
+    S.parser(S.uint8Array).toString(),
+    `i=>{if(!(i instanceof e[0])){e[1](i)}return i}`
+  );
+
+  t.deepEqual(
+    S.decoder(S.string, S.uint8Array, S.jsonString)("data"),
+    `"data"`
+  );
+  t.deepEqual(
+    S.decoder(S.string, S.uint8Array, S.jsonString).toString(),
+    `i=>{return JSON.stringify(e[1].decode(e[0].encode(i)))}`
+  );
+
+  // FIXME: Missing Uint8Array instance validation
+  t.deepEqual(
+    S.decoder(S.unknown, S.uint8Array, S.jsonString).toString(),
+    `i=>{return JSON.stringify(e[0].decode(i))}`
+  );
+});

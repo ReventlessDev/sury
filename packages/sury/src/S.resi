@@ -301,6 +301,9 @@ let jsonString: t<string>
 let jsonStringWithSpace: int => t<string>
 let enableJsonString: unit => unit
 
+let uint8Array: t<Uint8Array.t>
+let enableUint8Array: unit => unit
+
 let literal: 'value => t<'value>
 let array: t<'value> => t<array<'value>>
 let unnest: t<'value> => t<array<'value>>

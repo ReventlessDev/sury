@@ -8,6 +8,7 @@
 - Update Standard Schema error message to only include reason part
 - Fix refinement on union schema which also uses `S.to`
 - TS API: Removed `S.transform` in favor of `S.to`
+- Add `S.uint8Array` and `S.enableUint8Array`
 
 ### TS
 

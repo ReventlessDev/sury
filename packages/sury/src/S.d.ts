@@ -449,6 +449,9 @@ export const jsonString: Schema<string, string>;
 export const jsonStringWithSpace: (space: number) => Schema<string, string>;
 export function enableJsonString(): void;
 
+export const uint8Array: Schema<Uint8Array, Uint8Array>;
+export function enableUint8Array(): void;
+
 export function safe<Value>(scope: () => Value): Result<Value>;
 export function safeAsync<Value>(
   scope: () => Promise<Value>

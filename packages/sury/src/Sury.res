@@ -1891,13 +1891,12 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
     }
   }
 
-  if isUnsupported.contents {
-    b->B.unsupportedTransform(~from=input.contents->Obj.magic, ~target=schema, ~path)
-  }
-
   switch schema.compiler {
   | Some(compiler) => input := compiler(b, ~input=input.contents, ~selfSchema=schema, ~path)
-  | None => ()
+  | None =>
+    if isUnsupported.contents {
+      b->B.unsupportedTransform(~from=input.contents->Obj.magic, ~target=schema, ~path)
+    }
   }
 
   if input.contents.skipTo !== Some(true) {
@@ -3718,6 +3717,45 @@ let jsonStringWithSpace = (space: int) => {
   let mut = jsonString->copySchema
   mut.space = Some(space)
   mut->castToPublic
+}
+
+let uint8Array = shaken("uint8Array")
+
+let enableUint8Array = () => {
+  if uint8Array->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
+    let _ = %raw(`delete uint8Array.as`)
+    uint8Array.tag = Instance
+    uint8Array.class = %raw(`Uint8Array`)
+    uint8Array.compiler = Some(
+      Builder.make((b, ~input as inputArg, ~selfSchema, ~path as _) => {
+        let inputTagFlag = inputArg.tag->TagFlag.get
+        let input = ref(inputArg)
+
+        if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
+          input :=
+            b->B.val(
+              `${b->B.embed(%raw(`new TextEncoder()`))}.encode(${input.contents.inline})`,
+              ~schema=uint8Array,
+            )
+        }
+
+        switch selfSchema {
+        | {to, parser: ?None} => {
+            let toTagFlag = to.tag->TagFlag.get
+            if toTagFlag->Flag.unsafeHas(TagFlag.string) {
+              input :=
+                b->B.val(
+                  `${b->B.embed(%raw(`new TextDecoder()`))}.decode(${input.contents.inline})`,
+                  ~schema=string,
+                )
+            }
+            input.contents
+          }
+        | _ => input.contents
+        }
+      }),
+    )
+  }
 }
 
 module Int = {
@@ -6297,6 +6335,7 @@ let length = (schema, length, ~message as maybeMessage=?) => {
 let unknown: t<unknown> = unknown->castToPublic
 let json: t<Js.Json.t> = json->castToPublic
 let jsonString: t<string> = jsonString->castToPublic
+let uint8Array: t<Uint8Array.t> = uint8Array->castToPublic
 let bool: t<bool> = bool->castToPublic
 let symbol: t<Js.Types.symbol> = symbol->castToPublic
 let string: t<string> = string->castToPublic
