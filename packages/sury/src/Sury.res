@@ -538,7 +538,7 @@ and b = {
   mutable varsAllocation: string,
   @as("a")
   mutable allocate: string => unit,
-  @as("v")
+  @as("f")
   mutable validationCode: string,
   @as("g")
   global: bGlobal,
@@ -1528,7 +1528,11 @@ module Builder = {
                 ~schema=item,
                 ~negative,
               )
-            } else if item.items->Obj.magic {
+            } else if (
+              item.items->Obj.magic &&
+                // isUnion
+                negative === false
+            ) {
               let inputVar = Path.concat(
                 inputVar,
                 Path.fromInlinedLocation(b->inlineLocation(location)),
@@ -1550,7 +1554,7 @@ module Builder = {
     }
 
     // FIXME: Combine with refinement and all the staff
-    let makeRefinedOf = (b: b, ~input: val, ~schema) => {
+    let makeRefinedOf = (b: b, ~input: val, ~schema, ~isUnion) => {
       let mut = {
         b,
         var: input.var,
@@ -1571,7 +1575,7 @@ module Builder = {
             items->Js.Array2.forEach((item: item) => {
               let schema = item.schema->castToInternal
               let isConst = schema->isLiteral
-              if isConst || schema.items->Obj.magic {
+              if isConst || (schema.items->Obj.magic && isUnion) {
                 let mut = {
                   b: mut.b,
                   var: _notVar,
@@ -1853,7 +1857,7 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
           b.validationCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
         }
         // FIXME: Make it simpler
-        let refined = b->B.makeRefinedOf(~input=input.contents, ~schema)
+        let refined = b->B.makeRefinedOf(~input=input.contents, ~schema, ~isUnion=false)
         input.contents.tag = refined.tag
         input.contents.inline = refined.inline
         input.contents.var = refined.var
@@ -2669,7 +2673,7 @@ module Union = {
       let input = if deopt {
         input->Obj.magic->X.Dict.copy->Obj.magic
       } else {
-        bb->B.makeRefinedOf(~input, ~schema)
+        bb->B.makeRefinedOf(~input, ~schema, ~isUnion=true)
       }
       let itemOutput = bb->parse(~schema, ~input, ~path)
 

@@ -344,7 +344,7 @@ test("Parses JSON string to object", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="object"||!v0||v0["foo"]!=="bar"||!Array.isArray(v0["bar"])||v0["bar"].length!==2||v0["bar"]["0"]!==1||v0["bar"]["1"]!==3){e[2](v0)}return {"foo":"bar","bar":v0["bar"],}}`,
+    `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="object"||!v0||v0["foo"]!=="bar"){e[2](v0)}let v1=v0["bar"];if(!Array.isArray(v1)||v1.length!==2||v1["0"]!==1||v1["1"]!==3){e[3](v1)}return {"foo":"bar","bar":v1,}}`,
   )
 
   t->Assert.deepEqual(
@@ -369,7 +369,7 @@ test("Parses JSON string to option", t => {
   // t->U.assertCompiledCode(
   //   ~schema,
   //   ~op=#Parse,
-  //   `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="object"||!v0||v0["foo"]!=="bar"||!Array.isArray(v0["bar"])||v0["bar"].length!==2||v0["bar"]["0"]!==1||v0["bar"]["1"]!==3){e[2](v0)}return {"foo":"bar","bar":v0["bar"],}}`,
+  //   `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="object"||!v0||v0["foo"]!=="bar"){e[2](v0)}let v1=v0["bar"];if(!Array.isArray(v1)||v1.length!==2||v1["0"]!==1||v1["1"]!==3){e[3](v1)}return {"foo":"bar","bar":v1,}}`,
   // )
 
   t->Assert.deepEqual(None->S.reverseConvertOrThrow(schema), `null`->Obj.magic)
