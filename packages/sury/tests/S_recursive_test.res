@@ -351,7 +351,8 @@ Node: i=>{if(typeof i!=="object"||!i||!Array.isArray(i["Children"])){e[0](i)}let
     t->U.assertCompiledCode(
       ~schema=nodeSchema,
       ~op=#ReverseConvert,
-      `i=>{let v0=e[0](i);return v0}`,
+      `i=>{let v0=e[0](i);return v0}
+Node: i=>{let v0=e[0](i);let v1=v0["children"],v6=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){let v5;try{let v4=e[1][0](v1[v2]);v5=v4}catch(v3){if(v3&&v3.s===s){v3.path="[\\"children\\"]"+'["'+v2+'"]'+v3.path}throw v3}v6[v2]=v5}return {"Id":v0["id"],"Children":v6,}}`,
     )
     t->Assert.deepEqual(
       {
@@ -475,7 +476,8 @@ Node: i=>{if(typeof i!=="object"||!i||!Array.isArray(i["Children"])){e[0](i)}let
   t->U.assertCompiledCode(
     ~schema=nodeSchema,
     ~op=#ReverseConvert,
-    `i=>{let v0=e[1](e[0](i));return v0}`,
+    `i=>{let v0=e[1](e[0](i));return v0}
+Node: i=>{let v0=i["children"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][0](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"children\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}return {"Id":i["id"],"Children":v5,}}`,
   )
 })
 

@@ -466,9 +466,9 @@ function allocateScope(b) {
   ((delete b.a));
   let varsAllocation = b.l;
   if (varsAllocation === "") {
-    return b.f + b.c;
+    return b.v + b.c;
   } else {
-    return b.f + "let " + varsAllocation + ";" + b.c;
+    return b.v + "let " + varsAllocation + ";" + b.c;
   }
 }
 
@@ -722,7 +722,7 @@ function withPathPrepend(b, input, path, maybeDynamicLocationVar, appendSafe, fn
       c: "",
       l: "",
       a: initialAllocate,
-      f: "",
+      v: "",
       g: b.g
     };
     let fnOutput = fn$1(bb);
@@ -973,7 +973,7 @@ function parse(prevB, schema, inputArg, path) {
     c: "",
     l: "",
     a: initialAllocate,
-    f: "",
+    v: "",
     g: prevB.g
   };
   if (schema.$defs) {
@@ -1004,7 +1004,7 @@ function parse(prevB, schema, inputArg, path) {
         
       } else if (inputTagFlag & 2 && schemaTagFlag & 3132) {
         let inputVar = input.v(b);
-        b.f = schema.noValidation ? "" : input.i + "===\"" + schema.const + "\"||" + failWithArg(b, path, input => ({
+        b.v = schema.noValidation ? "" : input.i + "===\"" + schema.const + "\"||" + failWithArg(b, path, input => ({
             TAG: "InvalidType",
             expected: schema,
             received: input
@@ -1013,7 +1013,7 @@ function parse(prevB, schema, inputArg, path) {
       } else if (schema.noValidation) {
         input = constVal(b, schema);
       } else {
-        b.f = typeFilterCode(prevB, schema, input, path);
+        b.v = typeFilterCode(prevB, schema, input, path);
         input.type = schema.type;
         input.const = schema.const;
       }
@@ -1067,7 +1067,7 @@ function parse(prevB, schema, inputArg, path) {
         input.v(b);
       } else {
         if (b.g.o & 1) {
-          b.f = typeFilterCode(prevB, schema, input, path);
+          b.v = typeFilterCode(prevB, schema, input, path);
         }
         let refined = makeRefinedOf(b, input, schema);
         input.type = refined.type;
@@ -1707,7 +1707,7 @@ function getItemCode(b, schema, input, output, deopt, path) {
       c: "",
       l: "",
       a: initialAllocate,
-      f: "",
+      v: "",
       g: b.g
     };
     let input$1 = deopt ? copy(input) : makeRefinedOf(bb, input, schema);
@@ -2154,7 +2154,7 @@ function getWithDefault(schema, $$default) {
           c: "",
           l: "",
           a: initialAllocate,
-          f: "",
+          v: "",
           g: b.g
         };
         let operationInput = {
@@ -2227,7 +2227,7 @@ function arrayDecoder(b, input, selfSchema, path) {
     c: "",
     l: "",
     a: initialAllocate,
-    f: "",
+    v: "",
     g: b.g
   };
   let itemInput = val(bb, inputVar + "[" + iteratorVar + "]", unknown);
@@ -2311,7 +2311,7 @@ function dictDecoder(b, input, selfSchema, path) {
     c: "",
     l: "",
     a: initialAllocate,
-    f: "",
+    v: "",
     g: b.g
   };
   let itemInput = val(bb, inputVar + "[" + keyVar + "]", unknown);
@@ -2434,7 +2434,7 @@ function enableJsonString() {
         let to = selfSchema.to;
         if (to && constField in to) {
           let inputVar = input.v(b);
-          b.f = inputVar + "===" + inlineJsonString(b, to, selfSchema, path) + "||" + failWithArg(b, path, input => ({
+          b.v = inputVar + "===" + inlineJsonString(b, to, selfSchema, path) + "||" + failWithArg(b, path, input => ({
             TAG: "InvalidType",
             expected: to,
             received: input
@@ -2444,7 +2444,7 @@ function enableJsonString() {
           let inputVar$1 = input.v(b);
           let withTypeValidation = b.g.o & 1;
           if (withTypeValidation) {
-            b.f = typeFilterCode(b, string, input, path);
+            b.v = typeFilterCode(b, string, input, path);
           }
           if (to || withTypeValidation) {
             let tmp;
@@ -3242,7 +3242,7 @@ function unnestSerializer(b, input, selfSchema, path) {
     c: "",
     l: "",
     a: initialAllocate,
-    f: "",
+    v: "",
     g: b.g
   };
   let itemInput = {
@@ -3306,7 +3306,7 @@ function unnest(schema) {
         c: "",
         l: "",
         a: initialAllocate,
-        f: "",
+        v: "",
         g: b.g
       };
       let itemInput = make(bb, false);

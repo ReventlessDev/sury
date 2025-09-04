@@ -538,8 +538,8 @@ and b = {
   mutable varsAllocation: string,
   @as("a")
   mutable allocate: string => unit,
-  @as("f")
-  mutable filterCode: string,
+  @as("v")
+  mutable validationCode: string,
   @as("g")
   global: bGlobal,
 }
@@ -555,7 +555,7 @@ and bGlobal = {
   @as("o")
   mutable flag: int,
   @as("f")
-  mutable filterCode: string,
+  mutable validationCode: string,
   @as("e")
   embeded: array<unknown>,
   @as("d")
@@ -1061,7 +1061,7 @@ module Builder = {
         varCounter: -1,
         embeded: [],
         flag,
-        filterCode: "",
+        validationCode: "",
         ?defs,
       }
       (global->Obj.magic)["g"] = global
@@ -1073,7 +1073,7 @@ module Builder = {
       {
         allocate: initialAllocate,
         global: b.global,
-        filterCode: "",
+        validationCode: "",
         code: "",
         varsAllocation: "",
       }
@@ -1086,8 +1086,8 @@ module Builder = {
       let _ = %raw(`delete b.a`)
       let varsAllocation = b.varsAllocation
       varsAllocation === ""
-        ? b.filterCode ++ b.code
-        : `${b.filterCode}let ${varsAllocation};${b.code}`
+        ? b.validationCode ++ b.code
+        : `${b.validationCode}let ${varsAllocation};${b.code}`
     }
 
     let varWithoutAllocation = (global: bGlobal) => {
@@ -1757,7 +1757,7 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
         )
     ) {
       let inputVar = input.contents.var(b)
-      b.filterCode = schema.noValidation->X.Option.getUnsafe
+      b.validationCode = schema.noValidation->X.Option.getUnsafe
         ? ""
         : `${input.contents.inline}==="${schema.const->Obj.magic}"||${b->failTransform(
               ~inputVar,
@@ -1770,7 +1770,7 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
     } else {
       // FIXME: More cases
 
-      b.filterCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
+      b.validationCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
       input.contents.tag = schema.tag
       input.contents.const = schema.const
     }
@@ -1850,7 +1850,7 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path) => {
       let _ = input.contents.var(b)
     | None => {
         if b.global.flag->Flag.unsafeHas(Flag.typeValidation) {
-          b.filterCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
+          b.validationCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
         }
         // FIXME: Make it simpler
         let refined = b->B.makeRefinedOf(~input=input.contents, ~schema)
@@ -3637,7 +3637,7 @@ let enableJsonString = {
 
             if hasTo && to->isLiteral {
               let inputVar = b->B.Val.var(input.contents)
-              b.filterCode = `${inputVar}===${b->inlineJsonString(
+              b.validationCode = `${inputVar}===${b->inlineJsonString(
                   ~selfSchema,
                   ~schema=to,
                   ~path,
@@ -3658,7 +3658,7 @@ let enableJsonString = {
 
               // FIXME: Should have the check in allocate scope?
               if withTypeValidation {
-                b.filterCode = b->B.typeFilterCode(~schema=string, ~input=input.contents, ~path)
+                b.validationCode = b->B.typeFilterCode(~schema=string, ~input=input.contents, ~path)
               }
 
               // FIXME: S.refine should run here
