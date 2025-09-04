@@ -935,8 +935,29 @@ function noopOperation(i) {
   return i;
 }
 
+bigint.decoder = (b, input, selfSchema, path) => {
+  let inputTagFlag = flags[input.type];
+  if (!(inputTagFlag & 2)) {
+    if (inputTagFlag & 4) {
+      return val(b, "BigInt(" + input.i + ")", selfSchema);
+    } else if (inputTagFlag & 1024) {
+      return input;
+    } else {
+      return unsupportedTransform(b, input, selfSchema, path);
+    }
+  }
+  let output = allocateVal(b, selfSchema);
+  let inputVar = input.v(b);
+  b.c = b.c + ("try{" + output.i + "=BigInt(" + inputVar + ")}catch(_){" + failWithArg(b, path, input => ({
+    TAG: "InvalidType",
+    expected: selfSchema,
+    received: input
+  }), inputVar) + "}");
+  return output;
+};
+
 function setHas(has, tag) {
-  has[tag === "union" || tag === "ref" ? "unknown" : tag] = true;
+  has[flags[tag] & 768 ? "unknown" : tag] = true;
 }
 
 let jsonName = "JSON";
@@ -967,7 +988,7 @@ function parse(prevB, schema, inputArg, path) {
   let isUnsupported = false;
   if (!(schemaTagFlag & 257 || schema.format === "json")) {
     if (schema.name === jsonName && !(inputTagFlag & 1)) {
-      if (!(inputTagFlag & 14)) {
+      if (!(inputTagFlag & 46)) {
         if (inputTagFlag & 1024) {
           input = inputToString(b, input);
         } else {
@@ -1084,28 +1105,18 @@ function parse(prevB, schema, inputArg, path) {
             received: input
           }), inputVar$1) + ";");
           input = output$1;
-        } else if (schemaTagFlag & 1024) {
-          let output$2 = allocateVal(b, schema);
-          b.c = b.c + ("try{" + output$2.i + "=BigInt(" + inputVar$1 + ")}catch(_){" + failWithArg(b, path, input => ({
-            TAG: "InvalidType",
-            expected: schema,
-            received: input
-          }), inputVar$1) + "}");
-          input = output$2;
         } else {
           isUnsupported = true;
         }
-      } else if (inputTagFlag & 4 && schemaTagFlag & 1024) {
-        input = val(b, "BigInt(" + input.i + ")", schema);
       } else {
         isUnsupported = true;
       }
     }
     
   }
-  let compiler = schema.compiler;
-  if (compiler !== undefined) {
-    input = compiler(b, input, schema, path);
+  let decoder = schema.decoder;
+  if (decoder !== undefined) {
+    input = decoder(b, input, schema, path);
   } else if (isUnsupported) {
     unsupportedTransform(b, input, schema, path);
   }
@@ -1231,6 +1242,18 @@ function reverse(schema) {
   return r;
 }
 
+function getOutputSchema(_schema) {
+  while (true) {
+    let schema = _schema;
+    let to = schema.to;
+    if (to === undefined) {
+      return schema;
+    }
+    _schema = to;
+    continue;
+  };
+}
+
 function jsonableValidation(output, parent, path, flag) {
   let tagFlag = flags[output.type];
   if (tagFlag & 48129 || tagFlag & 16 && parent.type !== "object") {
@@ -1262,18 +1285,6 @@ function jsonableValidation(output, parent, path, flag) {
     return;
   }
   output.items.forEach(item => jsonableValidation(item.schema, output, path + ("[" + fromString(item.location) + "]"), flag));
-}
-
-function getOutputSchema(_schema) {
-  while (true) {
-    let schema = _schema;
-    let to = schema.to;
-    if (to === undefined) {
-      return schema;
-    }
-    _schema = to;
-    continue;
-  };
 }
 
 function internalCompile(schema, flag, defs) {
@@ -1335,9 +1346,9 @@ function isAsyncInternal(schema, defs) {
   }
 }
 
-let val$1 = {};
-
 let valKey = "value";
+
+let val$1 = {};
 
 let reverseKey = "r";
 
@@ -1682,7 +1693,7 @@ function neverBuilder(b, input, selfSchema, path) {
 
 let never = new Schema("never");
 
-never.compiler = neverBuilder;
+never.decoder = neverBuilder;
 
 let nestedLoc = "BS_PRIVATE_NESTED_SOME_NONE";
 
@@ -1736,7 +1747,7 @@ function isWiderUnionSchema(schemaAnyOf, inputAnyOf) {
   });
 }
 
-function compiler(b, input, selfSchema, path) {
+function decoder(b, input, selfSchema, path) {
   let schemas = selfSchema.anyOf;
   let inputAnyOf = input.anyOf;
   if (inputAnyOf !== undefined) {
@@ -2000,7 +2011,7 @@ function factory(schemas) {
     }
     let mut = new Schema("union");
     mut.anyOf = Array.from(anyOf);
-    mut.compiler = compiler;
+    mut.decoder = decoder;
     mut.has = has;
     return mut;
   }
@@ -2158,10 +2169,10 @@ function getWithDefault(schema, $$default) {
         return asyncVal(input.b, input.i + ".then(" + operationInput.v(b) + "=>{" + operationCode + "return " + operationOutputVal.i + "})");
       };
       let to = copySchema(itemOutputSchema);
-      let compiler = to.compiler;
-      if (compiler !== undefined) {
-        to.serializer = compiler;
-        ((delete to.compiler));
+      let decoder = to.decoder;
+      if (decoder !== undefined) {
+        to.serializer = decoder;
+        ((delete to.decoder));
       } else {
         to.serializer = (_b, input, param, param$1) => input;
       }
@@ -2208,7 +2219,7 @@ function refinements(schema) {
   }
 }
 
-function arrayCompiler(b, input, selfSchema, path) {
+function arrayDecoder(b, input, selfSchema, path) {
   let item = selfSchema.additionalItems;
   let inputVar = input.v(b);
   let iteratorVar = varWithoutAllocation(b.g);
@@ -2242,7 +2253,7 @@ function factory$2(item) {
   let mut = new Schema("array");
   mut.additionalItems = item;
   mut.items = immutableEmpty$1;
-  mut.compiler = arrayCompiler;
+  mut.decoder = arrayDecoder;
   return mut;
 }
 
@@ -2292,7 +2303,7 @@ function deepStrict(schema) {
   return setAdditionalItems(schema, "strict", true);
 }
 
-function dictCompiler(b, input, selfSchema, path) {
+function dictDecoder(b, input, selfSchema, path) {
   let item = selfSchema.additionalItems;
   let inputVar = input.v(b);
   let keyVar = varWithoutAllocation(b.g);
@@ -2331,7 +2342,7 @@ function factory$3(item) {
   mut.properties = immutableEmpty;
   mut.items = immutableEmpty$1;
   mut.additionalItems = item;
-  mut.compiler = dictCompiler;
+  mut.decoder = dictDecoder;
   return mut;
 }
 
@@ -2372,7 +2383,7 @@ function enableJson() {
   let defs = {};
   defs[jsonName] = {
     type: "union",
-    compiler: compiler,
+    decoder: decoder,
     name: jsonName,
     has: {
       string: true,
@@ -2416,7 +2427,7 @@ function enableJsonString() {
     jsonString.type = "string";
     jsonString.format = "json";
     jsonString.name = jsonName + " string";
-    jsonString.compiler = (b, inputArg, selfSchema, path) => {
+    jsonString.decoder = (b, inputArg, selfSchema, path) => {
       let inputTagFlag = flags[inputArg.type];
       let input = inputArg;
       if (inputTagFlag & 1) {
@@ -2497,7 +2508,7 @@ function enableUint8Array() {
     ((delete uint8Array.as));
     uint8Array.type = "instance";
     uint8Array.class = (Uint8Array);
-    uint8Array.compiler = (b, inputArg, selfSchema, param) => {
+    uint8Array.decoder = (b, inputArg, selfSchema, param) => {
       let inputTagFlag = flags[inputArg.type];
       let input = inputArg;
       if (inputTagFlag & 2) {
@@ -2698,7 +2709,7 @@ function proxify(item) {
   });
 }
 
-function schemaCompiler(b, input, selfSchema, path) {
+function schemaDecoder(b, input, selfSchema, path) {
   let additionalItems = selfSchema.additionalItems;
   let items = selfSchema.items;
   let isArray = flags[selfSchema.type] & 128;
@@ -2727,132 +2738,6 @@ function schemaCompiler(b, input, selfSchema, path) {
   } else {
     return complete(objectVal$1, isArray);
   }
-}
-
-function definitionToSchema(definition) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse$1(definition);
-  }
-  if (definition["~standard"]) {
-    return definition;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = definitionToSchema(definition[idx]);
-      let location = idx.toString();
-      definition[idx] = {
-        schema: schema,
-        location: location
-      };
-    }
-    let mut = new Schema("array");
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.compiler = schemaCompiler;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    return {
-      type: "instance",
-      const: definition,
-      class: cnstr
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  let items = [];
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let schema$1 = definitionToSchema(definition[location$1]);
-    let item = {
-      schema: schema$1,
-      location: location$1
-    };
-    definition[location$1] = schema$1;
-    items[idx$1] = item;
-  }
-  let mut$1 = new Schema("object");
-  mut$1.items = items;
-  mut$1.properties = definition;
-  mut$1.additionalItems = globalConfig.a;
-  mut$1.compiler = schemaCompiler;
-  return mut$1;
-}
-
-function nested(fieldName) {
-  let parentCtx = this;
-  let cacheId = "~" + fieldName;
-  let ctx = parentCtx[cacheId];
-  if (ctx !== undefined) {
-    return Primitive_option.valFromOption(ctx);
-  }
-  let schemas = [];
-  let properties = {};
-  let items = [];
-  let schema = new Schema("object");
-  schema.items = items;
-  schema.properties = properties;
-  schema.additionalItems = globalConfig.a;
-  schema.compiler = schemaCompiler;
-  let target = parentCtx.f(fieldName, schema)[itemSymbol];
-  let field = (fieldName, schema) => {
-    let inlinedLocation = fromString(fieldName);
-    if (fieldName in properties) {
-      throw new Error("[Sury] " + ("The field " + inlinedLocation + " defined twice"));
-    }
-    let ditem_3 = "[" + inlinedLocation + "]";
-    let ditem = {
-      k: 1,
-      location: fieldName,
-      schema: schema,
-      of: target,
-      p: ditem_3
-    };
-    properties[fieldName] = schema;
-    items.push(ditem);
-    schemas.push(schema);
-    return proxify(ditem);
-  };
-  let tag = (tag$1, asValue) => {
-    field(tag$1, definitionToSchema(asValue));
-  };
-  let fieldOr = (fieldName, schema, or) => {
-    let schema$1 = factory$1(schema, undefined);
-    return field(fieldName, getWithDefault(schema$1, {
-      TAG: "Value",
-      _0: or
-    }));
-  };
-  let flatten = schema => {
-    let match = schema.type;
-    if (match === "object") {
-      let to = schema.to;
-      let flattenedItems = schema.items;
-      if (to) {
-        let message = "Unsupported nested flatten for transformed object schema " + toExpression(schema);
-        throw new Error("[Sury] " + message);
-      }
-      let result = {};
-      for (let idx = 0, idx_finish = flattenedItems.length; idx < idx_finish; ++idx) {
-        let item = flattenedItems[idx];
-        result[item.location] = field(item.location, item.schema);
-      }
-      return result;
-    }
-    let message$1 = "Can't flatten " + toExpression(schema) + " schema";
-    throw new Error("[Sury] " + message$1);
-  };
-  let ctx$1 = {
-    field: field,
-    f: field,
-    fieldOr: fieldOr,
-    tag: tag,
-    nested: nested,
-    flatten: flatten
-  };
-  parentCtx[cacheId] = ctx$1;
-  return ctx$1;
 }
 
 function definitionToRitem(definition, path, ritemsByItemPath) {
@@ -2919,12 +2804,177 @@ function definitionToRitem(definition, path, ritemsByItemPath) {
   };
 }
 
+function definitionToSchema(definition) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse$1(definition);
+  }
+  if (definition["~standard"]) {
+    return definition;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = definitionToSchema(definition[idx]);
+      let location = idx.toString();
+      definition[idx] = {
+        schema: schema,
+        location: location
+      };
+    }
+    let mut = new Schema("array");
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.decoder = schemaDecoder;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    return {
+      type: "instance",
+      const: definition,
+      class: cnstr
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  let items = [];
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let schema$1 = definitionToSchema(definition[location$1]);
+    let item = {
+      schema: schema$1,
+      location: location$1
+    };
+    definition[location$1] = schema$1;
+    items[idx$1] = item;
+  }
+  let mut$1 = new Schema("object");
+  mut$1.items = items;
+  mut$1.properties = definition;
+  mut$1.additionalItems = globalConfig.a;
+  mut$1.decoder = schemaDecoder;
+  return mut$1;
+}
+
+function nested(fieldName) {
+  let parentCtx = this;
+  let cacheId = "~" + fieldName;
+  let ctx = parentCtx[cacheId];
+  if (ctx !== undefined) {
+    return Primitive_option.valFromOption(ctx);
+  }
+  let schemas = [];
+  let properties = {};
+  let items = [];
+  let schema = new Schema("object");
+  schema.items = items;
+  schema.properties = properties;
+  schema.additionalItems = globalConfig.a;
+  schema.decoder = schemaDecoder;
+  let target = parentCtx.f(fieldName, schema)[itemSymbol];
+  let field = (fieldName, schema) => {
+    let inlinedLocation = fromString(fieldName);
+    if (fieldName in properties) {
+      throw new Error("[Sury] " + ("The field " + inlinedLocation + " defined twice"));
+    }
+    let ditem_3 = "[" + inlinedLocation + "]";
+    let ditem = {
+      k: 1,
+      location: fieldName,
+      schema: schema,
+      of: target,
+      p: ditem_3
+    };
+    properties[fieldName] = schema;
+    items.push(ditem);
+    schemas.push(schema);
+    return proxify(ditem);
+  };
+  let tag = (tag$1, asValue) => {
+    field(tag$1, definitionToSchema(asValue));
+  };
+  let fieldOr = (fieldName, schema, or) => {
+    let schema$1 = factory$1(schema, undefined);
+    return field(fieldName, getWithDefault(schema$1, {
+      TAG: "Value",
+      _0: or
+    }));
+  };
+  let flatten = schema => {
+    let match = schema.type;
+    if (match === "object") {
+      let to = schema.to;
+      let flattenedItems = schema.items;
+      if (to) {
+        let message = "Unsupported nested flatten for transformed object schema " + toExpression(schema);
+        throw new Error("[Sury] " + message);
+      }
+      let result = {};
+      for (let idx = 0, idx_finish = flattenedItems.length; idx < idx_finish; ++idx) {
+        let item = flattenedItems[idx];
+        result[item.location] = field(item.location, item.schema);
+      }
+      return result;
+    }
+    let message$1 = "Can't flatten " + toExpression(schema) + " schema";
+    throw new Error("[Sury] " + message$1);
+  };
+  let ctx$1 = {
+    field: field,
+    f: field,
+    fieldOr: fieldOr,
+    tag: tag,
+    nested: nested,
+    flatten: flatten
+  };
+  parentCtx[cacheId] = ctx$1;
+  return ctx$1;
+}
+
+function advancedBuilder(definition, flattened) {
+  return (b, input, selfSchema, path) => {
+    let isFlatten = b.g.o & 64;
+    let outputs = isFlatten ? input.properties : ({});
+    if (!isFlatten) {
+      let items = selfSchema.items;
+      for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
+        let match = items[idx];
+        let location = match.location;
+        let itemInput = get(b, input, location);
+        let inlinedLocation = inlineLocation(b, location);
+        let path$1 = path + ("[" + inlinedLocation + "]");
+        outputs[location] = parse(b, match.schema, itemInput, path$1);
+      }
+      objectStrictModeCheck(b, input, items, selfSchema, path);
+    }
+    if (flattened !== undefined) {
+      let prevFlag = b.g.o;
+      b.g.o = prevFlag | 64;
+      for (let idx$1 = 0, idx_finish$1 = flattened.length; idx$1 < idx_finish$1; ++idx$1) {
+        let item = flattened[idx$1];
+        outputs[item.i] = parse(b, item.schema, input, path);
+      }
+      b.g.o = prevFlag;
+    }
+    let getItemOutput = item => {
+      switch (item.k) {
+        case 0 :
+          return outputs[item.location];
+        case 1 :
+          return get(b, getItemOutput(item.of), item.location);
+        case 2 :
+          return outputs[item.i];
+      }
+    };
+    return definitionToOutput(b, definition, getItemOutput, selfSchema.to);
+  };
+}
+
 function definitionToTarget(definition, to, flattened) {
   let ritemsByItemPath = {};
   let ritem = definitionToRitem(definition, "", ritemsByItemPath);
   let mut = ritem.s;
   ((delete mut.refiner));
-  ((delete mut.compiler));
+  ((delete mut.decoder));
   mut.serializer = (b, input, selfSchema, path) => {
     let getRitemInput = ritem => {
       let ritemPath = ritem.p;
@@ -3008,45 +3058,6 @@ function definitionToTarget(definition, to, flattened) {
     return complete(objectVal, isArray);
   };
   return mut;
-}
-
-function advancedBuilder(definition, flattened) {
-  return (b, input, selfSchema, path) => {
-    let isFlatten = b.g.o & 64;
-    let outputs = isFlatten ? input.properties : ({});
-    if (!isFlatten) {
-      let items = selfSchema.items;
-      for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
-        let match = items[idx];
-        let location = match.location;
-        let itemInput = get(b, input, location);
-        let inlinedLocation = inlineLocation(b, location);
-        let path$1 = path + ("[" + inlinedLocation + "]");
-        outputs[location] = parse(b, match.schema, itemInput, path$1);
-      }
-      objectStrictModeCheck(b, input, items, selfSchema, path);
-    }
-    if (flattened !== undefined) {
-      let prevFlag = b.g.o;
-      b.g.o = prevFlag | 64;
-      for (let idx$1 = 0, idx_finish$1 = flattened.length; idx$1 < idx_finish$1; ++idx$1) {
-        let item = flattened[idx$1];
-        outputs[item.i] = parse(b, item.schema, input, path);
-      }
-      b.g.o = prevFlag;
-    }
-    let getItemOutput = item => {
-      switch (item.k) {
-        case 0 :
-          return outputs[item.location];
-        case 1 :
-          return get(b, getItemOutput(item.of), item.location);
-        case 2 :
-          return outputs[item.i];
-      }
-    };
-    return definitionToOutput(b, definition, getItemOutput, selfSchema.to);
-  };
 }
 
 function shape(schema, definer) {
@@ -3582,7 +3593,7 @@ function asyncParser(param) {
   }
 }
 
-function decoder(param) {
+function decoder$1(param) {
   let args = arguments;
   if (args.length !== 1) {
     let schema = {
@@ -3800,7 +3811,7 @@ function js_merge(s1, s2) {
       mut.items = items;
       mut.properties = properties;
       mut.additionalItems = additionalItems1;
-      mut.compiler = schemaCompiler;
+      mut.decoder = schemaDecoder;
       s = mut;
     } else {
       s = undefined;
@@ -4622,7 +4633,7 @@ export {
   brand,
   parser$1 as parser,
   asyncParser,
-  decoder,
+  decoder$1 as decoder,
   asyncDecoder,
   encoder,
   asyncEncoder,

@@ -107,7 +107,6 @@ S.parseOrThrow(data, userSchema)
 ## v11 initial
 
 - Add `s.parseChild` to EffectContext ???
-- Start using rescript v12 (Fix unboxed types in JSONSchema module)
 - Support arrays for `S.to`
 - Remove fieldOr in favor of optionOr?
 - Allow to pass custom error message via `.with`
@@ -117,6 +116,7 @@ S.parseOrThrow(data, userSchema)
 
 ## v???
 
+- `S.promise: S.t<'value> => S.t<promise<'value>>` and `S.await: S.t<promise<'value>> => S.t<'value>`
 - Remove `S.deepStrict` and `S.deepStrip` in favor of `S.deep` (if it works)
 - Make S.serializeToJsonString super fast
 - Somehow determine whether transformed or not (including shape)
