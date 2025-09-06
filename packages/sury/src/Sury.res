@@ -1112,7 +1112,7 @@ module Builder = {
       let varsAllocation = b.varsAllocation
       varsAllocation === ""
         ? validationCode ++ b.code
-        : `let ${varsAllocation};${validationCode}${b.code}`
+        : `${validationCode}let ${varsAllocation};${b.code}`
     }
 
     let varWithoutAllocation = (global: bGlobal) => {
@@ -1122,6 +1122,17 @@ module Builder = {
     }
 
     let _var = _b => (%raw(`this`)).inline
+
+    // Var before validation
+    let _notVarBefore = b => {
+      let val = %raw(`this`)
+      let v = b.global->varWithoutAllocation
+      val.b.code = `let ${v}=${val.inline};` ++ val.b.code
+      val.inline = v
+      val.var = _var
+      v
+    }
+
     let _notVar = b => {
       let val = %raw(`this`)
       let v = b.global->varWithoutAllocation
@@ -1168,6 +1179,19 @@ module Builder = {
     }
 
     module Val = {
+      let copy = val => {
+        let new = val->Obj.magic->X.Dict.copy->Obj.magic
+        if val.var !== _var {
+          new.var = b => {
+            let v = val.var(b)
+            new.inline = v
+            new.var = _var
+            v
+          }
+        }
+        new
+      }
+
       module Object = {
         type t = {
           ...val,
@@ -3075,7 +3099,7 @@ module Union = {
                 ~schema,
                 // Recreate input val for every union item
                 // since it might be mutated.
-                ~input=input->Obj.magic->X.Dict.copy->Obj.magic,
+                ~input=input->B.Val.copy,
                 ~output,
                 ~deopt=true,
                 ~path,
@@ -3105,44 +3129,45 @@ module Union = {
             // FIXME: Share input.var between items
             // Recreate input val for every union item
             // since it's mutated by validation
-            let inputVar = input.var(b)
-            let input: val = input->Obj.magic->X.Dict.copy->Obj.magic
-
-            let tag = firstSchema.tag
-            let tagFlag = TagFlag.get(tag)
-            let typeValidationCond = if tagFlag->Flag.unsafeHas(TagFlag.null) {
-              input.schema = nullLiteral
-              `${inputVar}===null`
-            } else if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
-              input.schema = unit
-              `${inputVar}===void 0`
-            } else if tagFlag->Flag.unsafeHas(TagFlag.object) {
-              let mut = base(tag)
-              mut.properties = Some(X.Object.immutableEmpty)
-              mut.additionalItems = Some(Schema(unknown->castToPublic))
-              input.schema = mut
-              `typeof ${inputVar}==="${(tag :> string)}"&&${inputVar}`
-            } else if tagFlag->Flag.unsafeHas(TagFlag.array) {
-              let mut = base(tag)
-              mut.properties = Some(X.Object.immutableEmpty)
-              mut.additionalItems = Some(Schema(unknown->castToPublic))
-              input.schema = mut
-              `Array.isArray(${inputVar})`
-            } else if tagFlag->Flag.unsafeHas(TagFlag.instance) {
-              let mut = base(tag)
-              mut.class = firstSchema.class
-              input.schema = mut
-              `${inputVar} instanceof ${b->B.embed(firstSchema.class)}`
-            } else if tagFlag->Flag.unsafeHas(TagFlag.nan) {
-              input.schema = nan
-              `Number.isNaN(${inputVar})`
-            } else {
-              input.schema = base(tag)
-              `typeof ${inputVar}==="${(tag :> string)}"`
-            }
+            let input: val = input->B.Val.copy
 
             // Make cond as a weird callback, to prevent input.var call until it's needed
-            let cond = ref(%raw(`0`))
+            let cond = ref({
+              let tag = firstSchema.tag
+              let tagFlag = TagFlag.get(tag)
+
+              // FIXME: Write it in a sane way 😅
+              if tagFlag->Flag.unsafeHas(TagFlag.null) {
+                input.schema = nullLiteral
+                (~input as _) => `${output.var(b)}===null`
+              } else if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
+                input.schema = unit
+                (~input as _) => `${output.var(b)}===void 0`
+              } else if tagFlag->Flag.unsafeHas(TagFlag.object) {
+                let mut = base(tag)
+                mut.properties = Some(X.Object.immutableEmpty)
+                mut.additionalItems = Some(Schema(unknown->castToPublic))
+                input.schema = mut
+                (~input as _) => `typeof ${output.var(b)}==="${(tag :> string)}"&&${output.var(b)}`
+              } else if tagFlag->Flag.unsafeHas(TagFlag.array) {
+                let mut = base(tag)
+                mut.properties = Some(X.Object.immutableEmpty)
+                mut.additionalItems = Some(Schema(unknown->castToPublic))
+                input.schema = mut
+                (~input as _) => `Array.isArray(${output.var(b)})`
+              } else if tagFlag->Flag.unsafeHas(TagFlag.instance) {
+                let mut = base(tag)
+                mut.class = firstSchema.class
+                input.schema = mut
+                (~input as _) => `${output.var(b)} instanceof ${b->B.embed(firstSchema.class)}`
+              } else if tagFlag->Flag.unsafeHas(TagFlag.nan) {
+                input.schema = nan
+                (~input as _) => `Number.isNaN(${output.var(b)})`
+              } else {
+                input.schema = base(tag)
+                (~input as _) => `typeof ${output.var(b)}==="${(tag :> string)}"`
+              }
+            })
 
             let body = if isMultiple {
               let itemStart = ref("")
@@ -3271,8 +3296,6 @@ module Union = {
                 itemIdx := itemIdx.contents->X.Int.plus(1)
               }
 
-              cond := ((~input as _) => typeValidationCond)
-
               if itemNoop.contents->X.String.unsafeToBool {
                 if itemStart.contents->X.String.unsafeToBool {
                   if typeValidation {
@@ -3294,10 +3317,11 @@ module Union = {
 
               itemStart.contents ++ itemEnd.contents
             } else {
+              let condBefore = cond.contents
               cond :=
                 (
                   (~input) => {
-                    typeValidationCond ++
+                    condBefore(~input) ++
                     b->B.refinement(~input, ~schema=firstSchema, ~negative=false)
                   }
                 )
@@ -3310,7 +3334,7 @@ module Union = {
               start := start.contents ++ if_ ++ `(${cond.contents(~input)}){${body}}`
               nextElse := true
             } else if typeValidation {
-              let cond = cond.contents(~input)
+              let cond = cond.contents(~input=output)
               noop := (noop.contents->X.String.unsafeToBool ? `${noop.contents}||${cond}` : cond)
             }
           }
@@ -3353,7 +3377,7 @@ module Union = {
             output.inline = initialInline
             output
           } else {
-            output->Obj.magic->X.Dict.copy->Obj.magic
+            output->B.Val.copy
           }
         } else {
           output
@@ -3628,7 +3652,6 @@ module Array = {
 
   let arrayDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
     let inputTagFlag = input.schema.tag->TagFlag.get
-
     let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
       b.validation = Some(
         (~inputVar, ~mode) => {
@@ -3648,6 +3671,7 @@ module Array = {
       )
       unknown
     } else if inputTagFlag->Flag.unsafeHas(TagFlag.array) {
+      // FIXME: Won't work for tuples
       let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
       // TODO: Remove it when unionDecoder is improved
@@ -3667,6 +3691,7 @@ module Array = {
 
     let bb = b->B.scope
     let itemInput = bb->B.val(`${inputVar}[${iteratorVar}]`, ~schema=itemInputSchema)
+    itemInput.var = B._notVarBefore
     let itemOutput =
       bb->B.withPathPrepend(~input=itemInput, ~path, ~dynamicLocationVar=iteratorVar, (
         b,
@@ -3765,19 +3790,62 @@ let deepStrict = schema => {
 
 module Dict = {
   let dictDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
-    let item = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
+    let inputTagFlag = input.schema.tag->TagFlag.get
+    let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+      b.validation = Some(
+        (~inputVar, ~mode) => {
+          switch mode {
+          | Fail =>
+            b->B.failWithArg(
+              ~path,
+              input => InvalidType({
+                expected: selfSchema->castToPublic,
+                received: input,
+              }),
+              inputVar,
+            )
+          | Refinement(negative) =>
+            `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(
+                ~negative,
+              )}${B.exp(~negative)}${inputVar}` ++ if (
+              selfSchema.additionalItems->X.Option.getUnsafe === Strip
+            ) {
+              ""
+            } else {
+              `${B.and_(~negative)}${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
+            }
+          }
+        },
+      )
+      unknown
+    } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
+      // FIXME: Won't work for tuples
+      let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
+
+      // TODO: Remove it when unionDecoder is improved
+      if s.tag !== unionTag {
+        s
+      } else {
+        unknown
+      }
+    } else {
+      b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+    }
+
+    let itemSchema = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
     let inputVar = b->B.Val.var(input)
     let keyVar = b.global->B.varWithoutAllocation
 
     let bb = b->B.scope
-    let itemInput = bb->B.val(`${inputVar}[${keyVar}]`, ~schema=unknown) // FIXME: should get from additionalItems
+    let itemInput = bb->B.val(`${inputVar}[${keyVar}]`, ~schema=itemInputSchema)
+    itemInput.var = B._notVarBefore
     let itemOutput =
       bb->B.withPathPrepend(~path, ~input=itemInput, ~dynamicLocationVar=keyVar, (
         b,
         ~input,
         ~path,
-      ) => b->parse(~schema=item, ~input, ~path))
+      ) => b->parse(~schema=itemSchema, ~input, ~path))
     let itemCode = bb->B.allocateScope(~input=itemInput)
     let isTransformed = itemInput !== itemOutput
     let output = isTransformed ? b->B.val("{}", ~schema=selfSchema) : input // FIXME: schema
