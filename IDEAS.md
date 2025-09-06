@@ -33,6 +33,8 @@
 
 TODO:
 
+I left on cleaning up validation code and moving everything to their own decoder functions
+
 - Keep current operationFn approach. Rename to makeOperation
 - Use define property to be enumerable and simplify copy
 - Add counter and set unique id to each schema

@@ -3,6 +3,15 @@ import { expectType, TypeEqual } from "ts-expect";
 
 import * as S from "../src/S.js";
 
+// FIXME: S.max should be applied to output
+// From https://x.com/dzakh_dev/status/1963982551208309222
+// const PixelSchema = S.pattern(/^\d{1,3}px$/)
+//   .with(S.to, S.number, parseInt)
+//   .with(S.max, 100)
+//   .with(S.meta, {
+//     description: "A pixel value between 0 and 100",
+//   });
+
 // FIXME: Move the test to e2e
 // import { stringSchema } from "../genType/GenType.gen.js";
 
@@ -317,6 +326,16 @@ test("Successfully parses array", (t) => {
   expectType<TypeEqual<typeof value, string[]>>(true);
 });
 
+test("Transforms array of bigint to array of string", (t) => {
+  const fn = S.decoder(S.array(S.bigint), S.array(S.string));
+
+  t.deepEqual(
+    fn.toString(),
+    `i=>{let v5=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v4;try{v4=""+i[v2]}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v5[v2]=v4}return v5}`
+  );
+  t.deepEqual(fn([123n]), ["123"]);
+});
+
 test("Successfully parses array with min and max refinements", (t) => {
   const schema = S.array(S.string).with(S.min, 1).with(S.max, 2);
   const value = S.parser(schema)(["foo"]);
@@ -617,8 +636,7 @@ test("Successfully reverse converts to Json with valid value", (t) => {
 });
 
 test("Successfully reverse converts to Json string with valid value", (t) => {
-  const schema = S.int32;
-  const result = S.encoder(schema, S.jsonString)(123);
+  const result = S.encoder(S.int32, S.jsonString)(123);
 
   t.deepEqual(result, `123`);
 

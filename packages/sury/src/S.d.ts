@@ -719,11 +719,7 @@ export const url: <Input>(
   schema: Schema<string, Input>,
   message?: string
 ) => Schema<string, Input>;
-export const pattern: <Input>(
-  schema: Schema<string, Input>,
-  re: RegExp,
-  message?: string
-) => Schema<string, Input>;
+export const pattern: (re: RegExp, message?: string) => Schema<string, string>;
 export const datetime: <Input>(
   schema: Schema<string, Input>,
   message?: string
