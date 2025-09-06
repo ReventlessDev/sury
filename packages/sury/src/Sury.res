@@ -684,7 +684,7 @@ let rec stringify = unknown => {
   let tagFlag = unknown->Type.typeof->(Obj.magic: Type.t => tag)->TagFlag.get
 
   if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
-    (unknownTag :> string)
+    (undefinedTag :> string)
   } else if tagFlag->Flag.unsafeHas(TagFlag.object) {
     if unknown === %raw(`null`) {
       (nullTag :> string)
@@ -2041,20 +2041,21 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
   ) {
     ()
   } else if schema.name === Some(jsonName) && !(inputTagFlag->Flag.unsafeHas(TagFlag.unknown)) {
-    if (
-      inputTagFlag->Flag.unsafeHas(
-        TagFlag.string
-        ->Flag.with(TagFlag.number)
-        ->Flag.with(TagFlag.boolean)
-        ->Flag.with(TagFlag.null),
-      )
-    ) {
-      ()
-    } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-      input := b->inputToString(input.contents)
-    } else {
-      isUnsupported := true
-    }
+    // if (
+    //   inputTagFlag->Flag.unsafeHas(
+    //     TagFlag.string
+    //     ->Flag.with(TagFlag.number)
+    //     ->Flag.with(TagFlag.boolean)
+    //     ->Flag.with(TagFlag.null),
+    //   )
+    // ) {
+    //   ()
+    // } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    //   input := b->inputToString(input.contents)
+    // } else {
+    //   isUnsupported := true
+    // }
+    ()
   } else if isSchemaLiteral {
     () // Should be done in literalDecoder
   } else if isFromLiteral && !isSchemaLiteral {
@@ -2188,7 +2189,9 @@ and internalCompile = (~schema, ~flag, ~defs) => {
     var: B._var,
     inline: Builder.intitialInputVar,
     flag: ValFlag.none,
-    schema: if flag->Flag.unsafeHas(Flag.typeValidation) || schema->isLiteral {
+    schema: if (
+      flag->Flag.unsafeHas(Flag.typeValidation) || schema.tag === unionTag || schema->isLiteral
+    ) {
       unknown
     } else {
       schema
@@ -2231,7 +2234,7 @@ and internalCompile = (~schema, ~flag, ~defs) => {
 
     let inlinedFunction = `${Builder.intitialInputVar}=>{${code}return ${inlinedOutput.contents}}`
 
-    // Js.log(inlinedFunction)
+    Js.log(inlinedFunction)
 
     X.Function.make2(
       ~ctxVarName1="e",
@@ -2456,7 +2459,7 @@ let recursiveDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
       def
       ->Obj.magic
       ->X.Dict.setByInt(flag, 0)
-      let fn = internalCompile(~schema=def, ~flag, ~defs=b.global.defs)
+      let fn = internalCompile(~schema=def, ~flag, ~defs=Some(defs))
       def
       ->Obj.magic
       ->X.Dict.setByInt(flag, fn)
@@ -3930,15 +3933,28 @@ module String = {
 
 let json = shaken("json")
 
+let jsonDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+  if input.schema.ref === json.ref {
+    input
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    recursiveDecoder(b, ~input, ~selfSchema, ~path)
+  } else {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  }
+})
+
 let enableJson = () => {
   if json->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
     let _ = %raw(`delete json.as`)
     let jsonRef = base(refTag)
     jsonRef.ref = Some(`${defsPath}${jsonName}`)
     jsonRef.name = Some(jsonName)
+    jsonRef.decoder = Some(jsonDecoder)
     json.tag = jsonRef.tag
     json.ref = jsonRef.ref
     json.name = Some(jsonName)
+    json.decoder = Some(jsonDecoder)
     let defs = Js.Dict.empty()
     defs->Js.Dict.set(
       jsonName,

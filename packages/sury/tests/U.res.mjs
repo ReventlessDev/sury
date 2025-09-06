@@ -129,15 +129,14 @@ function getCompiledCodeString(schema, op) {
     contents: toCode(schema)
   };
   let defs = schema.$defs;
-  if (defs !== undefined) {
+  if (defs !== undefined && code.contents !== noopOpCode) {
     Stdlib_Dict.forEachWithKey(defs, (schema, key) => {
       try {
         code.contents = code.contents + "\n" + (key + ": " + toCode(schema));
         return;
-      } catch (raw_exn) {
-        let exn = Primitive_exceptions.internalToException(raw_exn);
-        console.error(exn);
-        return;
+      } catch (exn) {
+        console.error("An error caught in U.getCompiledCodeString");
+        throw exn;
       }
     });
   }

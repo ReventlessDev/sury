@@ -6,7 +6,7 @@ open Ava
 //     var $_$c = $_$wf(3);␊ 
 //     return $_$w(3, 444, $_$c), i;␊ 
 // }
-let noopOpCode = (
+let noopOpCode: string = (
   S.unknown->S.compile(~input=Any, ~output=Unknown, ~mode=Sync, ~typeValidation=false)->Obj.magic
 )["toString"]()
 
@@ -147,15 +147,18 @@ let getCompiledCodeString = (
   let code = ref(schema->toCode)
 
   switch (schema->S.untag).defs {
-  | Some(defs) =>
+  | Some(defs) if code.contents !== noopOpCode =>
     defs->Dict.forEachWithKey((schema, key) =>
       try {
         code := code.contents ++ "\n" ++ `${key}: ${schema->toCode}`
       } catch {
-      | exn => Console.error(exn)
+      | exn => {
+          Console.error("An error caught in U.getCompiledCodeString")
+          throw(exn)
+        }
       }
     )
-  | None => ()
+  | _ => ()
   }
 
   code.contents
