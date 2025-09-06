@@ -28,7 +28,7 @@ test("Coerce from string to bool", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0;(v0=i==="true")||i==="false"||e[1](i);return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0;(v0=i==="true")||i==="false"||e[0](i);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -85,7 +85,7 @@ test("Coerce from string to bool literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}i==="false"||e[1](i);return false}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="false"){e[0](i)}return false}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==false){e[0](i)}return "false"}`)
 })
@@ -110,7 +110,7 @@ test("Coerce from string to null literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}i==="null"||e[1](i);return null}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="null"){e[0](i)}return null}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==null){e[0](i)}return "null"}`)
 })
@@ -135,7 +135,7 @@ test("Coerce from string to undefined literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}i==="undefined"||e[1](i);return void 0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="undefined"){e[0](i)}return void 0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -164,7 +164,7 @@ test("Coerce from string to NaN literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}i==="NaN"||e[1](i);return NaN}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="NaN"){e[0](i)}return NaN}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -205,7 +205,7 @@ test("Coerce from string to string literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}if(i!=="\\"\'\`"){e[1](i)}return i}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="\\"\'\`"){e[0](i)}return i}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!=="\\"\'\`"){e[0](i)}return i}`)
 })
@@ -277,7 +277,7 @@ test("Coerce from string to float", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0=+i;Number.isNaN(v0)&&e[1](i);return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;Number.isNaN(v0)&&e[0](i);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -318,7 +318,7 @@ test("Coerce from string to int32", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0=+i;(v0>2147483647||v0<-2147483648||v0%1!==0)&&e[1](i);return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;(v0>2147483647||v0<-2147483648||v0%1!==0)&&e[0](i);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -345,7 +345,7 @@ test("Coerce from string to port", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0=+i;(Number.isNaN(v0))&&e[1](i);v0>0&&v0<65536&&v0%1===0||e[2](v0);return v0}`,
+    `i=>{if(typeof i!=="string"){e[2](i)}let v0=+i;(Number.isNaN(v0))&&e[0](i);v0>0&&v0<65536&&v0%1===0||e[1](v0);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -386,9 +386,9 @@ test("Coerce from string to bigint literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}i==="10"||e[1](i);return 10n}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="10"){e[0](i)}return 10n}`,
   )
-  t->U.assertCompiledCode(~schema, ~op=#Convert, `i=>{i==="10"||e[0](i);return 10n}`)
+  t->U.assertCompiledCode(~schema, ~op=#Convert, `i=>{if(i!=="10"){e[0](i)}return 10n}`)
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==10n){e[0](i)}return "10"}`)
 })
 
@@ -412,7 +412,7 @@ test("Coerce from string to bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=BigInt(i)}catch(_){e[1](i)}return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -475,7 +475,7 @@ test("Coerce string to unboxed union (each item separately)", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}try{let v0=+i;Number.isNaN(v0)&&e[1](i);i=v0}catch(e0){try{let v1;(v1=i==="true")||i==="false"||e[2](i);i=v1}catch(e1){e[3](i,e0,e1)}}return i}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}try{let v0=+i;Number.isNaN(v0)&&e[0](i);i=v0}catch(e0){try{let v1;(v1=i==="true")||i==="false"||e[1](i);i=v1}catch(e1){e[2](i,e0,e1)}}return i}`,
   )
 
   t->Assert.deepEqual(Number(10.)->S.reverseConvertOrThrow(schema), %raw(`"10"`))
@@ -567,7 +567,7 @@ test("Coerce from string to optional bool", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}try{let v0;(v0=i==="true")||i==="false"||e[1](i);i=v0}catch(e0){try{i==="undefined"||e[2](i);i=void 0}catch(e1){e[3](i,e0,e1)}}return i}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}try{let v0;(v0=i==="true")||i==="false"||e[0](i);i=v0}catch(e0){try{if(i!=="undefined"){e[1](i)}i=void 0}catch(e1){e[2](i,e0,e1)}}return i}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -600,7 +600,7 @@ test("Coerce from string to JSON and then to bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=BigInt(i)}catch(_){e[1](i)}return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
   t->U.assertCompiledCode(
@@ -610,7 +610,7 @@ test("Coerce from string to JSON and then to bigint", t => {
   )
 })
 
-// Only.test("Coerce from JSON to bigint", t => {
+// test("Coerce from JSON to bigint", t => {
 //   let schema = S.json->S.to(S.bigint)
 
 //   t->Assert.deepEqual("123"->S.parseOrThrow(schema), %raw(`123n`))
@@ -624,7 +624,7 @@ test("Coerce from string to JSON and then to bigint", t => {
 //   t->U.assertCompiledCode(
 //     ~schema,
 //     ~op=#Parse,
-//     `i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=BigInt(i)}catch(_){e[1](i)}return v0}`,
+//     `i=>{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}return v0}`,
 //   )
 //   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
 //   t->U.assertCompiledCode(
@@ -666,7 +666,7 @@ test("Coerce from union to bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseParse,
-    `i=>{if(typeof i!=="bigint"){e[0](i)}try{i=""+i}catch(e0){try{throw e[1]}catch(e1){try{throw e[2]}catch(e2){e[3](i,e0,e1,e2)}}}return i}`,
+    `i=>{if(typeof i!=="bigint"){e[3](i)}try{i=""+i}catch(e0){try{throw e[0]}catch(e1){try{throw e[1]}catch(e2){e[2](i,e0,e1,e2)}}}return i}`,
   )
 })
 
@@ -690,7 +690,11 @@ test("Coerce from union to bigint with refinement on union", t => {
 
 test("Coerce from union to bigint with refinement on union (with an item transformed to)", t => {
   let schema =
-    S.union([S.string->S.castToUnknown, S.float->S.to(S.string)->S.castToUnknown, S.bool->S.castToUnknown])
+    S.union([
+      S.string->S.castToUnknown,
+      S.float->S.to(S.string)->S.castToUnknown,
+      S.bool->S.castToUnknown,
+    ])
     ->S.refine(s =>
       v =>
         if typeof(v) === #bigint {
@@ -703,10 +707,9 @@ test("Coerce from union to bigint with refinement on union (with an item transfo
     ~schema,
     ~op=#Parse,
     `i=>{if(typeof i==="string"){e[0](i);let v0;try{v0=BigInt(i)}catch(_){e[1](i)}i=v0}else if(typeof i==="number"&&!Number.isNaN(i)){let v1=""+i;e[2](v1);let v2;try{v2=BigInt(v1)}catch(_){e[3](v1)}i=v2}else if(typeof i==="boolean"){throw e[5]}else{e[6](i)}return i}`,
-    ~message="Should apply refinement after the item transformation"
+    ~message="Should apply refinement after the item transformation",
   )
 })
-
 
 test("Coerce from union to bigint and then to string", t => {
   let schema =

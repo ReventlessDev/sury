@@ -1519,7 +1519,6 @@ module Builder = {
     let and_ = (~negative) => negative ? "||" : "&&"
     let exp = (~negative) => negative ? "!" : ""
     let lt = (~negative) => negative ? ">" : "<"
-    let mod = (~negative) => negative ? "%1" : "%0"
 
     let rec validation = (b, ~input, ~schema, ~negative) => {
       let eq = eq(~negative)
@@ -1674,35 +1673,6 @@ module Builder = {
     //   mut
     // }
 
-    let typeFilterCode = (b: b, ~schema, ~input, ~path) => {
-      if (
-        schema.noValidation->X.Option.getUnsafe ||
-          schema.tag
-          ->TagFlag.get
-          ->Flag.unsafeHas(
-            TagFlag.unknown
-            ->Flag.with(TagFlag.union)
-            ->Flag.with(TagFlag.ref)
-            ->Flag.with(TagFlag.never),
-          )
-      ) {
-        ""
-      } else {
-        `if(${b->validation(~input, ~schema, ~negative=true)}${b->refinement(
-            ~schema,
-            ~input,
-            ~negative=true,
-          )}){${b->failWithArg(
-            ~path,
-            input => InvalidType({
-              expected: schema->castToPublic,
-              received: input,
-            }),
-            b->Val.var(input),
-          )}}`
-      }
-    }
-
     let unsupportedTransform = (b, ~from, ~target, ~path) => {
       b->throw(
         ~code=UnsupportedTransformation({
@@ -1785,7 +1755,7 @@ let numberDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
     b.code =
       b.code ++
       switch selfSchema.format {
-      | None => `Number.isNaN(${output.inline})`
+      | None => `Number.isNaN(${output.var(b)})`
       | Some(_) =>
         `(${b
           ->B.refinement(~input=output, ~schema=selfSchema, ~negative=true)
@@ -1803,111 +1773,148 @@ let numberDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
 float.decoder = Some(numberDecoder)
 int.decoder = Some(numberDecoder)
 
-string.decoder = Some(
-  Builder.make((b, ~input, ~selfSchema, ~path) => {
-    let inputTagFlag = input.schema.tag->TagFlag.get
-    if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-      input.schema = selfSchema
-      b.validation = Some(
-        (~inputVar, ~mode) => {
-          switch mode {
-          | Fail =>
-            b->B.failWithArg(
-              ~path,
-              input => InvalidType({
-                expected: selfSchema->castToPublic,
-                received: input,
-              }),
-              inputVar,
-            )
-          | Refinement(negative) => `typeof ${inputVar}${B.eq(~negative)}"${(stringTag :> string)}"`
-          }
-        },
-      )
-      input
-    } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.string)) {
-      b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
-    } else {
-      input
-    }
-  }),
-)
-
-bool.decoder = Some(
-  Builder.make((b, ~input, ~selfSchema, ~path) => {
-    let inputTagFlag = input.schema.tag->TagFlag.get
-    if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-      input.schema = selfSchema
-      b.validation = Some(
-        (~inputVar, ~mode) => {
-          switch mode {
-          | Fail =>
-            b->B.failWithArg(
-              ~path,
-              input => InvalidType({
-                expected: selfSchema->castToPublic,
-                received: input,
-              }),
-              inputVar,
-            )
-          | Refinement(negative) =>
-            `typeof ${inputVar}${B.eq(~negative)}"${(booleanTag :> string)}"`
-          }
-        },
-      )
-      input
-    } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.boolean)) {
-      b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
-    } else {
-      input
-    }
-  }),
-)
-
-bigint.decoder = Some(
-  Builder.make((b, ~input, ~selfSchema, ~path) => {
-    let inputTagFlag = input.schema.tag->TagFlag.get
-
-    if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-      input.schema = selfSchema
-      b.validation = Some(
-        (~inputVar, ~mode) => {
-          switch mode {
-          | Fail =>
-            b->B.failWithArg(
-              ~path,
-              input => InvalidType({
-                expected: selfSchema->castToPublic,
-                received: input,
-              }),
-              inputVar,
-            )
-          | Refinement(negative) => `typeof ${inputVar}${B.eq(~negative)}"${(bigintTag :> string)}"`
-          }
-        },
-      )
-      input
-    } // FIXME: Skip formats which 100% don't match
-    else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-      let output = b->B.allocateVal(~schema=selfSchema)
-      let inputVar = input.var(b)
-      b.code =
-        b.code ++
-        `try{${output.inline}=BigInt(${inputVar})}catch(_){${b->failTransform(
-            ~inputVar,
+let stringDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    input.schema = selfSchema
+    b.validation = Some(
+      (~inputVar, ~mode) => {
+        switch mode {
+        | Fail =>
+          b->B.failWithArg(
             ~path,
-            ~target=selfSchema,
-          )}}`
-      output
-    } else if inputTagFlag->Flag.unsafeHas(TagFlag.number) {
-      b->B.val(`BigInt(${input.inline})`, ~schema=selfSchema)
-    } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.bigint)) {
-      b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
-    } else {
-      input
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )
+        | Refinement(negative) => `typeof ${inputVar}${B.eq(~negative)}"${(stringTag :> string)}"`
+        }
+      },
+    )
+    input
+  } else if (
+    inputTagFlag->Flag.unsafeHas(
+      TagFlag.boolean->Flag.with(
+        TagFlag.number->Flag.with(
+          TagFlag.bigint->Flag.with(
+            TagFlag.undefined->Flag.with(TagFlag.null->Flag.with(TagFlag.nan)),
+          ),
+        ),
+      ),
+    ) && input.schema->isLiteral
+  ) {
+    let const = %raw(`""+input.s.const`)
+    let schema = base(stringTag)
+    schema.const = const->Obj.magic
+    {
+      b,
+      flag: ValFlag.none,
+      schema,
+      var: B._notVar,
+      inline: `"${const}"`,
     }
-  }),
-)
+  } else if (
+    inputTagFlag->Flag.unsafeHas(
+      TagFlag.boolean->Flag.with(TagFlag.number->Flag.with(TagFlag.bigint)),
+    )
+  ) {
+    b->inputToString(input)
+  } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.string)) {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  } else {
+    input
+  }
+})
+
+string.decoder = Some(stringDecoder)
+
+let booleanDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    input.schema = selfSchema
+    b.validation = Some(
+      (~inputVar, ~mode) => {
+        switch mode {
+        | Fail =>
+          b->B.failWithArg(
+            ~path,
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )
+        | Refinement(negative) => `typeof ${inputVar}${B.eq(~negative)}"${(booleanTag :> string)}"`
+        }
+      },
+    )
+    input
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
+    let output = b->B.allocateVal(~schema=selfSchema)
+    let inputVar = input.var(b)
+    b.code =
+      b.code ++
+      `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${b->failTransform(
+          ~inputVar,
+          ~path,
+          ~target=selfSchema,
+        )};`
+    output
+  } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.boolean)) {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  } else {
+    input
+  }
+})
+
+bool.decoder = Some(booleanDecoder)
+
+let bigintDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    input.schema = selfSchema
+    b.validation = Some(
+      (~inputVar, ~mode) => {
+        switch mode {
+        | Fail =>
+          b->B.failWithArg(
+            ~path,
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )
+        | Refinement(negative) => `typeof ${inputVar}${B.eq(~negative)}"${(bigintTag :> string)}"`
+        }
+      },
+    )
+    input
+  } // FIXME: Skip formats which 100% don't match
+  else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
+    let output = b->B.allocateVal(~schema=selfSchema)
+    let inputVar = input.var(b)
+    b.code =
+      b.code ++
+      `try{${output.inline}=BigInt(${inputVar})}catch(_){${b->failTransform(
+          ~inputVar,
+          ~path,
+          ~target=selfSchema,
+        )}}`
+    output
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.number) {
+    b->B.val(`BigInt(${input.inline})`, ~schema=selfSchema)
+  } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.bigint)) {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  } else {
+    input
+  }
+})
+
+bigint.decoder = Some(bigintDecoder)
 
 let setHas = (has, tag: tag) => {
   has->Js.Dict.set(
@@ -1952,7 +1959,8 @@ module Literal = {
           (~inputVar, ~mode) => {
             switch mode {
             | Fail => b->failTransform(~inputVar, ~path, ~target=selfSchema)
-            | Refinement(negative) => `${inputVar}${B.eq(~negative)}${selfSchema.const->Obj.magic}`
+            | Refinement(negative) =>
+              `${inputVar}${B.eq(~negative)}"${selfSchema.const->Obj.magic}"`
             }
           },
         )
@@ -2028,104 +2036,9 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
   //   "schema": schema,
   // })
 
-  let isFromLiteral = input.contents->Obj.magic->isLiteral
-  let isSchemaLiteral = schema->isLiteral
-  let inputTag = input.contents.schema.tag
-  let isSameTag = inputTag === schema.tag
-  let schemaTagFlag = TagFlag.get(schema.tag)
-  let inputTagFlag = TagFlag.get(inputTag)
-  let isUnsupported = ref(false)
-  if (
-    schemaTagFlag->Flag.unsafeHas(TagFlag.union->Flag.with(TagFlag.unknown)) ||
-      schema.format === Some(JSON)
-  ) {
-    ()
-  } else if schema.name === Some(jsonName) && !(inputTagFlag->Flag.unsafeHas(TagFlag.unknown)) {
-    // if (
-    //   inputTagFlag->Flag.unsafeHas(
-    //     TagFlag.string
-    //     ->Flag.with(TagFlag.number)
-    //     ->Flag.with(TagFlag.boolean)
-    //     ->Flag.with(TagFlag.null),
-    //   )
-    // ) {
-    //   ()
-    // } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-    //   input := b->inputToString(input.contents)
-    // } else {
-    //   isUnsupported := true
-    // }
-    ()
-  } else if isSchemaLiteral {
-    () // Should be done in literalDecoder
-  } else if isFromLiteral && !isSchemaLiteral {
-    if isSameTag {
-      ()
-    } else if (
-      schemaTagFlag->Flag.unsafeHas(TagFlag.string) &&
-        inputTagFlag->Flag.unsafeHas(
-          TagFlag.boolean->Flag.with(
-            TagFlag.number->Flag.with(
-              TagFlag.bigint->Flag.with(
-                TagFlag.undefined->Flag.with(TagFlag.null->Flag.with(TagFlag.nan)),
-              ),
-            ),
-          ),
-        )
-    ) {
-      let const = %raw(`""+input.const`)
-      let schema = base(stringTag)
-      schema.const = const->Obj.magic
-      input := {
-          b,
-          flag: ValFlag.none,
-          schema,
-          var: B._notVar,
-          inline: `"${const}"`,
-        }
-    } else {
-      isUnsupported := true
-    }
-  } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    switch schema.ref {
-    | Some(_) => ()
-    // FIXME: Should move to each schema decoder
-    | None => () //b.validationCode = prevB->B.typeFilterCode(~schema, ~input=input.contents, ~path)
-    }
-  } else if (
-    schemaTagFlag->Flag.unsafeHas(TagFlag.string) &&
-      inputTagFlag->Flag.unsafeHas(
-        TagFlag.boolean->Flag.with(TagFlag.number->Flag.with(TagFlag.bigint)),
-      )
-  ) {
-    input := b->inputToString(input.contents)
-  } else if !isSameTag {
-    if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-      let inputVar = input.contents.var(b)
-      if schemaTagFlag->Flag.unsafeHas(TagFlag.boolean) {
-        let output = b->B.allocateVal(~schema) // FIXME: schema should be only simple bool
-        b.code =
-          b.code ++
-          `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${b->failTransform(
-              ~inputVar,
-              ~path,
-              ~target=schema,
-            )};`
-        input := output
-      } else {
-        isUnsupported := true
-      }
-    } else {
-      isUnsupported := true
-    }
-  }
-
   switch schema.decoder {
   | Some(decoder) => input := decoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
-  | None =>
-    if isUnsupported.contents {
-      b->B.unsupportedTransform(~from=input.contents.schema, ~target=schema, ~path)
-    }
+  | None => ()
   }
 
   if input.contents.skipTo !== Some(true) {
@@ -3935,8 +3848,19 @@ let json = shaken("json")
 
 let jsonDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
-  if input.schema.ref === json.ref {
+
+  if (
+    input.schema.ref === json.ref ||
+      inputTagFlag->Flag.unsafeHas(
+        TagFlag.string
+        ->Flag.with(TagFlag.number)
+        ->Flag.with(TagFlag.boolean)
+        ->Flag.with(TagFlag.null),
+      )
+  ) {
     input
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    b->inputToString(input)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     recursiveDecoder(b, ~input, ~selfSchema, ~path)
   } else {
