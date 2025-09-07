@@ -1181,7 +1181,7 @@ module Builder = {
     }
 
     module Val = {
-      let copy = val => {
+      let copy = (val: val): val => {
         let new = val->Obj.magic->X.Dict.copy->Obj.magic
         if val.var !== _var {
           new.var = b => {
@@ -3193,10 +3193,9 @@ module Union = {
             let isMultiple = schemas->Js.Array2.length > 1
             let firstSchema = schemas->Js.Array2.unsafe_get(0)
 
-            // FIXME: Share input.var between items
-            // Recreate input val for every union item
-            // since it's mutated by validation
-            let input: val = input->B.Val.copy
+            // Recreate input val for every tag
+            // since we want to preset validated schema
+            let input = input->B.Val.copy
 
             // Make cond as a weird callback, to prevent input.var call until it's needed
             let cond = ref({
@@ -3258,6 +3257,10 @@ module Union = {
               let itemIdx = ref(0)
               let lastIdx = schemas->Js.Array2.length - 1
               while itemIdx.contents <= lastIdx {
+                // Copy it one more time, since every case decoder
+                // might mutate the input
+                let input = input->B.Val.copy
+
                 let schema = schemas->Js.Array2.unsafe_get(itemIdx.contents)
 
                 let bb = b->B.scope
