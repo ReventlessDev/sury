@@ -1209,7 +1209,7 @@ test("Successfully parses intersected objects", (t) => {
 
   t.deepEqual(
     S.parser(schema).toString(),
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="boolean"){e[1](v1)}if(typeof v2!=="string"){e[2](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
   );
 
   expectType<
@@ -1329,7 +1329,7 @@ test("Successfully serializes S.merge", (t) => {
 
   t.deepEqual(
     S.parser(S.reverse(schema)).toString(),
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["foo"],v1=i["bar"],v2=i["baz"];if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="boolean"){e[1](v1)}if(typeof v2!=="string"){e[2](v2)}return {"foo":v0,"bar":v1,"baz":v2,}}`
   );
   t.deepEqual(
     S.encoder(schema).toString().startsWith("function noopOperation(i) {"),
@@ -1397,7 +1397,7 @@ test("Merge overwrites the left fields by schema from the right", (t) => {
       }),
     {
       name: "SuryError",
-      message: `Failed parsing: Expected { type: "foo"; name: string; fooCount: number; }, received { type: "bar"; name: "foo"; fooCount: 123; }`,
+      message: `Failed parsing at ["type"]: Expected "foo", received "bar"`,
     }
   );
 });
@@ -2478,7 +2478,7 @@ test("Parse to literal with no validation to emulate assert", async (t) => {
   t.deepEqual(fn({ foo: "bar" }), true);
   t.deepEqual(
     fn.toString(),
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="string"){e[1](v0)}return true}`
+    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["foo"];if(typeof v0!=="string"){e[0](v0)}return true}`
   );
 });
 

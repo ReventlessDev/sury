@@ -2445,16 +2445,56 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
       let keys = Js.Dict.keys(properties)
 
       let objectVal = b->B.Val.Object.make(~schema=selfSchema)
+      let isTransformed = ref(false)
 
       for idx in 0 to keys->Js.Array2.length - 1 {
         let key = keys->Js.Array2.unsafe_get(idx)
         let schema = properties->Js.Dict.unsafeGet(key)
         let itemInput = b->B.Val.get(input, key)
         let path = path->Path.concat(b->B.inlineLocation(key)->Path.fromInlinedLocation)
-        objectVal->B.Val.Object.add(~location=key, b->parse(~schema, ~input=itemInput, ~path))
+        let itemOutput = b->parse(~schema, ~input=itemInput, ~path)
+        objectVal->B.Val.Object.add(~location=key, itemOutput)
+        if itemOutput !== itemInput {
+          isTransformed := true
+        }
       }
 
-      objectVal->B.Val.Object.complete
+      // FIXME: Run only for unknown input
+      if selfSchema.additionalItems === Some(Strict) {
+        let key = b->B.allocateVal(~schema=unknown)
+        let keyVar = key.inline
+        b.code = b.code ++ `for(${keyVar} in ${b->B.Val.var(input)}){if(`
+        switch keys {
+        | [] => b.code = b.code ++ "true"
+        | _ =>
+          for idx in 0 to keys->Js.Array2.length - 1 {
+            let key = keys->Js.Array2.unsafe_get(idx)
+            if idx !== 0 {
+              b.code = b.code ++ "&&"
+            }
+            b.code = b.code ++ `${keyVar}!==${b->B.inlineLocation(key)}`
+          }
+        }
+        b.code =
+          b.code ++
+          `){${b->B.failWithArg(
+              ~path,
+              exccessFieldName => ExcessField(exccessFieldName),
+              keyVar,
+            )}}}`
+      }
+
+      if (
+        isTransformed.contents ||
+        switch input.schema.additionalItems->X.Option.getUnsafe {
+        | Schema(_) => true
+        | _ => false // FIXME: For Strip mode check that the input is not wider
+        }
+      ) {
+        objectVal->B.Val.Object.complete
+      } else {
+        input
+      }
     }
   }
 })
