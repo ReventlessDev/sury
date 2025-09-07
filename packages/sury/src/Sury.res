@@ -542,6 +542,8 @@ and val = {
   mutable schema: internal,
   @as("t")
   mutable skipTo?: bool,
+  @as("d")
+  mutable vals?: dict<val>,
 }
 @unboxed and validationMode = | @as(0) Fail | Refinement(bool) // true for negative (normal), false for positive (union)
 and b = {
@@ -1138,7 +1140,7 @@ module Builder = {
       let v = b.global->varWithoutAllocation
       switch val.inline {
       | "" => val.b.allocate(v)
-      | i if b.allocate !== %raw(`void 0`) => b.allocate(`${v}=${i}`)
+      | i if val.b.allocate !== %raw(`void 0`) => val.b.allocate(`${v}=${i}`)
       | i =>
         b.code = b.code ++ `${v}=${i};`
         b.global.allocate(v)
@@ -1211,65 +1213,51 @@ module Builder = {
           value ++ ","
         }
 
-        let make = (b: b, ~isArray): t => {
-          let schema = if isArray {
-            base(arrayTag)
-          } else {
-            base(objectTag)
-          }
-          schema.properties = Some(X.Object.immutableEmpty)
-
-          // FIXME: additionalItems should be passed from external
-          schema.additionalItems = Some(Schema(unknown->castToPublic))
-
+        let make = (b: b, ~schema): t => {
           {
             b,
             var: _notVar,
             inline: "",
             flag: ValFlag.none,
-            join: isArray ? arrayJoin : objectJoin,
+            join: schema.tag === arrayTag ? arrayJoin : objectJoin,
             asyncCount: 0,
             promiseAllContent: "",
             schema,
+            vals: Js.Dict.empty(),
           }
         }
 
         let add = (objectVal, ~location, val: val) => {
-          ()
-          // let inlinedLocation = objectVal.b->inlineLocation(location)
-          // objectVal.properties->X.Option.getUnsafe->Js.Dict.set(location, val)
-          // if val.flag->Flag.unsafeHas(ValFlag.async) {
-          //   objectVal.promiseAllContent = objectVal.promiseAllContent ++ val.inline ++ ","
-          //   objectVal.inline =
-          //     objectVal.inline ++ objectVal.join(inlinedLocation, `a[${%raw(`objectVal.c++`)}]`)
-          // } else {
-          //   objectVal.inline = objectVal.inline ++ objectVal.join(inlinedLocation, val.inline)
-          // }
+          let inlinedLocation = objectVal.b->inlineLocation(location)
+          objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
+          if val.flag->Flag.unsafeHas(ValFlag.async) {
+            objectVal.promiseAllContent = objectVal.promiseAllContent ++ val.inline ++ ","
+            objectVal.inline =
+              objectVal.inline ++ objectVal.join(inlinedLocation, `a[${%raw(`objectVal.c++`)}]`)
+          } else {
+            objectVal.inline = objectVal.inline ++ objectVal.join(inlinedLocation, val.inline)
+          }
         }
 
-        let merge = (target, subObjectVal: val) => {
-          // let locations = subObjectVal.properties->X.Option.getUnsafe->Js.Dict.keys
-          // for idx in 0 to locations->Js.Array2.length - 1 {
-          //   let location = locations->Js.Array2.unsafe_get(idx)
-          //   target->add(
-          //     ~location,
-          //     subObjectVal.properties->X.Option.getUnsafe->Js.Dict.unsafeGet(location),
-          //   )
-          // }
-          ()
+        let merge = (target, vals: dict<val>) => {
+          let locations = vals->Js.Dict.keys
+          for idx in 0 to locations->Js.Array2.length - 1 {
+            let location = locations->Js.Array2.unsafe_get(idx)
+            target->add(~location, vals->Js.Dict.unsafeGet(location))
+          }
         }
 
-        let complete = (objectVal, ~isArray) => {
-          // objectVal.inline = isArray
-          //   ? "[" ++ objectVal.inline ++ "]"
-          //   : "{" ++ objectVal.inline ++ "}"
-          // if objectVal.asyncCount->Obj.magic {
-          //   objectVal.flag = objectVal.flag->Flag.with(ValFlag.async)
-          //   objectVal.inline = `Promise.all([${objectVal.promiseAllContent}]).then(a=>(${objectVal.inline}))`
-          // }
+        let complete = objectVal => {
+          objectVal.inline = objectVal.schema.tag === arrayTag
+            ? "[" ++ objectVal.inline ++ "]"
+            : "{" ++ objectVal.inline ++ "}"
+          if objectVal.asyncCount->Obj.magic {
+            objectVal.flag = objectVal.flag->Flag.with(ValFlag.async)
+            objectVal.inline = `Promise.all([${objectVal.promiseAllContent}]).then(a=>(${objectVal.inline}))`
+          }
+          // FIXME: Test whether it's needed
           // objectVal.additionalItems = Some(Strict)
-          // (objectVal :> val)
-          ()
+          (objectVal :> val)
         }
       }
 
@@ -1305,25 +1293,38 @@ module Builder = {
       }
 
       let get = (b, targetVal: val, location) => {
-        let properties = targetVal.schema.properties->X.Option.getUnsafe
-        switch properties->X.Dict.getUnsafeOption(location) {
-        | Some(val) => val->Obj.magic // FIXME: This is broken (schema instead of val)
+        let vals = switch targetVal.vals {
+        | Some(d) => d
         | None => {
-            let schema = switch targetVal.schema.additionalItems->X.Option.getUnsafe {
-            | Schema(schema) => schema->castToInternal
-            | _ => InternalError.panic("The schema doesn't have additional items")
-            }
+            let d = Js.Dict.empty()
+            targetVal.vals = Some(d)
+            d
+          }
+        }
 
+        switch vals->X.Dict.getUnsafeOption(location) {
+        | Some(v) => v
+        | None => {
+            let properties = targetVal.schema.properties->X.Option.getUnsafe
             let val = {
               b,
-              var: _var,
-              inline: `${b->var(targetVal)}${Path.fromLocation(location)}`,
+              var: _notVar,
+              inline: `${b->var(targetVal)}${Path.fromInlinedLocation(
+                  b->inlineLocation(location),
+                )}`,
               flag: ValFlag.none,
-              schema,
+              schema: switch properties->X.Dict.getUnsafeOption(location) {
+              | Some(s) => s
+              | None =>
+                switch targetVal.schema.additionalItems->X.Option.getUnsafe {
+                | Schema(s) => s->castToInternal
+                | _ => InternalError.panic("The schema doesn't have additional items")
+                }
+              },
             }
 
             // FIXME: Create additionalItems and properties for obj schemas
-            // properties->Js.Dict.set(location, val)
+            vals->Js.Dict.set(location, val)
             val
           }
         }
@@ -2147,7 +2148,7 @@ and internalCompile = (~schema, ~flag, ~defs) => {
 
     let inlinedFunction = `${Builder.intitialInputVar}=>{${code}return ${inlinedOutput.contents}}`
 
-    Js.log(inlinedFunction)
+    // Js.log(inlinedFunction)
 
     X.Function.make2(
       ~ctxVarName1="e",
@@ -2158,15 +2159,15 @@ and internalCompile = (~schema, ~flag, ~defs) => {
     )
   }
 }
-and val = Js.Dict.empty()
+and valueOptions = Js.Dict.empty()
 and valKey = "value"
 and reverseKey = "r"
 and initOperation = (s, flag) => {
   let f = internalCompile(~schema=s, ~flag, ~defs=%raw(`0`))
   // Reusing the same object makes it a little bit faster
-  val->Js.Dict.set(valKey, f)
+  valueOptions->Js.Dict.set(valKey, f)
   // Use defineProperty, so the cache keys are not enumerable
-  let _ = X.Object.defineProperty(s, flag->X.Int.unsafeToString, val->Obj.magic)
+  let _ = X.Object.defineProperty(s, flag->X.Int.unsafeToString, valueOptions->Obj.magic)
   f
 }
 // This removes v8 optimization
@@ -2290,12 +2291,12 @@ and reverse = (schema: internal) => {
       current := next
     }
 
-    // FIXME: Validate that it's enumerable
+    // FIXME: Validate that it's not enumerable (I see it in wallaby logs for some reason)
     let r = reversedHead.contents->X.Option.getUnsafe
-    val->Js.Dict.set(valKey, r->Obj.magic)
-    let _ = X.Object.defineProperty(schema, reverseKey, val->Obj.magic)
-    val->Js.Dict.set(valKey, schema->Obj.magic)
-    let _ = X.Object.defineProperty(r, reverseKey, val->Obj.magic)
+    valueOptions->Js.Dict.set(valKey, r->Obj.magic)
+    let _ = X.Object.defineProperty(schema, reverseKey, valueOptions->Obj.magic)
+    valueOptions->Js.Dict.set(valKey, schema->Obj.magic)
+    let _ = X.Object.defineProperty(r, reverseKey, valueOptions->Obj.magic)
     r
   }
 }
@@ -2349,6 +2350,115 @@ and jsonableValidation = (~output, ~parent, ~path, ~flag) => {
   }
 }
 
+let objectDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+  let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    b.validation = Some(
+      (~inputVar, ~mode) => {
+        switch mode {
+        | Fail =>
+          b->B.failWithArg(
+            ~path,
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )
+        | Refinement(negative) =>
+          `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(
+              ~negative,
+            )}${B.exp(~negative)}${inputVar}` ++ if (
+            selfSchema.additionalItems->X.Option.getUnsafe === Strip
+          ) {
+            ""
+          } else {
+            `${B.and_(~negative)}${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
+          }
+        }
+      },
+    )
+    let mut = base(objectTag)
+    mut.properties = Some(X.Object.immutableEmpty)
+    mut.additionalItems = Some(Schema(unknown->castToPublic))
+    input.schema = mut
+    unknown
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
+    // FIXME: Won't work for tuples
+    let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
+
+    // TODO: Remove it when unionDecoder is improved
+    if s.tag !== unionTag {
+      s
+    } else {
+      unknown
+    }
+  } else {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  }
+
+  switch selfSchema.additionalItems->X.Option.getUnsafe {
+  | Schema(itemSchema) => {
+      let itemSchema = itemSchema->castToInternal
+      let inputVar = b->B.Val.var(input)
+      let keyVar = b.global->B.varWithoutAllocation
+
+      let bb = b->B.scope
+      let itemInput = bb->B.val(`${inputVar}[${keyVar}]`, ~schema=itemInputSchema)
+      itemInput.var = B._notVarBefore
+      let itemOutput =
+        bb->B.withPathPrepend(~path, ~input=itemInput, ~dynamicLocationVar=keyVar, (
+          b,
+          ~input,
+          ~path,
+        ) => b->parse(~schema=itemSchema, ~input, ~path))
+      let itemCode = bb->B.allocateScope(~input=itemInput)
+      let isTransformed = itemInput !== itemOutput
+      let output = isTransformed ? b->B.val("{}", ~schema=selfSchema) : input // FIXME: schema
+      output.schema = selfSchema
+
+      // FIXME: What about async?
+
+      if isTransformed || itemCode !== "" {
+        b.code =
+          b.code ++
+          `for(let ${keyVar} in ${inputVar}){${itemCode}${isTransformed
+              ? b->B.Val.addKey(output, keyVar, itemOutput)
+              : ""}}`
+      }
+
+      if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
+        let resolveVar = b.global->B.varWithoutAllocation
+        let rejectVar = b.global->B.varWithoutAllocation
+        let asyncParseResultVar = b.global->B.varWithoutAllocation
+        let counterVar = b.global->B.varWithoutAllocation
+        let outputVar = b->B.Val.var(output)
+        b->B.asyncVal(
+          `new Promise((${resolveVar},${rejectVar})=>{let ${counterVar}=Object.keys(${outputVar}).length;for(let ${keyVar} in ${outputVar}){${outputVar}[${keyVar}].then(${asyncParseResultVar}=>{${outputVar}[${keyVar}]=${asyncParseResultVar};if(${counterVar}--===1){${resolveVar}(${outputVar})}},${rejectVar})}})`,
+        )
+      } else {
+        output
+      }
+    }
+  | _ => {
+      let properties = selfSchema.properties->X.Option.getUnsafe
+      let keys = Js.Dict.keys(properties)
+
+      let objectVal = b->B.Val.Object.make(~schema=selfSchema)
+
+      for idx in 0 to keys->Js.Array2.length - 1 {
+        let key = keys->Js.Array2.unsafe_get(idx)
+        let schema = properties->Js.Dict.unsafeGet(key)
+        let itemInput = b->B.Val.get(input, key)
+        let path = path->Path.concat(b->B.inlineLocation(key)->Path.fromInlinedLocation)
+        objectVal->B.Val.Object.add(~location=key, b->parse(~schema, ~input=itemInput, ~path))
+      }
+
+      objectVal->B.Val.Object.complete
+    }
+  }
+})
+
 let recursiveDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let ref = selfSchema.ref->X.Option.getUnsafe
   let defs = b.global.defs->X.Option.getUnsafe
@@ -2396,6 +2506,47 @@ let recursiveDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let _ = output.var(b)
   output
 })
+
+let instanceDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    input.schema = selfSchema
+    b.validation = Some(
+      (~inputVar, ~mode) => {
+        switch mode {
+        | Fail =>
+          b->B.failWithArg(
+            ~path,
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )
+        | Refinement(negative) => {
+            let c = `${inputVar} instanceof ${b->B.embed(selfSchema.class)}`
+            negative ? `!(${c})` : c
+          }
+        }
+      },
+    )
+    input
+  } else if (
+    inputTagFlag->Flag.unsafeHas(TagFlag.instance) && input.schema.class === selfSchema.class
+  ) {
+    input
+  } else {
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+  }
+})
+
+let instance = class_ => {
+  let mut = base(instanceTag)
+  mut.class = class_->Obj.magic
+  mut.decoder = Some(instanceDecoder)
+  mut->castToPublic
+}
 
 X.Object.defineProperty(
   %raw(`sp`),
@@ -3705,99 +3856,13 @@ let deepStrict = schema => {
 }
 
 module Dict = {
-  let dictDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
-    let inputTagFlag = input.schema.tag->TagFlag.get
-    let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-      b.validation = Some(
-        (~inputVar, ~mode) => {
-          switch mode {
-          | Fail =>
-            b->B.failWithArg(
-              ~path,
-              input => InvalidType({
-                expected: selfSchema->castToPublic,
-                received: input,
-              }),
-              inputVar,
-            )
-          | Refinement(negative) =>
-            `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(
-                ~negative,
-              )}${B.exp(~negative)}${inputVar}` ++ if (
-              selfSchema.additionalItems->X.Option.getUnsafe === Strip
-            ) {
-              ""
-            } else {
-              `${B.and_(~negative)}${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
-            }
-          }
-        },
-      )
-      unknown
-    } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
-      // FIXME: Won't work for tuples
-      let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
-
-      // TODO: Remove it when unionDecoder is improved
-      if s.tag !== unionTag {
-        s
-      } else {
-        unknown
-      }
-    } else {
-      b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
-    }
-
-    let itemSchema = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
-
-    let inputVar = b->B.Val.var(input)
-    let keyVar = b.global->B.varWithoutAllocation
-
-    let bb = b->B.scope
-    let itemInput = bb->B.val(`${inputVar}[${keyVar}]`, ~schema=itemInputSchema)
-    itemInput.var = B._notVarBefore
-    let itemOutput =
-      bb->B.withPathPrepend(~path, ~input=itemInput, ~dynamicLocationVar=keyVar, (
-        b,
-        ~input,
-        ~path,
-      ) => b->parse(~schema=itemSchema, ~input, ~path))
-    let itemCode = bb->B.allocateScope(~input=itemInput)
-    let isTransformed = itemInput !== itemOutput
-    let output = isTransformed ? b->B.val("{}", ~schema=selfSchema) : input // FIXME: schema
-    output.schema = selfSchema
-
-    // FIXME: What about async?
-
-    if isTransformed || itemCode !== "" {
-      b.code =
-        b.code ++
-        `for(let ${keyVar} in ${inputVar}){${itemCode}${isTransformed
-            ? b->B.Val.addKey(output, keyVar, itemOutput)
-            : ""}}`
-    }
-
-    if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-      let resolveVar = b.global->B.varWithoutAllocation
-      let rejectVar = b.global->B.varWithoutAllocation
-      let asyncParseResultVar = b.global->B.varWithoutAllocation
-      let counterVar = b.global->B.varWithoutAllocation
-      let outputVar = b->B.Val.var(output)
-      b->B.asyncVal(
-        `new Promise((${resolveVar},${rejectVar})=>{let ${counterVar}=Object.keys(${outputVar}).length;for(let ${keyVar} in ${outputVar}){${outputVar}[${keyVar}].then(${asyncParseResultVar}=>{${outputVar}[${keyVar}]=${asyncParseResultVar};if(${counterVar}--===1){${resolveVar}(${outputVar})}},${rejectVar})}})`,
-      )
-    } else {
-      output
-    }
-  })
-
   let factory = item => {
     let item = item->castToInternal
     let mut = base(objectTag)
     mut.properties = Some(X.Object.immutableEmpty)
     mut.items = Some(X.Array.immutableEmpty)
     mut.additionalItems = Some(Schema(item->castToPublic))
-    mut.decoder = Some(dictDecoder)
+    mut.decoder = Some(objectDecoder)
     mut->castToPublic
   }
 }
@@ -4056,7 +4121,7 @@ let enableUint8Array = () => {
     uint8Array.tag = instanceTag
     uint8Array.class = %raw(`Uint8Array`)
     uint8Array.decoder = Some(
-      Builder.make((b, ~input as inputArg, ~selfSchema, ~path as _) => {
+      Builder.make((b, ~input as inputArg, ~selfSchema, ~path) => {
         let inputTagFlag = inputArg.schema.tag->TagFlag.get
         let input = ref(inputArg)
 
@@ -4066,6 +4131,8 @@ let enableUint8Array = () => {
               `${b->B.embed(%raw(`new TextEncoder()`))}.encode(${input.contents.inline})`,
               ~schema=uint8Array,
             )
+        } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown->Flag.with(TagFlag.instance)) {
+          input := instanceDecoder(b, ~input=input.contents, ~selfSchema, ~path)
         }
 
         switch selfSchema {
@@ -4164,12 +4231,6 @@ let list = schema => {
     parser: array => array->Belt.List.fromArray,
     serializer: list => list->Belt.List.toArray,
   })
-}
-
-let instance = class_ => {
-  let mut = base(instanceTag)
-  mut.class = class_->Obj.magic
-  mut->castToPublic
 }
 
 // TODO: Better test reverse
@@ -4310,8 +4371,7 @@ module Schema = {
       | Some(item) => item->getItemOutput
       | None => {
           let node = definition->Definition.toNode
-          let isArray = TagFlag.isArray(outputSchema.tag)
-          let objectVal = b->B.Val.Object.make(~isArray)
+          let objectVal = b->B.Val.Object.make(~schema=outputSchema)
 
           outputSchema.items
           ->X.Option.getUnsafe
@@ -4326,7 +4386,7 @@ module Schema = {
             )
           })
 
-          objectVal->B.Val.Object.complete(~isArray)->Obj.magic // FIXME:
+          objectVal->B.Val.Object.complete
         }
       }
     }
@@ -4401,21 +4461,20 @@ module Schema = {
   let rec schemaDecoder = (b, ~input: val, ~selfSchema, ~path) => {
     let additionalItems = selfSchema.additionalItems
     let items = selfSchema.items->X.Option.getUnsafe
-    let isArray = TagFlag.isArray(selfSchema.tag)
 
     if b.global.flag->Flag.unsafeHas(Flag.flatten) {
-      let objectVal = b->B.Val.Object.make(~isArray)
+      let objectVal = b->B.Val.Object.make(~schema=selfSchema)
       for idx in 0 to items->Js.Array2.length - 1 {
         let {location} = items->Js.Array2.unsafe_get(idx)
-        // FIXME:
-        // objectVal->B.Val.Object.add(
-        //   ~location,
-        //   input.properties->X.Option.getUnsafe->Js.Dict.unsafeGet(location),
-        // )
+
+        objectVal->B.Val.Object.add(
+          ~location,
+          input.vals->X.Option.getUnsafe->Js.Dict.unsafeGet(location),
+        )
       }
-      objectVal->B.Val.Object.complete(~isArray)->Obj.magic // FIXME:
+      objectVal->B.Val.Object.complete
     } else {
-      let objectVal = b->B.Val.Object.make(~isArray)
+      let objectVal = b->B.Val.Object.make(~schema=selfSchema)
 
       for idx in 0 to items->Js.Array2.length - 1 {
         let {schema, location} = items->Js.Array2.unsafe_get(idx)
@@ -4554,8 +4613,7 @@ module Schema = {
             | {items, tag, ?additionalItems}
               // Ignore S.dict and S.array
               if additionalItems->Obj.magic->Js.typeof === "string" => {
-                let isArray = TagFlag.isArray(tag)
-                let objectVal = b->B.Val.Object.make(~isArray)
+                let objectVal = b->B.Val.Object.make(~schema=outputSchema)
                 for idx in 0 to items->Js.Array2.length - 1 {
                   let item = items->Js.Array2.unsafe_get(idx)
                   let itemPath =
@@ -4573,7 +4631,7 @@ module Schema = {
                   }
                   objectVal->B.Val.Object.add(~location=item.location, itemInput)
                 }
-                objectVal->B.Val.Object.complete(~isArray)->Obj.magic // FIXME:
+                objectVal->B.Val.Object.complete
               }
             | _ =>
               b->B.invalidOperation(
@@ -4625,17 +4683,18 @@ module Schema = {
               ~path,
             )
 
-            let isArray = (originalSchema: internal).tag === arrayTag
             let items = originalSchema.items->X.Option.getUnsafe
-            let objectVal = b->B.Val.Object.make(~isArray)
+            let objectVal = b->B.Val.Object.make(~schema=originalSchema)
             switch flattened {
             | None => ()
             | Some(rootItems) =>
               for idx in 0 to rootItems->Js.Array2.length - 1 {
                 objectVal->B.Val.Object.merge(
-                  rootItems
-                  ->Js.Array2.unsafe_get(idx)
-                  ->getItemOutput(~itemPath=Path.empty, ~shouldReverse=true),
+                  (
+                    rootItems
+                    ->Js.Array2.unsafe_get(idx)
+                    ->getItemOutput(~itemPath=Path.empty, ~shouldReverse=true)
+                  ).vals->X.Option.getUnsafe,
                 )
               }
             }
@@ -4644,21 +4703,20 @@ module Schema = {
               let item: item = items->Js.Array2.unsafe_get(idx)
 
               // TODO: Improve the hack to ignore items belonging to a flattened schema
-              // FIXME:
-              // if !(objectVal.properties->X.Option.getUnsafe->Stdlib.Dict.has(item.location)) {
-              //   objectVal->B.Val.Object.add(
-              //     ~location=item.location,
-              //     item
-              //     ->itemToDitem
-              //     ->getItemOutput(
-              //       ~itemPath=b->B.inlineLocation(item.location)->Path.fromInlinedLocation,
-              //       ~shouldReverse=false,
-              //     ),
-              //   )
-              // }
+              if !(objectVal.vals->X.Option.getUnsafe->Stdlib.Dict.has(item.location)) {
+                objectVal->B.Val.Object.add(
+                  ~location=item.location,
+                  item
+                  ->itemToDitem
+                  ->getItemOutput(
+                    ~itemPath=b->B.inlineLocation(item.location)->Path.fromInlinedLocation,
+                    ~shouldReverse=false,
+                  ),
+                )
+              }
             }
 
-            objectVal->B.Val.Object.complete(~isArray)->Obj.magic // FIXME:
+            objectVal->B.Val.Object.complete
           }
         }
       }),
@@ -5074,7 +5132,7 @@ module Schema = {
           mut.items = Some(items)
           mut.properties = Some(node->(Obj.magic: dict<unknown> => dict<internal>))
           mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
-          mut.decoder = Some(schemaDecoder)
+          mut.decoder = Some(objectDecoder)
           mut
         }
       }
@@ -5196,7 +5254,7 @@ let unnest = schema => {
         let iteratorVar = b.global->B.varWithoutAllocation
 
         let bb = b->B.scope
-        let itemInput = bb->B.Val.Object.make(~isArray=false)
+        let itemInput = bb->B.Val.Object.make(~schema)
         let lengthCode = ref("")
         for idx in 0 to items->Js.Array2.length - 1 {
           let item = items->Js.Array2.unsafe_get(idx)
@@ -5215,7 +5273,7 @@ let unnest = schema => {
         let outputVar = b->B.Val.var(output)
 
         let itemOutput = bb->B.withPathPrepend(
-          ~input=itemInput->B.Val.Object.complete(~isArray=false)->Obj.magic, // FIXME:
+          ~input=itemInput->B.Val.Object.complete,
           ~path,
           ~dynamicLocationVar=iteratorVar,
           ~appendSafe=(bb, ~output as itemOutput) => {
@@ -6071,7 +6129,7 @@ let js_merge = (s1, s2) => {
     mut.items = Some(items)
     mut.properties = Some(properties)
     mut.additionalItems = Some(additionalItems1)
-    mut.decoder = Some(Schema.schemaDecoder)
+    mut.decoder = Some(objectDecoder)
     Some(mut->castToPublic)
   | _ => None
   } {

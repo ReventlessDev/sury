@@ -2819,10 +2819,8 @@ test("Uint8Array", (t) => {
     S.decoder(S.string, S.uint8Array, S.jsonString).toString(),
     `i=>{return JSON.stringify(e[1].decode(e[0].encode(i)))}`
   );
-
-  // FIXME: Missing Uint8Array instance validation
   t.deepEqual(
     S.decoder(S.unknown, S.uint8Array, S.jsonString).toString(),
-    `i=>{return JSON.stringify(e[0].decode(i))}`
+    `i=>{if(!(i instanceof e[1])){e[2](i)}return JSON.stringify(e[0].decode(i))}`
   );
 });
