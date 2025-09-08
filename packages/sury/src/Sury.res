@@ -445,8 +445,10 @@ and internal = {
   // Builder refine that the value matches the schema
   // Applies for both parsing and serializing
   mutable refiner?: refinerBuilder,
-  // Logic for custom decoding to the schema type
+  // Logic for built-in decoding to the schema type
   mutable decoder?: builder,
+  // Logic for built-in encoding from the schema type
+  mutable encoder?: builder,
   // A schema we transform to
   mutable to?: internal,
   mutable const?: char, // use char to avoid Caml_option.some
@@ -2052,9 +2054,13 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
 
   switch schema.to {
   | Some(to) =>
-    switch schema.parser {
-    | Some(parser) => input := parser(b, ~input=input.contents, ~selfSchema=schema, ~path)
-    | None => ()
+    switch schema {
+    | {parser} => input := parser(b, ~input=input.contents, ~selfSchema=schema, ~path)
+    // FIXME: Run encoder on the input.schema instead of the schema
+    // eg for the case when jsonString returns an input with JSON schema
+    | {encoder} if input.contents.schema === schema =>
+      input := encoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
+    | _ => ()
     }
 
     if input.contents.skipTo !== Some(true) {
@@ -2384,7 +2390,7 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
     input.schema = mut
     unknown
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
-    // FIXME: Won't work for tuples
+    // FIXME: Won't work for Strict and Strip modes
     let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
     // TODO: Remove it when unionDecoder is improved
@@ -3976,17 +3982,33 @@ let jsonDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   }
 })
 
+let jsonEncoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
+  let to = selfSchema.to->X.Option.getUnsafe
+  let toTagFlag = to.tag->TagFlag.get
+
+  input.schema = unknown
+  if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    stringDecoder(b, ~input, ~selfSchema=string, ~path)
+  } else {
+    input
+  }
+})
+
 let enableJson = () => {
   if json->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
     let _ = %raw(`delete json.as`)
     let jsonRef = base(refTag)
     jsonRef.ref = Some(`${defsPath}${jsonName}`)
     jsonRef.name = Some(jsonName)
+
+    // FIXME: Validate whether dcoders needs to be here
     jsonRef.decoder = Some(jsonDecoder)
+    jsonRef.encoder = Some(jsonEncoder)
     json.tag = jsonRef.tag
     json.ref = jsonRef.ref
     json.name = Some(jsonName)
     json.decoder = Some(jsonDecoder)
+    json.encoder = Some(jsonEncoder)
     let defs = Js.Dict.empty()
     defs->Js.Dict.set(
       jsonName,
@@ -4033,22 +4055,52 @@ let enableJsonString = {
     }
   }
 
+  let makeJsonStringEncoder = (~validateOnly) =>
+    Builder.make((b, ~input, ~selfSchema, ~path) => {
+      let inputVar = b->B.Val.var(input)
+      let output = ref(input)
+      b.code =
+        b.code ++
+        `try{` ++
+        if validateOnly {
+          ""
+        } else {
+          let targetVal = b->B.allocateVal(~schema=json)
+          output := targetVal
+          targetVal.inline ++ "="
+        } ++
+        `JSON.parse(${inputVar})}catch(t){${b->B.failWithArg(
+            ~path,
+            input => InvalidType({
+              expected: selfSchema->castToPublic,
+              received: input,
+            }),
+            inputVar,
+          )}}`
+      if !validateOnly {
+        output := jsonEncoder(b, ~input=output.contents, ~selfSchema, ~path)
+      }
+      output.contents
+    })
+
   () => {
     if jsonString->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
       let _ = %raw(`delete jsonString.as`)
       jsonString.tag = stringTag
       jsonString.format = Some(JSON)
       jsonString.name = Some(`${jsonName} string`)
+      jsonString.encoder = Some(makeJsonStringEncoder(~validateOnly=false))
       jsonString.decoder = Some(
-        Builder.make((b, ~input as inputArg, ~selfSchema, ~path) => {
-          let inputTagFlag = inputArg.schema.tag->TagFlag.get
-          let input = ref(inputArg)
+        Builder.make((b, ~input, ~selfSchema, ~path) => {
+          let inputTagFlag = input.schema.tag->TagFlag.get
 
           if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
             let to = selfSchema.to->X.Option.getUnsafe
-            let hasTo: bool = to->Obj.magic
+            // Whether we can optimize encoding during decoding
+            let preEncode: bool =
+              to->Obj.magic && !(selfSchema.parser->Obj.magic) && !(selfSchema.refiner->Obj.magic)
 
-            if hasTo && to->isLiteral {
+            if preEncode && to->isLiteral {
               b.validation = Some(
                 (~inputVar, ~mode) => {
                   switch mode {
@@ -4071,79 +4123,49 @@ let enableJsonString = {
                 },
               )
 
-              input := b->B.constVal(~schema=to)
-            } else if hasTo && to.format === Some(JSON) {
-              ()
+              b->B.constVal(~schema=to)
             } else {
-              let inputVar = b->B.Val.var(input.contents)
-              let withTypeValidation = b.global.flag->Flag.unsafeHas(Flag.typeValidation)
-
-              // FIXME: Should have the check in allocate scope?
-              // if withTypeValidation {
-              //   b.validationCode = b->B.typeFilterCode(~schema=string, ~input=input.contents, ~path)
-              // }
-
-              // FIXME: S.refine should run here
-
-              if hasTo || withTypeValidation {
-                b.code =
-                  b.code ++
-                  `try{${if hasTo {
-                      jsonableValidation(~output=to, ~parent=to, ~path, ~flag=b.global.flag)
-
-                      let targetVal = b->B.allocateVal(~schema=unknown)
-                      input := targetVal
-                      targetVal.inline ++ "="
-                    } else {
-                      ""
-                    }}JSON.parse(${inputVar})}catch(t){${b->B.failWithArg(
-                      ~path,
-                      input => InvalidType({
-                        expected: selfSchema->castToPublic,
-                        received: input,
-                      }),
-                      inputVar,
-                    )}}`
-              }
-            }
-          } else {
-            if input.contents->Obj.magic->isLiteral {
-              input :=
-                b->B.val(
-                  b->inlineJsonString(~selfSchema, ~schema=input.contents->Obj.magic, ~path),
-                  ~schema=string,
-                )
-            } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-              if input.contents.schema.format !== Some(JSON) {
-                input := b->B.val(`JSON.stringify(${input.contents.inline})`, ~schema=string)
-              }
-            } else if inputTagFlag->Flag.unsafeHas(TagFlag.number->Flag.with(TagFlag.boolean)) {
-              input := b->inputToString(input.contents)
-            } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-              input := b->B.val(`"\\""+${input.contents.inline}+"\\""`, ~schema=string)
-            } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
-              jsonableValidation(
-                ~output=input.contents->Obj.magic,
-                ~parent=input.contents->Obj.magic,
+              makeJsonStringEncoder(~validateOnly=!preEncode)(
+                b,
+                ~input=stringDecoder(b, ~input, ~selfSchema, ~path),
+                ~selfSchema,
                 ~path,
-                ~flag=b.global.flag,
               )
-              input :=
-                b->B.val(
-                  `JSON.stringify(${input.contents.inline}${switch selfSchema.space {
-                    | Some(0)
-                    | None => ""
-                    | Some(v) => `,null,${v->X.Int.unsafeToString}`
-                    }})`,
-                  ~schema=string,
-                )
-            } else {
-              b->B.unsupportedTransform(~from=input.contents.schema, ~target=selfSchema, ~path)
             }
-            input.contents.schema = selfSchema
-          }
+          } else if input.schema.format === Some(JSON) {
+            input
+          } else if input.schema->isLiteral {
+            b->B.val(
+              b->inlineJsonString(~selfSchema, ~schema=input.schema, ~path),
+              ~schema=selfSchema,
+            )
+          } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
+            b->B.val(`JSON.stringify(${input.inline})`, ~schema=selfSchema)
+          } else if inputTagFlag->Flag.unsafeHas(TagFlag.number->Flag.with(TagFlag.boolean)) {
+            let o = b->inputToString(input)
+            o.schema = selfSchema
+            o
+          } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+            b->B.val(`"\\""+${input.inline}+"\\""`, ~schema=selfSchema)
+          } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
+            jsonableValidation(
+              ~output=input.schema,
+              ~parent=input.schema,
+              ~path,
+              ~flag=b.global.flag,
+            )
 
-          input.contents
+            b->B.val(
+              `JSON.stringify(${input.inline}${switch selfSchema.space {
+                | Some(0)
+                | None => ""
+                | Some(v) => `,null,${v->X.Int.unsafeToString}`
+                }})`,
+              ~schema=selfSchema,
+            )
+          } else {
+            b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+          }
         }),
       )
     }
