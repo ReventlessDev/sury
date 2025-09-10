@@ -4638,35 +4638,32 @@ function fromJSONSchema(jsonSchema) {
     if (type_$1 === "object") {
       let properties = jsonSchema.properties;
       if (properties !== undefined) {
-        let schema$1 = object(s => {
-          let obj = {};
-          Object.keys(properties).forEach(key => {
-            let property = properties[key];
-            let propertySchema = definitionToSchema$1(property);
-            let r = jsonSchema.required;
-            let propertySchema$1;
-            let exit = 0;
-            if (r !== undefined && r.includes(key)) {
-              propertySchema$1 = propertySchema;
+        let obj = {};
+        let schema$1 = definitionToSchema((Object.keys(properties).forEach(key => {
+          let property = properties[key];
+          let propertySchema = definitionToSchema$1(property);
+          let r = jsonSchema.required;
+          let propertySchema$1;
+          let exit = 0;
+          if (r !== undefined && r.includes(key)) {
+            propertySchema$1 = propertySchema;
+          } else {
+            exit = 1;
+          }
+          if (exit === 1) {
+            let defaultValue = definitionToDefaultValue(property);
+            if (defaultValue !== undefined) {
+              let schema = option(propertySchema);
+              propertySchema$1 = getWithDefault(schema, {
+                TAG: "Value",
+                _0: defaultValue
+              });
             } else {
-              exit = 1;
+              propertySchema$1 = option(propertySchema);
             }
-            if (exit === 1) {
-              let defaultValue = definitionToDefaultValue(property);
-              if (defaultValue !== undefined) {
-                let schema = option(propertySchema);
-                propertySchema$1 = getWithDefault(schema, {
-                  TAG: "Value",
-                  _0: defaultValue
-                });
-              } else {
-                propertySchema$1 = option(propertySchema);
-              }
-            }
-            obj[key] = s.f(key, propertySchema$1);
-          });
-          return obj;
-        });
+          }
+          obj[key] = propertySchema$1;
+        }), obj));
         let additionalProperties = jsonSchema.additionalProperties;
         schema = additionalProperties === false ? strict(schema$1) : schema$1;
       } else {

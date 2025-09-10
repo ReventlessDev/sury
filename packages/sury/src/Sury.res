@@ -6632,26 +6632,29 @@ let rec fromJSONSchema: RescriptJSONSchema.t => t<Js.Json.t> = {
     | {type_} if type_ === JSONSchema.Arrayable.single(#object) =>
       let schema = switch jsonSchema.properties {
       | Some(properties) =>
-        let schema = object(s => {
-          let obj = Js.Dict.empty()
-          properties
-          ->Js.Dict.keys
-          ->Js.Array2.forEach(key => {
-            let property = properties->Js.Dict.unsafeGet(key)
-            let propertySchema = property->definitionToSchema
-            let propertySchema = switch jsonSchema.required {
-            | Some(r) if r->Js.Array2.includes(key) => propertySchema
-            | _ =>
-              switch property->definitionToDefaultValue {
-              | Some(defaultValue) =>
-                propertySchema->option->Option.getOr(defaultValue)->castAnySchemaToJsonableS
-              | None => propertySchema->option->castAnySchemaToJsonableS
+        let schema =
+          {
+            let obj = Js.Dict.empty()
+            properties
+            ->Js.Dict.keys
+            ->Js.Array2.forEach(key => {
+              let property = properties->Js.Dict.unsafeGet(key)
+              let propertySchema = property->definitionToSchema
+              let propertySchema = switch jsonSchema.required {
+              | Some(r) if r->Js.Array2.includes(key) => propertySchema
+              | _ =>
+                switch property->definitionToDefaultValue {
+                | Some(defaultValue) =>
+                  propertySchema->option->Option.getOr(defaultValue)->castAnySchemaToJsonableS
+                | None => propertySchema->option->castAnySchemaToJsonableS
+                }
               }
-            }
-            Js.Dict.set(obj, key, s.field(key, propertySchema))
-          })
-          obj
-        })
+              Js.Dict.set(obj, key, propertySchema)
+            })
+            obj->(Obj.magic: dict<schema<JSON.t>> => unknown)
+          }
+          ->Schema.definitionToSchema
+          ->castToPublic
         let schema = switch jsonSchema {
         | {additionalProperties} if additionalProperties === Never => schema->strict
         | _ => schema
