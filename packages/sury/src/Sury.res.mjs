@@ -3733,6 +3733,51 @@ function unnest(schema) {
     });
     mut.additionalItems = "strict";
     mut.parser = (b, input, selfSchema, path) => {
+      let inputTagFlag = flags[input.s.type];
+      if (inputTagFlag & 1) {
+        b.f = (inputVar, mode) => {
+          if (mode === 0) {
+            return failWithArg(b, path, input => ({
+              TAG: "InvalidType",
+              expected: selfSchema,
+              received: input
+            }), inputVar);
+          } else {
+            return (
+              mode ? "!" : ""
+            ) + "Array.isArray(" + inputVar + ")" + ((
+              mode ? "||" : "&&"
+            ) + inputVar + ".length" + (
+              mode ? "!==" : "==="
+            ) + items.length) + items.map((param, idx) => (
+              mode ? "||" : "&&"
+            ) + (
+              mode ? "!" : ""
+            ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
+          }
+        };
+        let mut = new Schema(arrayTag);
+        let itemSchema = factory$2(unknown);
+        mut.items = items.map((param, idx) => {
+          let location = idx.toString();
+          return {
+            schema: itemSchema,
+            location: location
+          };
+        });
+        mut.additionalItems = "strict";
+        input.s = mut;
+      } else if (inputTagFlag & 128 && input.s.items.length === items.length && input.s.items.every(item => {
+          if (item.schema.type !== arrayTag) {
+            return false;
+          }
+          let match = item.schema.additionalItems;
+          return match !== undefined ? match !== "strip" && match !== "strict" : false;
+        })) {
+        
+      } else {
+        unsupportedTransform(b, input.s, selfSchema, path);
+      }
       let inputVar = input.v(b);
       let iteratorVar = varWithoutAllocation(b.g);
       let bb = {
@@ -3746,15 +3791,16 @@ function unnest(schema) {
       let lengthCode = "";
       for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
         let item = items[idx];
-        add(itemInput, item.location, val(bb, inputVar + "[" + idx + "][" + iteratorVar + "]", unknown));
+        add(itemInput, item.location, val(bb, inputVar + "[" + idx + "][" + iteratorVar + "]", input.s.items[idx].schema.additionalItems));
         lengthCode = lengthCode + (inputVar + "[" + idx + "].length,");
       }
       let output = val(b, "new Array(Math.max(" + lengthCode + "))", selfSchema.to);
       let outputVar = output.v(b);
-      let itemOutput = withPathPrepend(bb, complete(itemInput), path, iteratorVar, (bb, itemOutput) => {
+      let itemInput$1 = complete(itemInput);
+      let itemOutput = withPathPrepend(bb, itemInput$1, path, iteratorVar, (bb, itemOutput) => {
         bb.c = bb.c + addKey(bb, output, iteratorVar, itemOutput) + ";";
       }, (b, input, path) => parse$1(b, schema, input, path, undefined));
-      let itemCode = allocateScope(bb, itemInput);
+      let itemCode = allocateScope(bb, itemInput$1);
       b.c = b.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + outputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
       if (itemOutput.f & 2) {
         return asyncVal(output.b, "Promise.all(" + output.i + ")");

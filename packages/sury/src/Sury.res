@@ -5318,6 +5318,66 @@ let unnest = schema => {
     mut.additionalItems = Some(Strict)
     mut.parser = Some(
       Builder.make((b, ~input, ~selfSchema, ~path) => {
+        let inputTagFlag = input.schema.tag->TagFlag.get
+        if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+          b.validation = Some(
+            (~inputVar, ~mode) => {
+              switch mode {
+              | Fail =>
+                b->B.failWithArg(
+                  ~path,
+                  input => InvalidType({
+                    expected: selfSchema->castToPublic,
+                    received: input,
+                  }),
+                  inputVar,
+                )
+              | Refinement(negative) =>
+                `${B.exp(~negative)}Array.isArray(${inputVar})` ++
+                `${B.and_(~negative)}${inputVar}.length${B.eq(~negative)}${items
+                  ->Js.Array2.length
+                  ->X.Int.unsafeToString}` ++
+                `${items
+                  ->Js.Array2.mapi((_, idx) => {
+                    `${B.and_(~negative)}${B.exp(
+                        ~negative,
+                      )}Array.isArray(${inputVar}[${idx->X.Int.unsafeToString}])`
+                  })
+                  ->Js.Array2.joinWith("")}`
+              }
+            },
+          )
+          let mut = base(arrayTag)
+          let itemSchema = Array.factory(unknown->castToPublic)
+          mut.items = Some(
+            items->Js.Array2.mapi((_, idx) => {
+              let location = idx->Js.Int.toString
+              {
+                schema: itemSchema,
+                location,
+              }
+            }),
+          )
+          mut.additionalItems = Some(Strict)
+          input.schema = mut
+        } else if (
+          inputTagFlag->Flag.unsafeHas(TagFlag.array) &&
+          input.schema.items->X.Option.getUnsafe->Js.Array2.length === items->Js.Array2.length &&
+          input.schema.items
+          ->X.Option.getUnsafe
+          ->Js.Array2.every(item =>
+            (item.schema->castToInternal).tag === arrayTag &&
+              switch (item.schema->castToInternal).additionalItems {
+              | Some(Schema(_)) => true
+              | _ => false
+              }
+          )
+        ) {
+          ()
+        } else {
+          b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
+        }
+
         let inputVar = b->B.Val.var(input)
         let iteratorVar = b.global->B.varWithoutAllocation
 
@@ -5328,7 +5388,14 @@ let unnest = schema => {
           let item = items->Js.Array2.unsafe_get(idx)
           itemInput->B.Val.Object.add(
             ~location=item.location,
-            bb->B.val(`${inputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]`, ~schema=unknown), // FIXME: should get from somewhere
+            bb->B.val(
+              `${inputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]`,
+              ~schema=(
+                (
+                  input.schema.items->X.Option.getUnsafe->Js.Array2.unsafe_get(idx)
+                ).schema->castToInternal
+              ).additionalItems->(Obj.magic: option<additionalItems> => internal),
+            ),
           )
           lengthCode := lengthCode.contents ++ `${inputVar}[${idx->X.Int.unsafeToString}].length,`
         }
@@ -5340,8 +5407,9 @@ let unnest = schema => {
           )
         let outputVar = b->B.Val.var(output)
 
+        let itemInput = itemInput->B.Val.Object.complete
         let itemOutput = bb->B.withPathPrepend(
-          ~input=itemInput->B.Val.Object.complete,
+          ~input=itemInput,
           ~path,
           ~dynamicLocationVar=iteratorVar,
           ~appendSafe=(bb, ~output as itemOutput) => {
@@ -5351,7 +5419,7 @@ let unnest = schema => {
             b->parse(~schema, ~input, ~path)
           },
         )
-        let itemCode = bb->B.allocateScope(~input=itemInput->Obj.magic) // FIXME:
+        let itemCode = bb->B.allocateScope(~input=itemInput)
 
         b.code =
           b.code ++
