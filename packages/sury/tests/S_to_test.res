@@ -425,23 +425,25 @@ test("Coerce from string to bigint", t => {
 test("Coerce string after a transform", t => {
   let schema = S.string->S.transform(_ => {parser: v => v, serializer: v => v})->S.to(S.bool)
 
-  // t->U.assertThrowsMessage(
-  //   () => "true"->S.parseOrThrow(schema),
-  //   `Failed parsing: Expected boolean, received "true"`,
-  // )
+  t->U.assertThrowsMessage(
+    () => "true"->S.parseOrThrow(schema),
+    `Failed parsing: Expected boolean, received "true"`,
+  )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}let v0=e[1](i);if(typeof v0!=="boolean"){e[2](v0)}return v0}`,
+    `i=>{if(typeof i!=="string"){e[2](i)}let v0=e[0](i);if(typeof v0!=="boolean"){e[1](v0)}return v0}`,
   )
 
-  // FIXME: This is not correct. Should be fixed after S.transform is removed by S.to
-  // t->Assert.deepEqual(true->S.parseOrThrow(S.reverse(schema)), %raw(`true`))
-  // t->U.assertCompiledCode(
-  //   ~schema,
-  //   ~op=#ReverseParse,
-  //   `i=>{if(typeof i!=="boolean"){e[1](i)}return e[0](i)}`,
-  // )
+  t->U.assertThrowsMessage(
+    () => true->S.parseOrThrow(S.reverse(schema)),
+    `Failed parsing: Expected string, received true`,
+  )
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseParse,
+    `i=>{if(typeof i!=="boolean"){e[2](i)}let v0=e[0](i);if(typeof v0!=="string"){e[1](v0)}return v0}`,
+  )
 })
 
 @unboxed

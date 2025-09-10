@@ -1344,9 +1344,9 @@ module Builder = {
         `${b->var(input)}=${inlined}`
       }
 
-      let map = (inlinedFn, input: val) => {
+      let map = (b, inlinedFn, input: val) => {
         {
-          b: input.b,
+          b,
           var: _notVar,
           inline: `${inlinedFn}(${input.inline})`,
           flag: ValFlag.none,
@@ -1391,7 +1391,7 @@ module Builder = {
       if input.flag->Flag.unsafeHas(ValFlag.async) {
         input.b->asyncVal(`${input.inline}.then(${b->embed(fn)})`)
       } else {
-        Val.map(b->embed(fn), input)
+        b->Val.map(b->embed(fn), input)
       }
     }
 
@@ -2539,7 +2539,7 @@ let recursiveDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
     }
   }
   let output = b->B.withPathPrepend(~input, ~path, (_, ~input, ~path as _) => {
-    let output = B.Val.map(recOperation, input)
+    let output = b->B.Val.map(recOperation, input)
     if def.isAsync === None {
       let defsMut = defs->X.Dict.copy
       defsMut->Js.Dict.set(identifier, unknown)
