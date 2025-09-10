@@ -2042,11 +2042,6 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
 
   let input = ref(inputArg)
 
-  // Js.log({
-  //   "input": input.contents,
-  //   "schema": schema,
-  // })
-
   switch schema.decoder {
   | Some(decoder) => input := decoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
   | None => ()
@@ -3782,40 +3777,67 @@ module Array = {
     let itemInputSchema = if (
       inputTagFlag->Flag.unsafeHas(TagFlag.unknown->Flag.with(TagFlag.array))
     ) {
+      let addValidation = fn => {
+        let prevValidation = b.validation
+        b.validation = Some(
+          (~inputVar, ~mode) => {
+            switch mode {
+            | Fail =>
+              switch prevValidation {
+              | Some(prevValidation) => prevValidation(~inputVar, ~mode)
+              | None =>
+                b->B.failWithArg(
+                  ~path,
+                  input => InvalidType({
+                    expected: selfSchema->castToPublic,
+                    received: input,
+                  }),
+                  inputVar,
+                )
+              }
+            | Refinement(negative) =>
+              {
+                switch prevValidation {
+                | Some(prevValidation) => prevValidation(~inputVar, ~mode) ++ B.and_(~negative)
+                | None => ""
+                }
+              } ++
+              fn(~inputVar, ~negative)
+            }
+          },
+        )
+      }
+
       let isArrayInput = inputTagFlag->Flag.unsafeHas(TagFlag.array)
-      b.validation = Some(
-        (~inputVar, ~mode) => {
-          switch mode {
-          | Fail =>
-            b->B.failWithArg(
-              ~path,
-              input => InvalidType({
-                expected: selfSchema->castToPublic,
-                received: input,
-              }),
-              inputVar,
-            )
-          | Refinement(negative) =>
-            (isArrayInput ? "" : `${B.exp(~negative)}Array.isArray(${inputVar})`) ++
-            // FIXME: Apply refinements only when they are needed
-            `${switch selfSchema.additionalItems->X.Option.getUnsafe {
-              | Strict =>
-                `${B.and_(~negative)}${inputVar}.length${B.eq(
-                    ~negative,
-                  )}${length->X.Int.unsafeToString}`
-              | Strip =>
-                `${B.and_(~negative)}${inputVar}.length${B.eq(
-                    ~negative=!negative,
-                  )}${length->X.Int.unsafeToString}`
-              | Schema(_) => ""
-              }}`
+      if !isArrayInput {
+        addValidation((~inputVar, ~negative) => `${B.exp(~negative)}Array.isArray(${inputVar})`)
+        let mut = base(arrayTag)
+        mut.items = Some(X.Array.immutableEmpty)
+        mut.additionalItems = Some(Schema(unknown->castToPublic))
+        input.schema = mut
+      } else {
+        let isExactSize =
+          isArrayInput &&
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => false
+          | _ => input.schema.items->X.Option.getUnsafe->Js.Array2.length === length
           }
-        },
-      )
-      let mut = base(arrayTag)
-      mut.items = Some(X.Array.immutableEmpty)
-      mut.additionalItems = Some(Schema(unknown->castToPublic))
-      input.schema = mut
+
+        if !isExactSize {
+          switch selfSchema.additionalItems->X.Option.getUnsafe {
+          | Strict =>
+            addValidation((~inputVar, ~negative) =>
+              `${inputVar}.length${B.eq(~negative)}${length->X.Int.unsafeToString}`
+            )
+          | Strip =>
+            addValidation((~inputVar, ~negative) =>
+              `${inputVar}.length${B.lt(~negative=!negative)}${length->X.Int.unsafeToString}`
+            )
+          | _ => ()
+          }
+        }
+      }
+
       switch input.schema.additionalItems {
       | Some(Schema(s)) if (s->castToInternal).tag !== unionTag => s->castToInternal
       | _ => unknown
@@ -4644,7 +4666,6 @@ module Schema = {
 
     // This should be done in the parser/serializer
     let _ = %raw(`delete mut.refiner`)
-    let _ = %raw(`delete mut.decoder`)
 
     mut.serializer = Some(
       Builder.make((b, ~input, ~selfSchema, ~path) => {
@@ -5102,6 +5123,7 @@ module Schema = {
                 let mut = base(arrayTag)
                 mut.items = Some(items)
                 mut.additionalItems = Some(Strict)
+                mut.decoder = Some(Array.arrayDecoder)
                 mut.serializer = Some(neverBuilder)
                 mut
               },
@@ -5136,6 +5158,7 @@ module Schema = {
                 mut.properties = Some(properties)
                 mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
                 mut.serializer = Some(neverBuilder)
+                mut.decoder = Some(objectDecoder)
                 mut
               },
             })

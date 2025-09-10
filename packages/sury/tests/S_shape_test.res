@@ -15,7 +15,7 @@ asyncTest("Parses with wrapping async schema in variant", async t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i!=="string"){e[0](i)}return Promise.all([e[1](i),]).then(a=>({"TAG":"Ok","_0":a[0],}))}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}return Promise.all([e[0](i),]).then(a=>({"TAG":"Ok","_0":a[0],}))}`,
   )
 })
 
@@ -49,7 +49,7 @@ test("Fails to serialize when can't unwrap the value from variant", t => {
 
   t->U.assertThrowsMessage(
     () => Error("Hello world!")->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing: Expected { TAG: "Ok"; _0: string; }, received { TAG: "Error"; _0: "Hello world!"; }`,
+    `Failed parsing at ["TAG"]: Expected "Ok", received "Error"`,
   )
 })
 
@@ -90,7 +90,7 @@ test("Successfully parses when tuple is destructured", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)||i.length!==2||i["0"]!==true||i["1"]!==12){e[0](i)}return 12}`,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v0=i["0"],v1=i["1"];if(v0!==true){e[0](v0)}if(v1!==12){e[1](v1)}return 12}`,
   )
 })
 
@@ -235,11 +235,11 @@ test("Reverse convert of tagged tuple with destructured bool", t => {
 
   t->Assert.deepEqual((false, "foo")->S.reverseConvertOrThrow(schema), %raw(`[true, "foo",false]`))
 
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [true,"foo",i["0"],]}`)
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [true,i["1"],i["0"],]}`)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseParse,
-    `i=>{if(!Array.isArray(i)||i.length!==2||i["1"]!=="foo"){e[0](i)}let v0=i["0"];if(typeof v0!=="boolean"){e[1](v0)}return [true,"foo",v0,]}`,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="boolean"){e[0](v0)}if(v1!=="foo"){e[1](v1)}return [true,v1,v0,]}`,
   )
 })
 
