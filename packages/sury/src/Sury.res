@@ -2042,6 +2042,11 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
 
   let input = ref(inputArg)
 
+  switch input.contents.schema.encoder {
+  | Some(encoder) => input := encoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
+  | None => ()
+  }
+
   switch schema.decoder {
   | Some(decoder) => input := decoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
   | None => ()
@@ -2061,8 +2066,8 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
     | {parser} => input := parser(b, ~input=input.contents, ~selfSchema=schema, ~path)
     // FIXME: Run encoder on the input.schema instead of the schema
     // eg for the case when jsonString returns an input with JSON schema
-    | {encoder} if input.contents.schema === schema =>
-      input := encoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
+    // | {encoder} if input.contents.schema === schema =>
+    //   input := encoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
     | _ => ()
     }
 
@@ -3783,18 +3788,14 @@ module Array = {
           (~inputVar, ~mode) => {
             switch mode {
             | Fail =>
-              switch prevValidation {
-              | Some(prevValidation) => prevValidation(~inputVar, ~mode)
-              | None =>
-                b->B.failWithArg(
-                  ~path,
-                  input => InvalidType({
-                    expected: selfSchema->castToPublic,
-                    received: input,
-                  }),
-                  inputVar,
-                )
-              }
+              b->B.failWithArg(
+                ~path,
+                input => InvalidType({
+                  expected: selfSchema->castToPublic,
+                  received: input,
+                }),
+                inputVar,
+              )
             | Refinement(negative) =>
               {
                 switch prevValidation {
@@ -3815,26 +3816,23 @@ module Array = {
         mut.items = Some(X.Array.immutableEmpty)
         mut.additionalItems = Some(Schema(unknown->castToPublic))
         input.schema = mut
-      } else {
-        let isExactSize =
-          isArrayInput &&
-          switch input.schema.additionalItems->X.Option.getUnsafe {
-          | Schema(_) => false
-          | _ => input.schema.items->X.Option.getUnsafe->Js.Array2.length === length
-          }
+      }
+      let isExactSize = switch input.schema.additionalItems->X.Option.getUnsafe {
+      | Schema(_) => false
+      | _ => input.schema.items->X.Option.getUnsafe->Js.Array2.length === length
+      }
 
-        if !isExactSize {
-          switch selfSchema.additionalItems->X.Option.getUnsafe {
-          | Strict =>
-            addValidation((~inputVar, ~negative) =>
-              `${inputVar}.length${B.eq(~negative)}${length->X.Int.unsafeToString}`
-            )
-          | Strip =>
-            addValidation((~inputVar, ~negative) =>
-              `${inputVar}.length${B.lt(~negative=!negative)}${length->X.Int.unsafeToString}`
-            )
-          | _ => ()
-          }
+      if !isExactSize {
+        switch selfSchema.additionalItems->X.Option.getUnsafe {
+        | Strict =>
+          addValidation((~inputVar, ~negative) =>
+            `${inputVar}.length${B.eq(~negative)}${length->X.Int.unsafeToString}`
+          )
+        | Strip =>
+          addValidation((~inputVar, ~negative) =>
+            `${inputVar}.length${B.lt(~negative=!negative)}${length->X.Int.unsafeToString}`
+          )
+        | _ => ()
         }
       }
 
@@ -4038,37 +4036,88 @@ module String = {
 
 let json = shaken("json")
 
+let jsonEncoder = Builder.make((b, ~input, ~selfSchema as to, ~path) => {
+  let toTagFlag = to.tag->TagFlag.get
+
+  if (
+    toTagFlag->Flag.unsafeHas(
+      TagFlag.string
+      ->Flag.with(TagFlag.boolean)
+      ->Flag.with(TagFlag.number)
+      ->Flag.with(TagFlag.null),
+    )
+  ) {
+    input.schema = unknown
+    input
+  } else if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    input.schema = unknown
+    stringDecoder(b, ~input, ~selfSchema=string, ~path)
+  } else if toTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
+    input.schema = unknown
+    Literal.literalDecoder(b, ~input, ~selfSchema=nullLiteral, ~path)
+  } else if toTagFlag->Flag.unsafeHas(TagFlag.array) {
+    // Validate that the input is an array
+    // and then update the schema to be an array of json instead of array of unknown
+    input.schema = unknown
+    let output = Array.arrayDecoder(
+      b,
+      ~input,
+      ~selfSchema=Array.factory(unknown->castToPublic)->castToInternal,
+      ~path,
+    )
+
+    // It's safe to mutate schema here, because we created it when passing
+    // to arrayDecoder
+    output.schema.additionalItems = Some(Schema(json->castToPublic))
+    output
+  } else {
+    input
+  }
+})
+
 let jsonDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
 
   if (
-    input.schema.ref === json.ref ||
-      inputTagFlag->Flag.unsafeHas(
-        TagFlag.string
-        ->Flag.with(TagFlag.number)
-        ->Flag.with(TagFlag.boolean)
-        ->Flag.with(TagFlag.null),
-      )
+    inputTagFlag->Flag.unsafeHas(
+      TagFlag.string
+      ->Flag.with(TagFlag.number)
+      ->Flag.with(TagFlag.boolean)
+      ->Flag.with(TagFlag.null),
+    ) || input.schema.ref === json.ref
   ) {
     input
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
+    b->B.constVal(~schema=nullLiteral)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
     b->inputToString(input)
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.array) {
+    let mut = base(arrayTag)
+    mut.items = Some(
+      input.schema.items
+      ->X.Option.getUnsafe
+      ->Js.Array2.map(item => {...item, schema: json->castToPublic}),
+    )
+    mut.additionalItems = Some(
+      switch input.schema.additionalItems->X.Option.getUnsafe {
+      | Schema(_) => Schema(json->castToPublic)
+      | v => v
+      },
+    )
+    Array.arrayDecoder(b, ~input, ~selfSchema=mut, ~path)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    recursiveDecoder(b, ~input, ~selfSchema, ~path)
+    let to = selfSchema.to->X.Option.getUnsafe
+    // Whether we can optimize encoding during decoding
+    let preEncode: bool =
+      to->Obj.magic && !(selfSchema.parser->Obj.magic) && !(selfSchema.refiner->Obj.magic)
+    if preEncode {
+      input.schema = json
+      jsonEncoder(b, ~input, ~selfSchema, ~path)
+    } else {
+      recursiveDecoder(b, ~input, ~selfSchema, ~path)
+    }
   } else {
     b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema, ~path)
-  }
-})
-
-let jsonEncoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
-  let to = selfSchema.to->X.Option.getUnsafe
-  let toTagFlag = to.tag->TagFlag.get
-
-  input.schema = unknown
-  if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-    stringDecoder(b, ~input, ~selfSchema=string, ~path)
-  } else {
-    input
   }
 })
 

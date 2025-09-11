@@ -135,8 +135,7 @@ function getCompiledCodeString(schema, op) {
         code.contents = code.contents + "\n" + (key + ": " + toCode(schema));
         return;
       } catch (exn) {
-        console.error("An error caught in U.getCompiledCodeString");
-        throw exn;
+        return;
       }
     });
   }

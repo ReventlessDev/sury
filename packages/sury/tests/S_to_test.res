@@ -612,28 +612,168 @@ test("Coerce from string to JSON and then to bigint", t => {
   )
 })
 
-// test("Coerce from JSON to bigint", t => {
-//   let schema = S.json->S.to(S.bigint)
+test("Coerce from JSON to bigint", t => {
+  let schema = S.json->S.to(S.bigint)
 
-//   t->Assert.deepEqual("123"->S.parseOrThrow(schema), %raw(`123n`))
-//   t->Assert.deepEqual(123->S.parseOrThrow(schema), %raw(`123n`))
-//   t->U.assertThrowsMessage(() => {
-//     true->S.parseOrThrow(schema)
-//   }, "foo")
+  t->Assert.deepEqual("123"->S.parseOrThrow(schema), %raw(`123n`))
+  t->U.assertThrowsMessage(() => {
+    123->S.parseOrThrow(schema)
+  }, "Failed parsing: Expected string, received 123")
+  t->U.assertThrowsMessage(() => {
+    true->S.parseOrThrow(schema)
+  }, "Failed parsing: Expected string, received true")
 
-//   t->Assert.deepEqual(123n->S.reverseConvertOrThrow(schema), %raw(`"123"`))
+  t->Assert.deepEqual(123n->S.reverseConvertOrThrow(schema), %raw(`"123"`))
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}return v0}`,
+  )
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseParse,
+    `i=>{if(typeof i!=="bigint"){e[0](i)}return ""+i}`,
+  )
+})
+
+test("Coerce from JSON to unit", t => {
+  let schema = S.json->S.to(S.unit)
+
+  t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), ())
+  t->U.assertThrowsMessage(() => {
+    %raw(`undefined`)->S.parseOrThrow(schema)
+  }, "Failed parsing: Expected null, received undefined")
+  t->Assert.deepEqual(()->S.reverseConvertOrThrow(schema), %raw(`null`))
+
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!==null){e[0](i)}return void 0}`)
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==void 0){e[0](i)}return null}`)
+})
+
+test("Coerce from JSON to NaN", t => {
+  let schema = S.json->S.to(S.literal(%raw(`NaN`)))
+
+  t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), %raw(`NaN`))
+  t->U.assertThrowsMessage(() => {
+    %raw(`undefined`)->S.parseOrThrow(schema)
+  }, "Failed parsing: Expected null, received undefined")
+  t->Assert.deepEqual(%raw(`NaN`)->S.reverseConvertOrThrow(schema), %raw(`null`))
+
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!==null){e[0](i)}return NaN}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{if(!Number.isNaN(i)){e[0](i)}return null}`,
+  )
+})
+
+test("Coerce from JSON to optional bigint", t => {
+  let schema = S.json->S.to(S.option(S.bigint))
+
+  t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), None)
+  t->Assert.deepEqual(%raw(`"123"`)->S.parseOrThrow(schema), Some(123n))
+  t->U.assertThrowsMessage(
+    () => {
+      %raw(`123`)->S.parseOrThrow(schema)
+    },
+    `Failed parsing: Expected bigint | undefined, received 123
+- Expected string, received 123
+- Expected null, received 123`,
+  )
+  t->Assert.deepEqual(None->S.reverseConvertOrThrow(schema), %raw(`null`))
+  t->Assert.deepEqual(Some(123n)->S.reverseConvertOrThrow(schema), %raw(`"123"`))
+
+  // TODO: Improve union logic to avoid try/catch
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{try{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}i=v0}catch(e0){try{if(i!==null){e[2](i)}i=void 0}catch(e1){e[3](i,e0,e1)}}return i}`,
+  )
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{if(typeof i==="bigint"){i=""+i}else if(i===void 0){i=null}return i}`,
+  )
+})
+
+test("Coerce from JSON to array of bigint", t => {
+  let schema = S.json->S.to(S.array(S.bigint))
+
+  t->Assert.deepEqual(%raw(`["123"]`)->S.parseOrThrow(schema), [123n])
+  t->U.assertThrowsMessage(() => {
+    %raw(`[123]`)->S.parseOrThrow(schema)
+  }, `Failed parsing at ["0"]: Expected string, received 123`)
+  t->Assert.deepEqual([123n]->S.reverseConvertOrThrow(schema), %raw(`["123"]`))
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v7=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v6;try{let v5=i[v2];if(typeof v5!=="string"){e[1](v5)}let v4;try{v4=BigInt(v5)}catch(_){e[0](v5)}v6=v4}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v7[v2]=v6}return v7}`,
+  )
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v5=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v4;try{v4=""+i[v2]}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v5[v2]=v4}return v5}`,
+  )
+})
+
+test("Coerce from JSON to tuple with bigint", t => {
+  let schema = S.json->S.to(S.schema(s => (s.matches(S.string), s.matches(S.bigint))))
+
+  t->Assert.deepEqual(%raw(`["foo", "123"]`)->S.parseOrThrow(schema), ("foo", 123n))
+  t->U.assertThrowsMessage(() => {
+    %raw(`["foo"]`)->S.parseOrThrow(schema)
+  }, `Failed parsing: Expected [string, bigint], received ["foo"]`)
+  t->Assert.deepEqual(("foo", 123n)->S.reverseConvertOrThrow(schema), %raw(`["foo", "123"]`))
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(!Array.isArray(i)||i.length!==2){e[3](i)}let v2=i["0"],v4=i["1"];if(typeof v2!=="string"){e[0](v2)}if(typeof v4!=="string"){e[2](v4)}let v3;try{v3=BigInt(v4)}catch(_){e[1](v4)}return [v2,v3,]}`,
+  )
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [i["0"],""+i["1"],]}`)
+})
+
+// Only.test("Coerce from JSON to object with optional field", t => {
+//   let schema = S.json->S.to(
+//     S.schema(s =>
+//       {
+//         "id": s.matches(S.bigint),
+//         "isDeleted": s.matches(S.option(S.string)),
+//       }
+//     ),
+//   )
+
+//   // t->Assert.deepEqual(
+//   //   {
+//   //     "id": "123",
+//   //   }->S.parseOrThrow(schema),
+//   //   {
+//   //     "id": 123n,
+//   //     "isDeleted": None,
+//   //   },
+//   // )
+//   // t->U.assertThrowsMessage(() => {
+//   //   123->S.parseOrThrow(schema)
+//   // }, "Failed parsing: Expected string, received 123")
+//   // t->U.assertThrowsMessage(() => {
+//   //   true->S.parseOrThrow(schema)
+//   // }, "Failed parsing: Expected string, received true")
+
+//   // t->Assert.deepEqual(123n->S.reverseConvertOrThrow(schema), %raw(`"123"`))
 
 //   t->U.assertCompiledCode(
 //     ~schema,
 //     ~op=#Parse,
 //     `i=>{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}return v0}`,
 //   )
-//   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
-//   t->U.assertCompiledCode(
-//     ~schema,
-//     ~op=#ReverseParse,
-//     `i=>{if(typeof i!=="bigint"){e[0](i)}return ""+i}`,
-//   )
+//   // t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
+//   // t->U.assertCompiledCode(
+//   //   ~schema,
+//   //   ~op=#ReverseParse,
+//   //   `i=>{if(typeof i!=="bigint"){e[0](i)}return ""+i}`,
+//   // )
 // })
 
 test("Coerce from union to bigint", t => {
