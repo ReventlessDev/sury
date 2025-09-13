@@ -152,11 +152,9 @@ let getCompiledCodeString = (
       try {
         code := code.contents ++ "\n" ++ `${key}: ${schema->toCode}`
       } catch {
-      | _ => {
-          // Console.error("An error caught in U.getCompiledCodeString")
-          // throw(exn)
-          ()
-        }
+      | _ => // Console.error("An error caught in U.getCompiledCodeString")
+        // throw(exn)
+        ()
       }
     )
   | _ => ()

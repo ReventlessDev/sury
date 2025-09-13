@@ -1,5 +1,7 @@
 open Ava
 
+S.enableJson()
+
 test("Successfully parses", t => {
   let schema = S.bool
 
@@ -43,11 +45,9 @@ test("Successfully parses object with space", t => {
   )
 })
 
-test("Fails to serialize Unknown schema", t => {
+test("Successfully serializes unknown schema", t => {
   let schema = S.unknown
 
-  t->U.assertThrowsMessage(
-    () => Obj.magic(123)->S.reverseConvertToJsonStringOrThrow(schema),
-    `Failed converting to JSON: unknown is not valid JSON`,
-  )
+  t->Assert.deepEqual(Obj.magic(123)->S.reverseConvertToJsonStringOrThrow(S.unknown), "123")
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvertToJson, `i=>{let v0=e[0](i);return v0}`)
 })

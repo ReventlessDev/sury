@@ -1939,6 +1939,7 @@ let setHas = (has, tag: tag) => {
 let jsonName = `JSON`
 
 let jsonString = shaken("jsonString")
+let json = shaken("json")
 
 module Literal = {
   let literalDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
@@ -2064,10 +2065,6 @@ let rec parse = (prevB: b, ~schema, ~input as inputArg: val, ~path, ~reuseScope=
   | Some(to) =>
     switch schema {
     | {parser} => input := parser(b, ~input=input.contents, ~selfSchema=schema, ~path)
-    // FIXME: Run encoder on the input.schema instead of the schema
-    // eg for the case when jsonString returns an input with JSON schema
-    // | {encoder} if input.contents.schema === schema =>
-    //   input := encoder(b, ~input=input.contents, ~selfSchema=schema, ~path)
     | _ => ()
     }
 
@@ -2091,7 +2088,7 @@ and isAsyncInternal = (schema, ~defs) => {
       var: B._var,
       flag: ValFlag.none,
       inline: Builder.intitialInputVar,
-      schema: unknown, // FIXME:
+      schema: unknown,
     }
     let output = parse(b, ~schema, ~input, ~path=Path.empty)
     let isAsync = output.flag->Flag.has(ValFlag.async)
@@ -2107,9 +2104,28 @@ and isAsyncInternal = (schema, ~defs) => {
 and internalCompile = (~schema, ~flag, ~defs) => {
   let b = B.rootScope(~flag, ~defs)
 
-  if flag->Flag.unsafeHas(Flag.jsonableOutput) {
-    let output = schema->reverse
-    jsonableValidation(~output, ~parent=output, ~path=Path.empty, ~flag)
+  let schema = if flag->Flag.unsafeHas(Flag.assertOutput) {
+    schema
+    ->updateOutput(mut => {
+      let t = unit->copySchema
+      t.noValidation = Some(true)
+      mut.to = Some(t)
+    })
+    ->castToInternal
+  } else if flag->Flag.unsafeHas(Flag.jsonStringOutput) {
+    schema
+    ->updateOutput(mut => {
+      mut.to = Some(jsonString)
+    })
+    ->castToInternal
+  } else if flag->Flag.unsafeHas(Flag.jsonableOutput) {
+    schema
+    ->updateOutput(mut => {
+      mut.to = Some(json)
+    })
+    ->castToInternal
+  } else {
+    schema
   }
 
   let input = {
@@ -2124,25 +2140,6 @@ and internalCompile = (~schema, ~flag, ~defs) => {
     } else {
       schema
     },
-  }
-
-  let schema = if flag->Flag.unsafeHas(Flag.assertOutput) {
-    schema
-    ->updateOutput(mut => {
-      let t = base(unit.tag)
-      t.const = unit.const
-      t.noValidation = Some(true)
-      mut.to = Some(t)
-    })
-    ->castToInternal
-  } else if flag->Flag.unsafeHas(Flag.jsonStringOutput) {
-    schema
-    ->updateOutput(mut => {
-      mut.to = Some(jsonString)
-    })
-    ->castToInternal
-  } else {
-    schema
   }
 
   let output = parse(b, ~schema, ~input, ~path=Path.empty)
@@ -2473,8 +2470,13 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
         }
       }
 
-      // FIXME: Run only for unknown input
-      if selfSchema.additionalItems === Some(Strict) {
+      if (
+        selfSchema.additionalItems === Some(Strict) &&
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => true
+          | _ => false
+          }
+      ) {
         let key = b->B.allocateVal(~schema=unknown)
         let keyVar = key.inline
         b.code = b.code ++ `for(${keyVar} in ${b->B.Val.var(input)}){if(`
@@ -4034,8 +4036,6 @@ module String = {
   let datetimeRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/
 }
 
-let json = shaken("json")
-
 let jsonEncoder = Builder.make((b, ~input, ~selfSchema as to, ~path) => {
   let toTagFlag = to.tag->TagFlag.get
 
@@ -4105,6 +4105,25 @@ let jsonDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
       },
     )
     Array.arrayDecoder(b, ~input, ~selfSchema=mut, ~path)
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
+    let mut = base(objectTag)
+    let properties = Js.Dict.empty()
+    mut.items = Some(
+      input.schema.items
+      ->X.Option.getUnsafe
+      ->Js.Array2.map(item => {
+        properties->Js.Dict.set(item.location, json)
+        {...item, schema: json->castToPublic}
+      }),
+    )
+    mut.properties = Some(properties)
+    mut.additionalItems = Some(
+      switch input.schema.additionalItems->X.Option.getUnsafe {
+      | Schema(_) => Schema(json->castToPublic)
+      | v => v
+      },
+    )
+    objectDecoder(b, ~input, ~selfSchema=mut, ~path)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     let to = selfSchema.to->X.Option.getUnsafe
     // Whether we can optimize encoding during decoding
@@ -4183,31 +4202,35 @@ let enableJsonString = {
   }
 
   let makeJsonStringEncoder = (~validateOnly) =>
-    Builder.make((b, ~input, ~selfSchema, ~path) => {
-      let inputVar = b->B.Val.var(input)
-      let output = ref(input)
-      b.code =
-        b.code ++
-        `try{` ++
-        if validateOnly {
-          ""
-        } else {
-          let targetVal = b->B.allocateVal(~schema=json)
-          output := targetVal
-          targetVal.inline ++ "="
-        } ++
-        `JSON.parse(${inputVar})}catch(t){${b->B.failWithArg(
-            ~path,
-            input => InvalidType({
-              expected: selfSchema->castToPublic,
-              received: input,
-            }),
-            inputVar,
-          )}}`
-      if !validateOnly {
-        output := jsonEncoder(b, ~input=output.contents, ~selfSchema, ~path)
+    Builder.make((b, ~input, ~selfSchema as to, ~path) => {
+      if to.format === Some(JSON) {
+        input
+      } else {
+        let inputVar = b->B.Val.var(input)
+        let output = ref(input)
+        b.code =
+          b.code ++
+          `try{` ++
+          if validateOnly {
+            ""
+          } else {
+            let targetVal = b->B.allocateVal(~schema=json)
+            output := targetVal
+            targetVal.inline ++ "="
+          } ++
+          `JSON.parse(${inputVar})}catch(t){${b->B.failWithArg(
+              ~path,
+              input => InvalidType({
+                expected: to->castToPublic,
+                received: input,
+              }),
+              inputVar,
+            )}}`
+        if !validateOnly {
+          output := jsonEncoder(b, ~input=output.contents, ~selfSchema=to, ~path)
+        }
+        output.contents
       }
-      output.contents
     })
 
   () => {
@@ -4654,45 +4677,45 @@ module Schema = {
     (b, ~input: val, ~selfSchema, ~path) => {
       let isFlatten = b.global.flag->Flag.unsafeHas(Flag.flatten)
       // let outputs = isFlatten ? input.properties->Obj.magic : Js.Dict.empty()
-      let outputs = Js.Dict.empty() // FIXME:
+      // let outputs = Js.Dict.empty() // FIXME:
 
-      if !isFlatten {
-        let items = selfSchema.items->X.Option.getUnsafe
+      // if !isFlatten {
+      //   let items = selfSchema.items->X.Option.getUnsafe
 
-        for idx in 0 to items->Js.Array2.length - 1 {
-          let {schema, location} = items->Js.Array2.unsafe_get(idx)
-          let schema = schema->castToInternal
+      //   for idx in 0 to items->Js.Array2.length - 1 {
+      //     let {schema, location} = items->Js.Array2.unsafe_get(idx)
+      //     let schema = schema->castToInternal
 
-          let itemInput = b->B.Val.get(input, location)
-          let path = path->Path.concat(b->B.inlineLocation(location)->Path.fromInlinedLocation)
-          outputs->Js.Dict.set(location, b->parse(~schema, ~input=itemInput, ~path))
-        }
+      //     let itemInput = b->B.Val.get(input, location)
+      //     let path = path->Path.concat(b->B.inlineLocation(location)->Path.fromInlinedLocation)
+      //     outputs->Js.Dict.set(location, b->parse(~schema, ~input=itemInput, ~path))
+      //   }
 
-        b->objectStrictModeCheck(~input, ~items, ~selfSchema, ~path)
-      }
+      //   b->objectStrictModeCheck(~input, ~items, ~selfSchema, ~path)
+      // }
 
-      switch flattened {
-      | None => ()
-      | Some(rootItems) =>
-        let prevFlag = b.global.flag
-        b.global.flag = prevFlag->Flag.with(Flag.flatten)
-        for idx in 0 to rootItems->Js.Array2.length - 1 {
-          let item = rootItems->Js.Array2.unsafe_get(idx)
-          outputs
-          ->Js.Dict.set(
-            item->getUnsafeDitemIndex,
-            b->parse(~schema=item->getDitemSchema, ~input, ~path),
-          )
-          ->ignore
-        }
-        b.global.flag = prevFlag
-      }
+      // switch flattened {
+      // | None => ()
+      // | Some(rootItems) =>
+      //   let prevFlag = b.global.flag
+      //   b.global.flag = prevFlag->Flag.with(Flag.flatten)
+      //   for idx in 0 to rootItems->Js.Array2.length - 1 {
+      //     let item = rootItems->Js.Array2.unsafe_get(idx)
+      //     outputs
+      //     ->Js.Dict.set(
+      //       item->getUnsafeDitemIndex,
+      //       b->parse(~schema=item->getDitemSchema, ~input, ~path),
+      //     )
+      //     ->ignore
+      //   }
+      //   b.global.flag = prevFlag
+      // }
 
       let rec getItemOutput = item => {
         switch item {
         | ItemField({target: item, location}) => b->B.Val.get(item->getItemOutput, location)
-        | Item({location}) => outputs->Js.Dict.unsafeGet(location)
-        | Root({idx}) => outputs->Js.Dict.unsafeGet(idx->X.Int.unsafeToString)
+        | Item({location}) => b->B.Val.get(input, location)
+        | Root({idx}) => b->B.Val.get(input, idx->X.Int.unsafeToString)
         }
       }
 
@@ -5080,6 +5103,7 @@ module Schema = {
       mut.items = Some(items)
       mut.properties = Some(properties)
       mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
+      mut.decoder = Some(objectDecoder)
       mut.parser = Some(advancedBuilder(~definition, ~flattened))
       mut.to = Some(definitionToTarget(~definition, ~flattened))
       mut->castToPublic
@@ -5130,6 +5154,7 @@ module Schema = {
     let mut = base(arrayTag)
     mut.items = Some(items)
     mut.additionalItems = Some(Strict)
+    mut.decoder = Some(Array.arrayDecoder)
     mut.parser = Some(advancedBuilder(~definition))
     mut.to = Some(definitionToTarget(~definition))
     mut->castToPublic

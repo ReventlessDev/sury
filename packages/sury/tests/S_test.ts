@@ -2447,6 +2447,9 @@ test("Example", (t) => {
 });
 
 test("Decode from json", async (t) => {
+  t.deepEqual(S.decoder(S.json, S.array(S.bigint))(["123"]), [123n]);
+  t.deepEqual(S.decoder(S.array(S.bigint), S.json)([123n]), ["123"]);
+
   const schema = S.string.with(S.nullable);
 
   t.deepEqual(S.decoder(S.json, schema)("hello"), "hello");
@@ -2466,6 +2469,14 @@ test("Decode from json string, convert to number", async (t) => {
   expectType<TypeEqual<typeof fn, (data: string) => number>>(true);
 
   t.deepEqual(fn(`"123"`), 123);
+});
+
+test("Decode from json string to array of bigints", async (t) => {
+  const fn = S.decoder(S.jsonString, S.array(S.bigint));
+
+  expectType<TypeEqual<typeof fn, (data: string) => bigint[]>>(true);
+
+  t.deepEqual(fn(`["123"]`), [123n]);
 });
 
 test("Parse to literal with no validation to emulate assert", async (t) => {
