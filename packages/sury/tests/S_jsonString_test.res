@@ -152,7 +152,7 @@ test("Parses JSON string to bool literal", t => {
     `Failed parsing: Expected true, received "null"`,
   )
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{i==="true"||e[0](i);return true}`)
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="true"){e[0](i)}return true}`)
 
   t->Assert.deepEqual(true->S.reverseConvertOrThrow(schema), %raw(`"true"`))
 
@@ -194,7 +194,7 @@ test("Parses JSON string to bigint literal", t => {
     `Failed parsing: Expected 123n, received "123"`,
   )
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{i==="\\"123\\""||e[0](i);return 123n}`)
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="\\"123\\""){e[0](i)}return 123n}`)
 
   t->Assert.deepEqual(123n->S.reverseConvertOrThrow(schema), %raw(`'"123"'`))
 
@@ -227,7 +227,7 @@ test("Parses JSON string to null literal", t => {
 
   t->Assert.deepEqual("null"->S.parseOrThrow(schema), nullVal)
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{i==="null"||e[0](i);return null}`)
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="null"){e[0](i)}return null}`)
 
   t->Assert.deepEqual(nullVal->S.reverseConvertOrThrow(schema), %raw(`"null"`))
 
@@ -239,7 +239,7 @@ test("Parses JSON string to nullAsUnit", t => {
 
   t->Assert.deepEqual(`null`->S.parseOrThrow(schema), ())
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{i==="null"||e[0](i);return void 0}`)
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="null"){e[0](i)}return void 0}`)
 
   t->Assert.deepEqual(()->S.reverseConvertOrThrow(schema), %raw(`"null"`))
 
@@ -251,7 +251,7 @@ test("Parses JSON string to unit", t => {
 
   t->Assert.deepEqual(`null`->S.parseOrThrow(schema), ())
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{i==="null"||e[0](i);return void 0}`)
+  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="null"){e[0](i)}return void 0}`)
 
   t->Assert.deepEqual(()->S.reverseConvertOrThrow(schema), %raw(`"null"`))
 
@@ -433,7 +433,7 @@ test("Can apply refinement to JSON string", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[0](i)}try{JSON.parse(i)}catch(t){e[1](i)}e[2](i);return i}`,
+    `i=>{if(typeof i!=="string"){e[2](i)}try{JSON.parse(i)}catch(t){e[0](i)}e[1](i);return i}`,
   )
 })
 
@@ -470,6 +470,6 @@ test("Can apply refinement to JSON string with S.to before", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[0](i)}let v0=""+i;e[1](v0);return v0}`,
+    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[1](i)}let v0=""+i;e[0](v0);return v0}`,
   )
 })

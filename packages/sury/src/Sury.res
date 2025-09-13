@@ -2364,35 +2364,52 @@ and jsonableValidation = (~output, ~parent, ~path, ~flag) => {
 let objectDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    b.validation = Some(
-      (~inputVar, ~mode) => {
-        switch mode {
-        | Fail =>
-          b->B.failWithArg(
-            ~path,
-            input => InvalidType({
-              expected: selfSchema->castToPublic,
-              received: input,
-            }),
-            inputVar,
-          )
-        | Refinement(negative) =>
-          `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(
-              ~negative,
-            )}${B.exp(~negative)}${inputVar}` ++ if (
-            selfSchema.additionalItems->X.Option.getUnsafe === Strip
-          ) {
-            ""
-          } else {
-            `${B.and_(~negative)}${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
+    let addValidation = fn => {
+      let prevValidation = b.validation
+      b.validation = Some(
+        (~inputVar, ~mode) => {
+          switch mode {
+          | Fail =>
+            b->B.failWithArg(
+              ~path,
+              input => InvalidType({
+                expected: selfSchema->castToPublic,
+                received: input,
+              }),
+              inputVar,
+            )
+          | Refinement(negative) =>
+            {
+              switch prevValidation {
+              | Some(prevValidation) => prevValidation(~inputVar, ~mode) ++ B.and_(~negative)
+              | None => ""
+              }
+            } ++
+            fn(~inputVar, ~negative)
           }
-        }
-      },
-    )
-    let mut = base(objectTag)
-    mut.properties = Some(X.Object.immutableEmpty)
-    mut.additionalItems = Some(Schema(unknown->castToPublic))
-    input.schema = mut
+        },
+      )
+    }
+
+    let isObjectInput = inputTagFlag->Flag.unsafeHas(TagFlag.object)
+    if !isObjectInput {
+      addValidation((~inputVar, ~negative) =>
+        `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(~negative)}${B.exp(
+            ~negative,
+          )}${inputVar}`
+      )
+      let mut = base(objectTag)
+      mut.properties = Some(X.Object.immutableEmpty)
+      mut.items = Some(X.Array.immutableEmpty)
+      mut.additionalItems = Some(Schema(unknown->castToPublic))
+      input.schema = mut
+    }
+    if selfSchema.additionalItems->X.Option.getUnsafe !== Strip {
+      addValidation((~inputVar, ~negative) =>
+        `${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
+      )
+    }
+
     unknown
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
     // FIXME: Won't work for Strict and Strip modes
@@ -4203,9 +4220,7 @@ let enableJsonString = {
 
   let makeJsonStringEncoder = (~validateOnly) =>
     Builder.make((b, ~input, ~selfSchema as to, ~path) => {
-      if to.format === Some(JSON) {
-        input
-      } else {
+      if validateOnly || to.format !== Some(JSON) {
         let inputVar = b->B.Val.var(input)
         let output = ref(input)
         b.code =
@@ -4230,12 +4245,16 @@ let enableJsonString = {
           output := jsonEncoder(b, ~input=output.contents, ~selfSchema=to, ~path)
         }
         output.contents
+      } else {
+        input
       }
     })
 
   () => {
     if jsonString->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
       let _ = %raw(`delete jsonString.as`)
+      enableJson()
+
       jsonString.tag = stringTag
       jsonString.format = Some(JSON)
       jsonString.name = Some(`${jsonName} string`)

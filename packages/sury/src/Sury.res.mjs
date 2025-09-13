@@ -1541,33 +1541,44 @@ function objectDecoder(b, input, selfSchema, path) {
   let inputTagFlag = flags[input.s.type];
   let itemInputSchema;
   if (inputTagFlag & 1) {
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return "typeof " + inputVar + (
-          mode ? "!==" : "==="
-        ) + "\"" + objectTag + "\"" + (
-          mode ? "||" : "&&"
-        ) + (
-          mode ? "!" : ""
-        ) + inputVar + (
-          selfSchema.additionalItems === "strip" ? "" : (
-              mode ? "||" : "&&"
-            ) + (
-              mode ? "" : "!"
-            ) + "Array.isArray(" + inputVar + ")"
-        );
-      }
+    let addValidation = fn => {
+      let prevValidation = b.f;
+      b.f = (inputVar, mode) => {
+        if (mode === 0) {
+          return failWithArg(b, path, input => ({
+            TAG: "InvalidType",
+            expected: selfSchema,
+            received: input
+          }), inputVar);
+        } else {
+          return (
+            prevValidation !== undefined ? prevValidation(inputVar, mode) + (
+                mode ? "||" : "&&"
+              ) : ""
+          ) + fn(inputVar, mode);
+        }
+      };
     };
-    let mut = new Schema(objectTag);
-    mut.properties = immutableEmpty;
-    mut.additionalItems = unknown;
-    input.s = mut;
+    let isObjectInput = inputTagFlag & 64;
+    if (!isObjectInput) {
+      addValidation((inputVar, negative) => "typeof " + inputVar + (
+        negative ? "!==" : "==="
+      ) + "\"" + objectTag + "\"" + (
+        negative ? "||" : "&&"
+      ) + (
+        negative ? "!" : ""
+      ) + inputVar);
+      let mut = new Schema(objectTag);
+      mut.properties = immutableEmpty;
+      mut.items = immutableEmpty$1;
+      mut.additionalItems = unknown;
+      input.s = mut;
+    }
+    if (selfSchema.additionalItems !== "strip") {
+      addValidation((inputVar, negative) => (
+        negative ? "" : "!"
+      ) + "Array.isArray(" + inputVar + ")");
+    }
     itemInputSchema = unknown;
   } else if (inputTagFlag & 64) {
     let s = input.s.additionalItems;
@@ -2953,7 +2964,7 @@ function inlineJsonString(b, schema, selfSchema, path) {
 
 function makeJsonStringEncoder(validateOnly) {
   return (b, input, to, path) => {
-    if (to.format === "json") {
+    if (!(validateOnly || to.format !== "json")) {
       return input;
     }
     let inputVar = input.v(b);
@@ -2981,6 +2992,7 @@ function makeJsonStringEncoder(validateOnly) {
 function enableJsonString() {
   if (jsonString[shakenRef]) {
     ((delete jsonString.as));
+    enableJson();
     jsonString.type = stringTag;
     jsonString.format = "json";
     jsonString.name = jsonName + " string";
@@ -3249,70 +3261,6 @@ function proxify(item) {
   });
 }
 
-function definitionToRitem(definition, path, ritemsByItemPath) {
-  if (typeof definition !== "object" || definition === null) {
-    return {
-      k: 1,
-      p: path,
-      s: copySchema(parse(definition))
-    };
-  }
-  let item = definition[itemSymbol];
-  if (item !== undefined) {
-    let ritemSchema = copySchema(getOutputSchema(item.schema));
-    ((delete ritemSchema.serializer));
-    let ritem = {
-      k: 0,
-      p: path,
-      s: ritemSchema
-    };
-    item.r = ritem;
-    ritemsByItemPath[getFullDitemPath(item)] = ritem;
-    return ritem;
-  }
-  if (Array.isArray(definition)) {
-    let items = [];
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let location = idx.toString();
-      let inlinedLocation = "\"" + location + "\"";
-      let ritem$1 = definitionToRitem(definition[idx], path + ("[" + inlinedLocation + "]"), ritemsByItemPath);
-      let item_schema = ritem$1.s;
-      let item$1 = {
-        schema: item_schema,
-        location: location
-      };
-      items[idx] = item$1;
-    }
-    let mut = new Schema(arrayTag);
-    return {
-      k: 2,
-      p: path,
-      s: (mut.items = items, mut.additionalItems = "strict", mut.decoder = arrayDecoder, mut.serializer = neverBuilder, mut)
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let properties = {};
-  let items$1 = [];
-  for (let idx$1 = 0, idx_finish$1 = fieldNames.length; idx$1 < idx_finish$1; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let inlinedLocation$1 = fromString(location$1);
-    let ritem$2 = definitionToRitem(definition[location$1], path + ("[" + inlinedLocation$1 + "]"), ritemsByItemPath);
-    let item_schema$1 = ritem$2.s;
-    let item$2 = {
-      schema: item_schema$1,
-      location: location$1
-    };
-    items$1[idx$1] = item$2;
-    properties[location$1] = item_schema$1;
-  }
-  let mut$1 = new Schema(objectTag);
-  return {
-    k: 2,
-    p: path,
-    s: (mut$1.items = items$1, mut$1.properties = properties, mut$1.additionalItems = globalConfig.a, mut$1.serializer = neverBuilder, mut$1.decoder = objectDecoder, mut$1)
-  };
-}
-
 function definitionToSchema(definition) {
   if (typeof definition !== "object" || definition === null) {
     return parse(definition);
@@ -3437,6 +3385,70 @@ function nested(fieldName) {
   };
   parentCtx[cacheId] = ctx$1;
   return ctx$1;
+}
+
+function definitionToRitem(definition, path, ritemsByItemPath) {
+  if (typeof definition !== "object" || definition === null) {
+    return {
+      k: 1,
+      p: path,
+      s: copySchema(parse(definition))
+    };
+  }
+  let item = definition[itemSymbol];
+  if (item !== undefined) {
+    let ritemSchema = copySchema(getOutputSchema(item.schema));
+    ((delete ritemSchema.serializer));
+    let ritem = {
+      k: 0,
+      p: path,
+      s: ritemSchema
+    };
+    item.r = ritem;
+    ritemsByItemPath[getFullDitemPath(item)] = ritem;
+    return ritem;
+  }
+  if (Array.isArray(definition)) {
+    let items = [];
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let location = idx.toString();
+      let inlinedLocation = "\"" + location + "\"";
+      let ritem$1 = definitionToRitem(definition[idx], path + ("[" + inlinedLocation + "]"), ritemsByItemPath);
+      let item_schema = ritem$1.s;
+      let item$1 = {
+        schema: item_schema,
+        location: location
+      };
+      items[idx] = item$1;
+    }
+    let mut = new Schema(arrayTag);
+    return {
+      k: 2,
+      p: path,
+      s: (mut.items = items, mut.additionalItems = "strict", mut.decoder = arrayDecoder, mut.serializer = neverBuilder, mut)
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let properties = {};
+  let items$1 = [];
+  for (let idx$1 = 0, idx_finish$1 = fieldNames.length; idx$1 < idx_finish$1; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let inlinedLocation$1 = fromString(location$1);
+    let ritem$2 = definitionToRitem(definition[location$1], path + ("[" + inlinedLocation$1 + "]"), ritemsByItemPath);
+    let item_schema$1 = ritem$2.s;
+    let item$2 = {
+      schema: item_schema$1,
+      location: location$1
+    };
+    items$1[idx$1] = item$2;
+    properties[location$1] = item_schema$1;
+  }
+  let mut$1 = new Schema(objectTag);
+  return {
+    k: 2,
+    p: path,
+    s: (mut$1.items = items$1, mut$1.properties = properties, mut$1.additionalItems = globalConfig.a, mut$1.serializer = neverBuilder, mut$1.decoder = objectDecoder, mut$1)
+  };
 }
 
 function advancedBuilder(definition, flattened) {

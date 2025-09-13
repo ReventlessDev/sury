@@ -262,7 +262,7 @@ test("Object schema with empty object field", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="object"||!v0){e[1](v0)}return {"foo":{},}}`,
+    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["foo"];if(typeof v0!=="object"||!v0){e[0](v0)}return {"foo":{},}}`,
   )
   t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
 })
@@ -276,7 +276,7 @@ test("Object schema with nested object field containing only literal", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`{"foo": {"bar": "bap"}}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["foo"]: Expected { bar: "baz"; }, received { bar: "bap"; }`,
+    `Failed parsing at ["foo"]["bar"]: Expected "baz", received "bap"`,
   )
 
   t->U.assertCompiledCode(
@@ -303,6 +303,6 @@ test("https://github.com/DZakh/sury/issues/131", t => {
   t->U.assertCompiledCode(
     ~schema=testSchema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}let v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=v0[v1];if(!(typeof v3==="string"||v3===void 0)){e[2](v3)}v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v2.path}throw v2}v5[v1]=v4}return {"foobar":v5,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}let v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=v0[v1];if(!(typeof v3==="string"||v3===void 0)){e[0](v3)}v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v2.path}throw v2}v5[v1]=v4}return {"foobar":v5,}}`,
   )
 })
