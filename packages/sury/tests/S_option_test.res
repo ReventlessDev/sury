@@ -141,7 +141,7 @@ test("Serializes Some(None) to undefined for option nested in null", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(i===void 0){i=null}else if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}return i}`,
+    `i=>{if(i===void 0){i=null}else if(typeof i==="object"&&i){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}}return i}`,
   )
 })
 
@@ -156,7 +156,7 @@ test("Applies valFromOption for Some()", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}return i}`,
+    `i=>{if(typeof i==="object"&&i){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}}return i}`,
   )
 })
 
@@ -176,7 +176,7 @@ test("Nested option support", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}return i}`,
+    `i=>{if(typeof i==="object"&&i){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=void 0}}return i}`,
   )
 })
 
@@ -219,7 +219,7 @@ test(
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ReverseConvert,
-      `i=>{if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i={}}return i}`,
+      `i=>{if(typeof i==="object"&&i){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i={}}}return i}`,
     )
   },
 )
