@@ -15,6 +15,15 @@ import * as S from "../src/S.js";
 // FIXME: Move the test to e2e
 // import { stringSchema } from "../genType/GenType.gen.js";
 
+// FIXME: This is fails
+// S.parser(
+//   S.union([
+//     "bar",
+//     "bas",
+//     S.string.with(S.to, S.schema("unknown").with(S.noValidation, true)),
+//   ])
+// )
+
 type SchemaEqual<
   Schema extends S.Schema<unknown, unknown>,
   Output,
