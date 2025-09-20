@@ -1,21 +1,26 @@
 (i) => {
-  if (typeof i === "string") {
-    let v0;
-    try {
-      v0 = BigInt(i);
-    } catch (_) {
-      e[0](i);
-    }
-    i = v0;
-  } else if (typeof i === "number" && !Number.isNaN(i)) {
-    i = BigInt(i);
-  } else if (typeof i === "boolean") {
-    throw e[1];
-  } else {
-    e[2](i);
+  let v0;
+  try {
+    v0 = JSON.parse(i);
+  } catch (t) {
+    e[0](i);
   }
-  if (typeof i !== "bigint") {
-    e[3](i);
+  if (typeof v0 !== "object" || !v0 || Array.isArray(v0)) {
+    e[1](v0);
   }
-  return i;
+  let v1 = v0["type"],
+    v3 = v0["value"];
+  if (v1 !== "info") {
+    e[2](v1);
+  }
+  if (typeof v3 !== "string") {
+    e[4](v3);
+  }
+  let v2;
+  try {
+    v2 = BigInt(v3);
+  } catch (_) {
+    e[3](v3);
+  }
+  return { type: v1, value: v2 };
 };

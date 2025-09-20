@@ -41,11 +41,11 @@ test("JSON string demo", (t) => {
   // });
 
   t.deepEqual(S.parser(S.jsonString)("123"), "123");
-  // i=>{if(typeof i!=="string"){e[0](i)}try{JSON.parse(i)}catch(t){e[1](i)}return i}
+  // i=>{if(typeof i!=="string"){e[1](i)}try{JSON.parse(i)}catch(t){e[0](i)}return i}
 
   const schemaWithTo = S.jsonString.with(S.to, S.number);
   t.deepEqual(S.parser(schemaWithTo)("123"), 123);
-  // i=>{if(typeof i!=="string"){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="number"||Number.isNaN(v0)){e[2](v0)}return v0}
+  // i=>{if(typeof i!=="string"){e[2](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="number"||Number.isNaN(v0)){e[1](v0)}return v0}
 
   const schemaWithTo2 = S.number.with(S.to, S.jsonString);
   t.deepEqual(S.decoder(schemaWithTo2)(123), "123");
@@ -401,6 +401,20 @@ test("Parse JSON string, extract a field, and serialize it back to JSON string",
   t.deepEqual(S.encoder(schema)("123"), `{"type":"info","value":123}`);
 
   expectType<SchemaEqual<typeof schema, string, string>>(true);
+});
+
+test("Parse JSON string to object with bigint", (t) => {
+  const fn = S.decoder(
+    S.jsonString,
+    S.schema({
+      type: "info",
+      value: S.bigint,
+    })
+  );
+  t.deepEqual(fn(`{"type": "info", "value": "123"}`), {
+    type: "info",
+    value: 123n,
+  });
 });
 
 test("Successfully serialized JSON object", (t) => {
