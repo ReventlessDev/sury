@@ -343,21 +343,24 @@ test("Parses JSON string to object with bigint", t => {
     ),
   )
 
-  // TODO: I STOPED HERE
   t->Assert.deepEqual(`{"foo":"bar","bar":["1",true]}`->S.parseOrThrow(schema), value)
 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[6](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[1](v0)}let v1=v0["foo"],v2=v0["bar"];if(v1!=="bar"){e[2](v1)}if(!Array.isArray(v2)||v2.length!==2){e[5](v2)}let v3=v2["0"],v4=v2["1"];if(v3!==1){e[3](v3)}if(v4!==3){e[4](v4)}return {"foo":v1,"bar":[v3,v4,],}}`,
+    `i=>{if(typeof i!=="string"){e[8](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[1](v0)}let v1=v0["foo"],v2=v0["bar"];if(v1!=="bar"){e[2](v1)}if(!Array.isArray(v2)){e[7](v2)}if(v2.length!==2){e[6](v2)}let v4=v2["0"],v5=v2["1"];if(typeof v4!=="string"){e[4](v4)}let v3;try{v3=BigInt(v4)}catch(_){e[3](v4)}if(typeof v5!=="boolean"){e[5](v5)}return {"foo":v1,"bar":[v3,v5,],}}`,
   )
 
   t->Assert.deepEqual(
     value->S.reverseConvertOrThrow(schema),
-    `{"foo":"bar","bar":[1,3]}`->Obj.magic,
+    `{"foo":"bar","bar":["1",true]}`->Obj.magic,
   )
 
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return JSON.stringify(i)}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v0=i["bar"];return JSON.stringify({"foo":"bar","bar":[""+v0["0"],v0["1"],],})}`,
+  )
 })
 
 test("Parses JSON string to option", t => {
@@ -407,17 +410,25 @@ test("Successfully serializes JSON object with space", t => {
   )
 })
 
-test(
-  "Create schema when passing non-jsonable schema to S.jsonString, but fails to serialize",
-  t => {
-    let schema = S.jsonString->S.to(S.object(s => s.field("foo", S.unknown)))
+test("Converts JSON string to object with unknown field", t => {
+  let schema = S.jsonString->S.to(S.object(s => s.field("foo", S.unknown)))
 
-    t->U.assertThrowsMessage(
-      () => %raw(`"foo"`)->S.reverseConvertOrThrow(S.jsonString->S.to(schema)),
-      `Failed converting: { foo: unknown; } is not valid JSON`,
-    )
-  },
-)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[2](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[1](v0)}return v0["foo"]}`,
+  )
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v1;try{v1=e[0](i)}catch(v0){if(v0&&v0.s===s){v0.path="[\\"foo\\"]"+v0.path}throw v0}return JSON.stringify({"foo":v1,})}`,
+  )
+
+  t->Assert.deepEqual(%raw(`"foo"`)->S.reverseConvertOrThrow(schema), %raw(`'{"foo":"foo"}'`))
+  t->U.assertThrowsMessage(() => {
+    %raw(`123n`)->S.reverseConvertOrThrow(schema)
+  }, `Failed parsing at ["foo"]: Expected JSON, received 123n`)
+})
 
 test("Compiled async parse code snapshot", t => {
   let schema = S.jsonString->S.to(S.bool->S.transform(_ => {asyncParser: i => Promise.resolve(i)}))

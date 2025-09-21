@@ -2417,8 +2417,9 @@ let recursiveDecoder = Builder.make((b, ~input, ~selfSchema, ~path) => {
   let flag = if selfSchema.noValidation->X.Option.getUnsafe {
     b.global.flag->Flag.without(Flag.typeValidation)
   } else {
-    b.global.flag
+    b.global.flag->Flag.with(Flag.typeValidation)
   }
+  // FIXME: Instead of flags it should accept from and to schemas
   let recOperation = switch def->Obj.magic->X.Dict.getUnsafeOptionByInt(flag) {
   | Some(fn) =>
     // A hacky way to prevent infinite recursion
@@ -3980,8 +3981,6 @@ let jsonEncoder = Builder.make((b, ~input, ~selfSchema as to, ~path) => {
     let encoderSchema = Dict.factory(unknown->castToPublic)->castToInternal
     let output = objectDecoder(b, ~input, ~selfSchema=encoderSchema, ~path)
     encoderSchema.additionalItems = Some(Schema(json->castToPublic))
-    Js.log("foo")
-    Js.log(output)
     output
   } else {
     input
@@ -4219,15 +4218,10 @@ let enableJsonString = {
           } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
             b->B.val(`"\\""+${input.inline}+"\\""`, ~schema=selfSchema)
           } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
-            jsonableValidation(
-              ~output=input.schema,
-              ~parent=input.schema,
-              ~path,
-              ~flag=b.global.flag,
-            )
+            let jsonVal = b->jsonDecoder(~input, ~selfSchema=json, ~path)
 
             b->B.val(
-              `JSON.stringify(${input.inline}${switch selfSchema.space {
+              `JSON.stringify(${jsonVal.inline}${switch selfSchema.space {
                 | Some(0)
                 | None => ""
                 | Some(v) => `,null,${v->X.Int.unsafeToString}`

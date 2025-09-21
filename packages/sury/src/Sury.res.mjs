@@ -1606,7 +1606,7 @@ function recursiveDecoder(b, input, selfSchema, path) {
   let defs = b.g.d;
   let identifier = ref.slice(8);
   let def = defs[identifier];
-  let flag = selfSchema.noValidation ? (b.g.o | 1) ^ 1 : b.g.o;
+  let flag = selfSchema.noValidation ? (b.g.o | 1) ^ 1 : b.g.o | 1;
   let fn = def[flag];
   let recOperation;
   if (fn !== undefined) {
@@ -2803,8 +2803,6 @@ function jsonEncoder(b, input, to, path) {
   let encoderSchema$1 = factory(unknown);
   let output$1 = objectDecoder(b, input, encoderSchema$1, path);
   encoderSchema$1.additionalItems = json;
-  console.log("foo");
-  console.log(output$1);
   return output$1;
 }
 
@@ -3005,9 +3003,9 @@ function enableJsonString() {
       if (!(inputTagFlag & 192)) {
         return unsupportedTransform(b, input.s, selfSchema, path);
       }
-      jsonableValidation(input.s, input.s, path, b.g.o);
+      let jsonVal = jsonDecoder(b, input, json, path);
       let v = selfSchema.space;
-      return val(b, "JSON.stringify(" + input.i + (
+      return val(b, "JSON.stringify(" + jsonVal.i + (
         v !== undefined && v !== 0 ? ",null," + v : ""
       ) + ")", selfSchema);
     };
