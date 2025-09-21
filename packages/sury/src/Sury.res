@@ -2060,6 +2060,7 @@ and getOutputSchema = (schema: internal) => {
   | None => schema
   }
 }
+// FIXME: Define it as a schema property
 and reverse = (schema: internal) => {
   if schema->Obj.magic->Stdlib.Dict.has(reverseKey)->Obj.magic {
     schema->Obj.magic->Stdlib.Dict.getUnsafe(reverseKey)->Obj.magic
@@ -2165,55 +2166,6 @@ and reverse = (schema: internal) => {
     valueOptions->Js.Dict.set(valKey, schema->Obj.magic)
     let _ = X.Object.defineProperty(r, reverseKey, valueOptions->Obj.magic)
     r
-  }
-}
-and jsonableValidation = (~output, ~parent, ~path, ~flag) => {
-  let tagFlag = output.tag->TagFlag.get
-
-  if (
-    tagFlag->Flag.unsafeHas(
-      TagFlag.unknown
-      ->Flag.with(TagFlag.nan)
-      ->Flag.with(TagFlag.bigint)
-      ->Flag.with(TagFlag.function)
-      ->Flag.with(TagFlag.instance)
-      ->Flag.with(TagFlag.symbol),
-    ) || (tagFlag->Flag.unsafeHas(TagFlag.undefined) && parent.tag !== objectTag)
-  ) {
-    X.Exn.throwAny(InternalError.make(~code=InvalidJsonSchema(parent->castToPublic), ~flag, ~path))
-  }
-  if tagFlag->Flag.unsafeHas(TagFlag.union) {
-    output.anyOf
-    ->X.Option.getUnsafe
-    ->Js.Array2.forEach(s => jsonableValidation(~output=s, ~parent, ~path, ~flag))
-  } else if tagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
-    switch output.additionalItems->X.Option.getUnsafe {
-    | Schema(additionalItems) =>
-      jsonableValidation(~output=additionalItems->castToInternal, ~parent, ~path, ~flag)
-    | _ => ()
-    }
-    switch output.properties {
-    // Case for objects
-    | Some(p) => {
-        let keys = Js.Dict.keys(p)
-        for idx in 0 to keys->Js.Array2.length - 1 {
-          let key = keys->Js.Array2.unsafe_get(idx)
-          jsonableValidation(~output=p->Js.Dict.unsafeGet(key), ~parent, ~path, ~flag)
-        }
-      }
-    // Case for arrays
-    | None =>
-      output.items
-      ->X.Option.getUnsafe
-      ->Js.Array2.forEach(item => {
-        jsonableValidation(
-          ~output=item.schema->castToInternal,
-          ~parent=output,
-          ~path=path->Path.concat(Path.fromLocation(item.location)),
-          ~flag,
-        )
-      })
-    }
   }
 }
 
@@ -6308,7 +6260,7 @@ module RescriptJSONSchema = {
   @val
   external merge: (@as(json`{}`) _, t, t) => t = "Object.assign"
 
-  let rec internalToJSONSchema = (schema: schema<unknown>, ~defs): JSONSchema.t => {
+  let rec internalToJSONSchema = (schema: schema<unknown>, ~path, ~defs, ~parent): JSONSchema.t => {
     let jsonSchema: Mutable.t = {}
     switch schema {
     | String({?const}) =>
@@ -6377,7 +6329,18 @@ module RescriptJSONSchema = {
     | Array({additionalItems, items}) =>
       switch additionalItems {
       | Schema(childSchema) =>
-        jsonSchema.items = Some(Arrayable.single(Schema(internalToJSONSchema(childSchema, ~defs))))
+        jsonSchema.items = Some(
+          Arrayable.single(
+            Schema(
+              internalToJSONSchema(
+                childSchema,
+                ~parent=schema,
+                ~path=path->Path.concat(Path.dynamic),
+                ~defs,
+              ),
+            ),
+          ),
+        )
         jsonSchema.type_ = Some(Arrayable.single(#array))
         schema
         ->Array.refinements
@@ -6393,7 +6356,14 @@ module RescriptJSONSchema = {
         })
       | _ => {
           let items = items->Js.Array2.map(item => {
-            Schema(internalToJSONSchema(item.schema, ~defs))
+            Schema(
+              internalToJSONSchema(
+                item.schema,
+                ~parent=schema,
+                ~path=path->Path.concat(Path.fromLocation(item.location)),
+                ~defs,
+              ),
+            )
           })
           let itemsNumber = items->Js.Array2.length
 
@@ -6411,10 +6381,12 @@ module RescriptJSONSchema = {
         anyOf->Js.Array2.forEach(childSchema => {
           switch childSchema {
           // Filter out undefined to support optional fields
-          | Undefined(_) => ()
+          | Undefined(_) if (parent->castToInternal).tag === objectTag => ()
           | _ => {
               items
-              ->Js.Array2.push(Schema(internalToJSONSchema(childSchema, ~defs)))
+              ->Js.Array2.push(
+                Schema(internalToJSONSchema(childSchema, ~parent=schema, ~path, ~defs)),
+              )
               ->ignore
               switch childSchema->castToInternal->isLiteral {
               | true =>
@@ -6449,13 +6421,27 @@ module RescriptJSONSchema = {
       switch additionalItems {
       | Schema(childSchema) => {
           jsonSchema.type_ = Some(Arrayable.single(#object))
-          jsonSchema.additionalProperties = Some(Schema(internalToJSONSchema(childSchema, ~defs)))
+          jsonSchema.additionalProperties = Some(
+            Schema(
+              internalToJSONSchema(
+                childSchema,
+                ~path=path->Path.concat(Path.dynamic),
+                ~defs,
+                ~parent=schema,
+              ),
+            ),
+          )
         }
       | _ => {
           let properties = Js.Dict.empty()
           let required = []
           items->Js.Array2.forEach(item => {
-            let fieldSchema = internalToJSONSchema(item.schema, ~defs)
+            let fieldSchema = internalToJSONSchema(
+              item.schema,
+              ~path=path->Path.concat(Path.fromLocation(item.location)),
+              ~defs,
+              ~parent=schema,
+            )
             if item.schema->castToInternal->isOptional->not {
               required->Js.Array2.push(item.location)->ignore
             }
@@ -6478,14 +6464,25 @@ module RescriptJSONSchema = {
           }
         }
       }
-    | Unknown(_) => ()
     | Ref({ref}) if ref === `${defsPath}${jsonName}` => ()
     | Ref({ref}) => jsonSchema.ref = Some(ref)
     | Null(_) => jsonSchema.type_ = Some(Arrayable.single(#null))
     | Never(_) => jsonSchema.not = Some(Schema({}))
-    // This case should never happen,
-    // since we have jsonableValidate in the toJSONSchema function
-    | _ => InternalError.panic("Unexpected schema type")
+
+    | _ =>
+      X.Exn.throwAny(
+        InternalError.make(
+          ~code=InvalidJsonSchema(
+            if (parent->castToInternal).tag->TagFlag.get->Flag.unsafeHas(TagFlag.union) {
+              parent
+            } else {
+              schema
+            },
+          ),
+          ~flag=Flag.jsonableOutput,
+          ~path,
+        ),
+      )
     }
 
     switch schema->untag {
@@ -6532,9 +6529,11 @@ module RescriptJSONSchema = {
 
 let toJSONSchema = schema => {
   let target = schema->castToInternal
-  jsonableValidation(~output=target, ~parent=target, ~path=Path.empty, ~flag=Flag.jsonableOutput)
   let defs = Js.Dict.empty()
-  let jsonSchema = target->castToPublic->RescriptJSONSchema.internalToJSONSchema(~defs)
+  let jsonSchema =
+    target
+    ->castToPublic
+    ->RescriptJSONSchema.internalToJSONSchema(~path=Path.empty, ~parent=target->castToPublic, ~defs)
   let _ = %raw(`delete defs.JSON`)
   let defsKeys = defs->Js.Dict.keys
   if defsKeys->Js.Array2.length->X.Int.unsafeToBool {
@@ -6542,11 +6541,13 @@ let toJSONSchema = schema => {
     // Nothing critical, just because we can
     let jsonSchemDefs = defs->(Obj.magic: dict<t<unknown>> => dict<JSONSchema.definition>)
     defsKeys->Js.Array2.forEach(key => {
+      let schema = defs->Js.Dict.unsafeGet(key)
       jsonSchemDefs->Js.Dict.set(
         key,
-        defs
-        ->Js.Dict.unsafeGet(key)
+        schema
         ->RescriptJSONSchema.internalToJSONSchema(
+          ~parent=schema,
+          ~path=Path.empty,
           // It's not possible to have nested recursive schema.
           // It should be grouped to a single $defs of the most top-level schema.
           ~defs=%raw(`0`),

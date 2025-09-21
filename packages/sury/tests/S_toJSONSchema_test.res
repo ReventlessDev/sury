@@ -18,6 +18,18 @@ test("JSONSchema of float schema", t => {
   t->Assert.deepEqual(S.float->S.toJSONSchema, %raw(`{"type": "number"}`))
 })
 
+test("JSONSchema of S.json transformed to object with bigint and array of optional items", t => {
+  let nonJsonableSchema = S.schema(s =>
+    {
+      "id": s.matches(S.bigint),
+      "data": s.matches(S.unknown),
+      "items": s.matches(S.array(S.option(S.float->S.floatMax(1.)))),
+    }
+  )
+  // TODO: Should coerce nonJsonableSchema to jsonable JSON Schema
+  t->Assert.deepEqual(S.json->S.to(nonJsonableSchema)->S.toJSONSchema, %raw(`{}`))
+})
+
 test("JSONSchema of email schema", t => {
   t->Assert.deepEqual(
     S.string->S.email->S.toJSONSchema,
@@ -322,7 +334,7 @@ test("JSONSchema of dict with optional fields", t => {
 test("JSONSchema of dict with optional invalid field", t => {
   t->U.assertThrowsMessage(
     () => S.dict(S.option(S.bigint))->S.toJSONSchema,
-    `Failed converting to JSON: { [key: string]: bigint | undefined; } is not valid JSON`,
+    `Failed converting to JSON at []: bigint | undefined is not valid JSON`,
   )
 })
 
@@ -466,17 +478,6 @@ test("JSONSchema of object with S.option(S.option(_)) field", t => {
 test("JSONSchema of reversed object with S.option(S.option(_)) field", t => {
   t->U.assertThrowsMessage(
     () => S.object(s => s.field("field", S.option(S.option(S.string))))->S.reverse->S.toJSONSchema,
-    // FIXME: Should work. Investigate why this test fails
-    // %raw(`{
-    //   "type": "object",
-    //   "properties": {
-    //     "field": {
-    //       "type": "string",
-    //     },
-    //   },
-    //   "additionalProperties": true,
-    // }`),
-    // (),
     `Failed converting to JSON: string | undefined | { BS_PRIVATE_NESTED_SOME_NONE: 0; } is not valid JSON`,
   )
 })
@@ -728,34 +729,27 @@ test("JSONSchema of nested recursive schema", t => {
 })
 
 test("JSONSchema of recursive schema with non-jsonable field", t => {
-  t->Assert.throws(
-    () => {
-      let schema = S.recursive(
-        "Node",
-        nodeSchema => {
-          S.object(
-            s =>
-              {
-                "id": s.field("Id", S.bigint),
-                "children": s.field("Children", S.array(nodeSchema)),
-              },
-          )
-        },
-      )
-      schema->S.toJSONSchema
-    },
-    // FIXME: This doesn't have the most readable message
-    // Because isJsonable check doesn't work properly with recursive schemas
-    ~expectations={
-      message: "[Sury] Unexpected schema type",
-    },
-  )
+  t->U.assertThrowsMessage(() => {
+    let schema = S.recursive(
+      "Node",
+      nodeSchema => {
+        S.object(
+          s =>
+            {
+              "id": s.field("Id", S.bigint),
+              "children": s.field("Children", S.array(nodeSchema)),
+            },
+        )
+      },
+    )
+    schema->S.toJSONSchema
+  }, `Failed converting to JSON at ["Id"]: bigint is not valid JSON`)
 })
 
 test("Fails to create schema for schemas with optional items", t => {
   t->U.assertThrowsMessage(
     () => S.array(S.option(S.string))->S.toJSONSchema,
-    "Failed converting to JSON: (string | undefined)[] is not valid JSON",
+    "Failed converting to JSON at []: string | undefined is not valid JSON",
   )
   t->U.assertThrowsMessage(
     () => S.union([S.option(S.string), S.null(S.string)])->S.toJSONSchema,
@@ -763,18 +757,18 @@ test("Fails to create schema for schemas with optional items", t => {
   )
   t->U.assertThrowsMessage(
     () => S.tuple1(S.option(S.string))->S.toJSONSchema,
-    `Failed converting to JSON at ["0"]: [string | undefined] is not valid JSON`,
+    `Failed converting to JSON at ["0"]: string | undefined is not valid JSON`,
   )
   t->U.assertThrowsMessage(
     () => S.tuple1(S.array(S.option(S.string)))->S.toJSONSchema,
-    `Failed converting to JSON at ["0"]: [(string | undefined)[]] is not valid JSON`,
+    `Failed converting to JSON at ["0"][]: string | undefined is not valid JSON`,
   )
 })
 
 test("JSONSchema error of nested object has path", t => {
   t->U.assertThrowsMessage(
     () => S.object(s => s.nested("nested").field("field", S.bigint))->S.toJSONSchema,
-    `Failed converting to JSON: { nested: { field: bigint; }; } is not valid JSON`,
+    `Failed converting to JSON at ["nested"]["field"]: bigint is not valid JSON`,
   )
 })
 

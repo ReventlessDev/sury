@@ -1223,39 +1223,6 @@ function parse$1(prevB, schema, inputArg, path) {
   return input;
 }
 
-function jsonableValidation(output, parent, path, flag) {
-  let tagFlag = flags[output.type];
-  if (tagFlag & 48129 || tagFlag & 16 && parent.type !== objectTag) {
-    throw new SuryError({
-      TAG: "InvalidJsonSchema",
-      _0: parent
-    }, flag, path);
-  }
-  if (tagFlag & 256) {
-    output.anyOf.forEach(s => jsonableValidation(s, parent, path, flag));
-    return;
-  }
-  if (!(tagFlag & 192)) {
-    return;
-  }
-  let additionalItems = output.additionalItems;
-  if (additionalItems === "strip" || additionalItems === "strict") {
-    additionalItems === "strip";
-  } else {
-    jsonableValidation(additionalItems, parent, path, flag);
-  }
-  let p = output.properties;
-  if (p !== undefined) {
-    let keys = Object.keys(p);
-    for (let idx = 0, idx_finish = keys.length; idx < idx_finish; ++idx) {
-      let key = keys[idx];
-      jsonableValidation(p[key], parent, path, flag);
-    }
-    return;
-  }
-  output.items.forEach(item => jsonableValidation(item.schema, output, path + ("[" + fromString(item.location) + "]"), flag));
-}
-
 function internalCompile(schema, flag, defs) {
   let b = rootScope(flag, defs);
   let schema$1 = flag & 4 ? updateOutput(schema, mut => {
@@ -3287,57 +3254,6 @@ function definitionToRitem(definition, path, ritemsByItemPath) {
   };
 }
 
-function definitionToSchema(definition) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse(definition);
-  }
-  if (definition["~standard"]) {
-    return definition;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = definitionToSchema(definition[idx]);
-      let location = idx.toString();
-      definition[idx] = {
-        schema: schema,
-        location: location
-      };
-    }
-    let mut = new Schema(arrayTag);
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.decoder = arrayDecoder;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    return {
-      type: instanceTag,
-      const: definition,
-      class: cnstr
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  let items = [];
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let schema$1 = definitionToSchema(definition[location$1]);
-    let item = {
-      schema: schema$1,
-      location: location$1
-    };
-    definition[location$1] = schema$1;
-    items[idx$1] = item;
-  }
-  let mut$1 = new Schema(objectTag);
-  mut$1.items = items;
-  mut$1.properties = definition;
-  mut$1.additionalItems = globalConfig.a;
-  mut$1.decoder = objectDecoder;
-  return mut$1;
-}
-
 function nested(fieldName) {
   let parentCtx = this;
   let cacheId = "~" + fieldName;
@@ -3411,6 +3327,57 @@ function nested(fieldName) {
   };
   parentCtx[cacheId] = ctx$1;
   return ctx$1;
+}
+
+function definitionToSchema(definition) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse(definition);
+  }
+  if (definition["~standard"]) {
+    return definition;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = definitionToSchema(definition[idx]);
+      let location = idx.toString();
+      definition[idx] = {
+        schema: schema,
+        location: location
+      };
+    }
+    let mut = new Schema(arrayTag);
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.decoder = arrayDecoder;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    return {
+      type: instanceTag,
+      const: definition,
+      class: cnstr
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  let items = [];
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let schema$1 = definitionToSchema(definition[location$1]);
+    let item = {
+      schema: schema$1,
+      location: location$1
+    };
+    definition[location$1] = schema$1;
+    items[idx$1] = item;
+  }
+  let mut$1 = new Schema(objectTag);
+  mut$1.items = items;
+  mut$1.properties = definition;
+  mut$1.additionalItems = globalConfig.a;
+  mut$1.decoder = objectDecoder;
+  return mut$1;
 }
 
 function advancedBuilder(definition, flattened) {
@@ -4338,13 +4305,11 @@ function global(override) {
 
 let jsonSchemaMetadataId = "m:JSONSchema";
 
-function internalToJSONSchema(schema, defs) {
+function internalToJSONSchema(schema, path, defs, parent) {
   let jsonSchema = {};
   switch (schema.type) {
     case "never" :
       jsonSchema.not = {};
-      break;
-    case "unknown" :
       break;
     case "string" :
       let $$const = schema.const;
@@ -4441,7 +4406,7 @@ function internalToJSONSchema(schema, defs) {
       if (additionalItems === "strip" || additionalItems === "strict") {
         exit = 1;
       } else {
-        jsonSchema.items = internalToJSONSchema(additionalItems, defs);
+        jsonSchema.items = internalToJSONSchema(additionalItems, path + "[]", defs, schema);
         jsonSchema.type = "array";
         refinements(schema).forEach(refinement => {
           let match = refinement.kind;
@@ -4461,7 +4426,7 @@ function internalToJSONSchema(schema, defs) {
         });
       }
       if (exit === 1) {
-        let items = schema.items.map(item => (internalToJSONSchema(item.schema, defs)));
+        let items = schema.items.map(item => (internalToJSONSchema(item.schema, path + ("[" + fromString(item.location) + "]"), defs, schema)));
         let itemsNumber = items.length;
         jsonSchema.items = Primitive_option.some(items);
         jsonSchema.type = "array";
@@ -4476,13 +4441,13 @@ function internalToJSONSchema(schema, defs) {
         exit$1 = 1;
       } else {
         jsonSchema.type = "object";
-        jsonSchema.additionalProperties = internalToJSONSchema(additionalItems$1, defs);
+        jsonSchema.additionalProperties = internalToJSONSchema(additionalItems$1, path + "[]", defs, schema);
       }
       if (exit$1 === 1) {
         let properties = {};
         let required = [];
         schema.items.forEach(item => {
-          let fieldSchema = internalToJSONSchema(item.schema, defs);
+          let fieldSchema = internalToJSONSchema(item.schema, path + ("[" + fromString(item.location) + "]"), defs, schema);
           if (!isOptional(item.schema)) {
             required.push(item.location);
           }
@@ -4503,10 +4468,10 @@ function internalToJSONSchema(schema, defs) {
       let literals = [];
       let items$1 = [];
       schema.anyOf.forEach(childSchema => {
-        if (childSchema.type === "undefined") {
+        if (childSchema.type === "undefined" && parent.type === objectTag) {
           return;
         }
-        items$1.push(internalToJSONSchema(childSchema, defs));
+        items$1.push(internalToJSONSchema(childSchema, path, defs, schema));
         if (constField in childSchema) {
           literals.push(childSchema.const);
           return;
@@ -4535,7 +4500,10 @@ function internalToJSONSchema(schema, defs) {
       }
       break;
     default:
-      throw new Error("[Sury] Unexpected schema type");
+      throw new SuryError({
+        TAG: "InvalidJsonSchema",
+        _0: flags[parent.type] & 256 ? parent : schema
+      }, 8, path);
   }
   let m = schema.description;
   if (m !== undefined) {
@@ -4565,14 +4533,14 @@ function internalToJSONSchema(schema, defs) {
 }
 
 function toJSONSchema(schema) {
-  jsonableValidation(schema, schema, "", 8);
   let defs = {};
-  let jsonSchema = internalToJSONSchema(schema, defs);
+  let jsonSchema = internalToJSONSchema(schema, "", defs, schema);
   ((delete defs.JSON));
   let defsKeys = Object.keys(defs);
   if (defsKeys.length) {
     defsKeys.forEach(key => {
-      defs[key] = internalToJSONSchema(defs[key], 0);
+      let schema = defs[key];
+      defs[key] = internalToJSONSchema(schema, "", 0, schema);
     });
     jsonSchema.$defs = defs;
   }
