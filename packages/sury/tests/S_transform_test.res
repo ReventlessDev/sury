@@ -270,7 +270,7 @@ asyncTest("Can apply other actions after async transform", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i!=="string"){e[0](i)}return e[1](i).then(e[2]).then(e[3])}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}return e[0](i).then(e[1]).then(e[2])}`,
   )
 
   %raw(`"    Hello world!"`)

@@ -54,7 +54,7 @@ test("Parses when both schemas misses parser and have the same type", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i==="string"){try{throw e[0]}catch(e0){try{throw e[1]}catch(e1){e[2](i,e0,e1)}}}else{e[3](i)}return i}`,
+    `i=>{if(typeof i==="string"){try{throw e[0]}catch(e0){e[2](i,e[1])}}else{e[3](i)}return i}`,
   )
 })
 
@@ -87,7 +87,7 @@ test("Parses when both schemas misses parser and have different types", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i==="string"){if(i==="apple"){throw e[0]}else{try{throw e[1]}catch(e1){e[2](i,e1)}}}else{e[3](i)}return i}`,
+    `i=>{if(typeof i==="string"){try{throw e[0]}catch(e0){e[2](i,e[1])}}else{e[3](i)}return i}`,
   )
 })
 
@@ -150,7 +150,7 @@ test("Ensures parsing order with unknown schema", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{try{if(typeof i!=="string"){e[0](i)}if(i.length!==e[1]){e[2]()}}catch(e0){try{if(typeof i!=="boolean"){e[3](i)}}catch(e1){try{i=e[4](i)}catch(e2){if(!(typeof i==="number"&&!Number.isNaN(i)||typeof i==="bigint")){e[5](i,e0,e1,e2)}}}}return i}`,
+    `i=>{try{if(typeof i!=="string"){e[2](i)}if(i.length!==e[0]){e[1]()}}catch(e0){try{if(typeof i!=="boolean"){e[3](i)}}catch(e1){try{i=e[4](i)}catch(e2){if(!(typeof i==="number"&&!Number.isNaN(i)||typeof i==="bigint")){e[5](i,e0,e1,e2)}}}}return i}`,
   )
 })
 
@@ -158,11 +158,16 @@ test("Parses when second schema misses parser", t => {
   let schema = S.union([S.literal(#apple), S.string->S.transform(_ => {serializer: _ => "apple"})])
 
   t->Assert.deepEqual("apple"->S.parseOrThrow(schema), #apple)
+  t->U.assertThrowsMessage(
+    () => "foo"->S.parseOrThrow(schema),
+    `Failed parsing: Expected "apple" | string, received "foo"
+- The S.transform parser is missing`,
+  )
 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i==="string"){if(!(i==="apple")){try{throw e[0]}catch(e1){e[1](i,e1)}}}else{e[2](i)}return i}`,
+    `i=>{if(typeof i==="string"){if(!(i==="apple")){e[1](i,e[0])}}else{e[2](i)}return i}`,
   )
 })
 
@@ -587,7 +592,7 @@ test("Nested union doesn't mutate the input", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0==="boolean"){v0=""+v0}else if(!(typeof v0==="string")){e[1](v0)}return {"foo":v0,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["foo"];if(typeof v0==="boolean"){v0=""+v0}else if(!(typeof v0==="string")){e[0](v0)}return {"foo":v0,}}`,
   )
   t->U.assertCompiledCode(
     ~schema,

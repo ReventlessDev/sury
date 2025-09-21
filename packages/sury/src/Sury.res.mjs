@@ -2159,8 +2159,8 @@ function isPriority(tagFlag, byKey) {
 function isWiderUnionSchema(schemaAnyOf, inputAnyOf) {
   return inputAnyOf.every((inputSchema, idx) => {
     let schema = schemaAnyOf[idx];
-    if (schema !== undefined && !(flags[inputSchema.type] & 9152) && inputSchema.type === schema.type) {
-      return inputSchema.const === schema.const;
+    if (schema !== undefined && !(flags[inputSchema.type] & 9152) && inputSchema.type === schema.type && inputSchema.const === schema.const) {
+      return inputSchema.to === undefined;
     } else {
       return false;
     }
@@ -2169,13 +2169,11 @@ function isWiderUnionSchema(schemaAnyOf, inputAnyOf) {
 
 function unionDecoder(b, input, selfSchema, path) {
   let schemas = selfSchema.anyOf;
-  let inputAnyOf = input.s.anyOf;
-  if (inputAnyOf !== undefined) {
-    if (isWiderUnionSchema(schemas, inputAnyOf)) {
-      return input;
-    } else {
-      return unsupportedTransform(b, input.s, selfSchema, path);
-    }
+  if (input.s.type === unionTag && isWiderUnionSchema(schemas, input.s.anyOf)) {
+    return input;
+  }
+  if (input.s.type === unionTag) {
+    input.s = unknown;
   }
   let fail = caught => embed(b, function () {
     let args = arguments;
@@ -2265,43 +2263,47 @@ function unionDecoder(b, input, selfSchema, path) {
       let input$1 = copy$1(input);
       let tag$1 = firstSchema.type;
       let tagFlag$1 = flags[tag$1];
-      let cond;
+      let primitiveSchema;
       if (tagFlag$1 & 32) {
-        input$1.s = nullLiteral;
-        cond = param => input.v(b) + "===null";
+        primitiveSchema = nullLiteral;
       } else if (tagFlag$1 & 16) {
-        input$1.s = unit;
-        cond = param => input.v(b) + "===void 0";
+        primitiveSchema = unit;
       } else if (tagFlag$1 & 64) {
-        input$1.s = factory(unknown);
-        cond = param => "typeof " + input.v(b) + "===\"" + tag$1 + "\"&&" + input.v(b);
+        primitiveSchema = factory(unknown);
       } else if (tagFlag$1 & 128) {
-        input$1.s = factory$1(unknown);
-        cond = param => "Array.isArray(" + input.v(b) + ")";
+        primitiveSchema = factory$1(unknown);
       } else if (tagFlag$1 & 8192) {
-        input$1.s = instance(firstSchema.class);
-        cond = param => input.v(b) + " instanceof " + embed(b, firstSchema.class);
+        primitiveSchema = instance(firstSchema.class);
       } else if (tagFlag$1 & 2048) {
-        input$1.s = nan;
-        cond = param => "Number.isNaN(" + input.v(b) + ")";
+        primitiveSchema = nan;
+      } else if (tagFlag$1 & 2) {
+        primitiveSchema = string;
+      } else if (tagFlag$1 & 4) {
+        primitiveSchema = float;
+      } else if (tagFlag$1 & 8) {
+        primitiveSchema = bool;
+      } else if (tagFlag$1 & 1024) {
+        primitiveSchema = bigint;
+      } else if (tagFlag$1 & 32768) {
+        primitiveSchema = symbol;
       } else {
-        let typeCheckedSchema = copySchema(firstSchema);
-        typeCheckedSchema.format = undefined;
-        let bb = {
-          c: "",
-          l: "",
-          a: initialAllocate,
-          f: undefined,
-          g: b.g
-        };
-        bb.u = true;
-        parse$1(bb, typeCheckedSchema, input$1, path);
-        let validation = bb.f;
-        if (validation !== undefined) {
-          cond = param => validation(input.v(b), false);
-        } else {
-          throw new Error("[Sury] No validation");
-        }
+        throw new Error("[Sury] " + ("Union of " + tag$1 + " is not supported"));
+      }
+      let bb = {
+        c: "",
+        l: "",
+        a: initialAllocate,
+        f: undefined,
+        g: b.g
+      };
+      bb.u = true;
+      parse$1(bb, primitiveSchema, input$1, path);
+      let validation = bb.f;
+      let cond;
+      if (validation !== undefined) {
+        cond = param => validation(input.v(b), false);
+      } else {
+        throw new Error("[Sury] No validation");
       }
       let itemStart = "";
       let itemEnd = "";
@@ -2316,46 +2318,58 @@ function unionDecoder(b, input, selfSchema, path) {
       while (itemIdx <= lastIdx$1) {
         let input$2 = copy$1(input$1);
         let schema$2 = schemas$1[itemIdx];
-        let bb$1 = {
-          c: "",
-          l: "",
-          a: initialAllocate,
-          f: undefined,
-          g: b.g
-        };
-        bb$1.u = true;
-        let itemOutput = parse$1(bb$1, schema$2, input$2, path);
-        let validation$1 = bb$1.f;
-        let itemCond = validation$1 !== undefined ? validation$1(input$2.v(b), false) : "";
-        if (itemOutput !== input$2) {
-          itemOutput.b = bb$1;
-          if (itemOutput.f & 2) {
-            input.f = input.f | 2;
+        let isLast = itemIdx === lastIdx$1;
+        let itemCode$1 = "";
+        let itemCond = "";
+        try {
+          let bb$1 = {
+            c: "",
+            l: "",
+            a: initialAllocate,
+            f: undefined,
+            g: b.g
+          };
+          bb$1.u = true;
+          let itemOutput = parse$1(bb$1, schema$2, input$2, path);
+          let validation$1 = bb$1.f;
+          if (validation$1 !== undefined) {
+            itemCond = validation$1(input$2.v(b), false);
           }
-          bb$1.c = bb$1.c + (input.v(b) + "=" + itemOutput.i);
+          if (itemOutput !== input$2) {
+            itemOutput.b = bb$1;
+            if (itemOutput.f & 2) {
+              input.f = input.f | 2;
+            }
+            bb$1.c = bb$1.c + (input.v(b) + "=" + itemOutput.i);
+          }
+          bb$1.f = undefined;
+          itemCode$1 = allocateScope(bb$1, input$2);
+        } catch (exn) {
+          let errorVar$1 = embed(b, getOrRethrow(exn));
+          itemCode$1 = isLast ? fail("," + errorVar$1) : "throw " + errorVar$1;
         }
-        bb$1.f = undefined;
-        let itemCode$1 = allocateScope(bb$1, input$2);
-        if (itemCond) {
-          if (itemCode$1) {
-            let match = byDiscriminant[itemCond];
+        let itemCond$1 = itemCond;
+        let itemCode$2 = itemCode$1;
+        if (itemCond$1) {
+          if (itemCode$2) {
+            let match = byDiscriminant[itemCond$1];
             if (match !== undefined) {
               if (typeof match === "string") {
-                byDiscriminant[itemCond] = [
+                byDiscriminant[itemCond$1] = [
                   match,
-                  itemCode$1
+                  itemCode$2
                 ];
               } else {
-                match.push(itemCode$1);
+                match.push(itemCode$2);
               }
             } else {
-              byDiscriminant[itemCond] = itemCode$1;
+              byDiscriminant[itemCond$1] = itemCode$2;
             }
           } else {
-            itemNoop.contents = itemNoop.contents ? itemNoop.contents + "||" + itemCond : itemCond;
+            itemNoop.contents = itemNoop.contents ? itemNoop.contents + "||" + itemCond$1 : itemCond$1;
           }
         }
-        if (!itemCond || itemIdx === lastIdx$1) {
+        if (!itemCond$1 || isLast) {
           let accedDiscriminants = Object.keys(byDiscriminant);
           for (let idx$3 = 0, idx_finish$1 = accedDiscriminants.length; idx$3 < idx_finish$1; ++idx$3) {
             let discrim = accedDiscriminants[idx$3];
@@ -2368,9 +2382,9 @@ function unionDecoder(b, input, selfSchema, path) {
               let caught$2 = "";
               for (let idx$4 = 0, idx_finish$2 = code.length; idx$4 < idx_finish$2; ++idx$4) {
                 let code$1 = code[idx$4];
-                let errorVar$1 = "e" + idx$4;
-                itemStart = itemStart + ("try{" + code$1 + "}catch(" + errorVar$1 + "){");
-                caught$2 = caught$2 + "," + errorVar$1;
+                let errorVar$2 = "e" + idx$4;
+                itemStart = itemStart + ("try{" + code$1 + "}catch(" + errorVar$2 + "){");
+                caught$2 = caught$2 + "," + errorVar$2;
               }
               itemStart = itemStart + fail(caught$2) + "}".repeat(code.length) + "}";
             }
@@ -2378,31 +2392,31 @@ function unionDecoder(b, input, selfSchema, path) {
           }
           byDiscriminant = {};
         }
-        if (!itemCond) {
-          if (itemCode$1) {
-            if (itemIdx === lastIdx$1) {
+        if (!itemCond$1) {
+          if (itemCode$2) {
+            if (itemNoop.contents) {
+              let if_$1 = itemNextElse ? "else if" : "if";
+              itemStart = itemStart + if_$1 + ("(!(" + itemNoop.contents + ")){");
+              itemEnd = "}" + itemEnd;
+              itemNoop.contents = "";
+              itemNextElse = false;
+            }
+            if (isLast) {
               itemStart = itemStart + ((
                 itemNextElse ? "else{" : ""
-              ) + itemCode$1);
+              ) + itemCode$2);
               itemEnd = (
                 itemNextElse ? "}" : ""
               ) + itemEnd;
             } else {
-              if (itemNoop.contents) {
-                let if_$1 = itemNextElse ? "else if" : "if";
-                itemStart = itemStart + if_$1 + ("(!(" + itemNoop.contents + ")){");
-                itemEnd = "}" + itemEnd;
-                itemNoop.contents = "";
-                itemNextElse = false;
-              }
-              let errorVar$2 = "e" + itemIdx;
+              let errorVar$3 = "e" + itemIdx;
               itemStart = itemStart + ((
                 itemNextElse ? "else{" : ""
-              ) + "try{" + itemCode$1 + "}catch(" + errorVar$2 + "){");
+              ) + "try{" + itemCode$2 + "}catch(" + errorVar$3 + "){");
               itemEnd = (
                 itemNextElse ? "}" : ""
               ) + "}" + itemEnd;
-              caught$1 = caught$1 + "," + errorVar$2;
+              caught$1 = caught$1 + "," + errorVar$3;
               itemNextElse = false;
             }
           } else {

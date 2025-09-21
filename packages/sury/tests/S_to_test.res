@@ -251,8 +251,8 @@ test("Coerce to literal can be used as tag and automatically embeded on reverse 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    // FIXME: Test that it'll work with S.refine on S.string
-    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["tag"];if(v0!=="true"){e[0](v0)}return void 0}`,
+    // TODO: Test that it'll work with S.refine on S.string
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["tag"];if(typeof v0!=="string"){e[1](v0)}if(v0!=="true"){e[0](v0)}return void 0}`,
   )
 })
 
@@ -710,7 +710,7 @@ test("Coerce from JSON to array of bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[2](i)}let v7=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v6;try{let v5=i[v2];if(typeof v5!=="string"){e[1](v5)}let v4;try{v4=BigInt(v5)}catch(_){e[0](v5)}v6=v4}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v7[v2]=v6}return v7}`,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v5=new Array(i.length);for(let v0=0;v0<i.length;++v0){let v4;try{let v3=i[v0];if(typeof v3!=="string"){e[1](v3)}let v2;try{v2=BigInt(v3)}catch(_){e[0](v3)}v4=v2}catch(v1){if(v1&&v1.s===s){v1.path=""+\'["\'+v0+\'"]\'+v1.path}throw v1}v5[v0]=v4}return v5}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -731,7 +731,7 @@ test("Coerce from JSON to tuple with bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[4](i)}if(i.length!==2){e[3](i)}let v2=i["0"],v4=i["1"];if(typeof v2!=="string"){e[0](v2)}if(typeof v4!=="string"){e[2](v4)}let v3;try{v3=BigInt(v4)}catch(_){e[1](v4)}return [v2,v3,]}`,
+    `i=>{if(!Array.isArray(i)){e[4](i)}if(i.length!==2){e[3](i)}let v0=i["0"],v2=i["1"];if(typeof v0!=="string"){e[0](v0)}if(typeof v2!=="string"){e[2](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[1](v2)}return [v0,v1,]}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [i["0"],""+i["1"],]}`)
 })
@@ -919,7 +919,7 @@ test("Fails to transform union to union to string (no reason for this, just not 
 })
 
 test(
-  "Coerce from union to wider union fails if the order of items is different (no reason for this, just not supported)",
+  "Transform from union to wider union with different items order (applies decoder to both one at a time)",
   t => {
     let schema =
       S.union([S.string->S.castToUnknown, S.float->S.castToUnknown])->S.to(
@@ -928,6 +928,12 @@ test(
 
     t->U.assertThrowsMessage(() => {
       true->S.parseOrThrow(schema)
-    }, "Failed parsing: Unsupported transformation from string | number to number | string | boolean")
+    }, "Failed parsing: Expected string | number, received true")
+    t->U.assertCompiledCode(
+      ~schema,
+      ~op=#Parse,
+      // TODO: Can be optimized to remove the second check
+      `i=>{if(!(typeof i==="string"||typeof i==="number"&&!Number.isNaN(i))){e[0](i)}if(!(typeof i==="number"&&!Number.isNaN(i)||typeof i==="string"||typeof i==="boolean")){e[1](i)}return i}`,
+    )
   },
 )

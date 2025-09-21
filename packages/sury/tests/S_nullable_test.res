@@ -56,6 +56,6 @@ test("Correctly reverse convert transformed", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="string"){let v0;(v0=i==="true")||i==="false"||e[0](i);i=v0}return i}`,
+    `i=>{if(typeof i==="string"){let v1;(v1=i==="true")||i==="false"||e[1](i);i=v1}return i}`,
   )
 })
