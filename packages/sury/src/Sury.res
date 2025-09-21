@@ -721,6 +721,8 @@ let rec stringify = unknown => {
     `"${unknown->Obj.magic}"`
   } else if tagFlag->Flag.unsafeHas(TagFlag.bigint) {
     `${unknown->Obj.magic}n`
+  } else if tagFlag->Flag.unsafeHas(TagFlag.function) {
+    `Function`
   } else {
     (unknown->Obj.magic)["toString"]()
   }
@@ -2860,6 +2862,7 @@ let neverBuilder = Builder.make((b, ~input, ~selfSchema, ~path) => {
       }),
       input.inline,
     ) ++ ";"
+  input.skipTo = Some(true)
   input
 })
 
@@ -3170,6 +3173,7 @@ module Union = {
         let lastIdx = schemas->Js.Array2.length - 1
         let byKey = ref(Js.Dict.empty())
         let keys = ref([])
+        let updatedSchemas = []
         for idx in 0 to lastIdx {
           let schema = switch selfSchema.to {
           | Some(target) if !(selfSchema.parser->Obj.magic) && target.tag !== unionTag =>
@@ -3182,6 +3186,7 @@ module Union = {
             })->castToInternal
           | _ => schemas->Js.Array2.unsafe_get(idx)
           }
+          updatedSchemas->Js.Array2.push(schema)->ignore
           let tag = schema.tag
           let tagFlag = TagFlag.get(tag)
 
@@ -3261,7 +3266,7 @@ module Union = {
         if deoptIdx !== -1 {
           for idx in 0 to deoptIdx {
             if !exit.contents {
-              let schema = schemas->Js.Array2.unsafe_get(idx)
+              let schema = updatedSchemas->Js.Array2.unsafe_get(idx)
               let itemCode = b->getItemCode(
                 ~schema,
                 // Recreate input val for every union item
@@ -5144,6 +5149,7 @@ module Schema = {
             tag: instanceTag,
             class: cnstr,
             const: definition->Obj.magic,
+            decoder: Literal.literalDecoder,
           }
         } else {
           let node = definition->(Obj.magic: unknown => dict<unknown>)

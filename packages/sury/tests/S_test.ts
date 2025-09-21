@@ -403,18 +403,33 @@ test("Parse JSON string, extract a field, and serialize it back to JSON string",
   expectType<SchemaEqual<typeof schema, string, string>>(true);
 });
 
-test("Parse JSON string to object with bigint", (t) => {
-  const fn = S.decoder(
-    S.jsonString,
-    S.schema({
-      type: "info",
-      value: S.bigint,
-    })
+test("Parse JSON string to object with bigint and back", (t) => {
+  S.enableUint8Array();
+
+  const messageSchema = S.schema({
+    type: "info",
+    value: S.bigint,
+  });
+
+  const decode = S.decoder(S.jsonString, messageSchema);
+  const encode = S.decoder(
+    messageSchema,
+    // Cast to string to disable json string encoder
+    S.jsonString.with(S.to, S.string, (string) => string),
+    S.uint8Array
   );
-  t.deepEqual(fn(`{"type": "info", "value": "123"}`), {
+
+  t.deepEqual(decode(`{"type": "info", "value": "123"}`), {
     type: "info",
     value: 123n,
   });
+  t.deepEqual(
+    encode({ type: "info", value: 123n }),
+    new Uint8Array([
+      123, 34, 116, 121, 112, 101, 34, 58, 34, 105, 110, 102, 111, 34, 44, 34,
+      118, 97, 108, 117, 101, 34, 58, 34, 49, 50, 51, 34, 125,
+    ])
+  );
 });
 
 test("Successfully serialized JSON object", (t) => {
