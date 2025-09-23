@@ -315,7 +315,7 @@ test(`Fails to parse object with invalid data passed to discriminant field`, t =
         "field": "bar",
       }->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: Obj.magic(false)}),
+      code: InvalidType({expected: S.string->S.castToUnknown, value: Obj.magic(false)}),
       operation: Parse,
       path: S.Path.fromArray(["discriminant"]),
     },
@@ -337,7 +337,7 @@ test(`Parses discriminant fields before registered fields`, t => {
         "field": false,
       }->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: Obj.magic(false)}),
+      code: InvalidType({expected: S.string->S.castToUnknown, value: Obj.magic(false)}),
       operation: Parse,
       path: S.Path.fromArray(["discriminant"]),
     },

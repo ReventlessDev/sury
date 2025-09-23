@@ -1,5 +1,7 @@
 open Ava
 
+S.enableJson()
+
 test("Parses unknown primitive with transformation to the same type", t => {
   let schema = S.string->S.transform(_ => {parser: value => value->String.trim})
 
@@ -312,7 +314,11 @@ test("Compiled serialize code snapshot", t => {
     serializer: value => value->Int.fromFloat,
   })
 
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return e[0](i)}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v0=e[0](i);if(typeof v0!=="number"||v0>2147483647||v0<-2147483648||v0%1!==0){e[1](v0)}return v0}`,
+  )
 })
 
 test("Reverse schema to the original schema", t => {

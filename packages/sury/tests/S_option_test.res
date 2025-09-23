@@ -18,7 +18,7 @@ module Common = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, received: invalidAny}),
+        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -104,7 +104,7 @@ test("Fails to parse JS null", t => {
   t->U.assertThrows(
     () => %raw(`null`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`null`)}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`null`)}),
       operation: Parse,
       path: S.Path.empty,
     },
@@ -117,7 +117,7 @@ test("Fails to parse JS undefined when schema doesn't allow optional data", t =>
   t->U.assertThrows(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`undefined`)}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`undefined`)}),
       operation: Parse,
       path: S.Path.empty,
     },

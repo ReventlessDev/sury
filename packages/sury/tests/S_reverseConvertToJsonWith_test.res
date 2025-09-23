@@ -184,7 +184,7 @@ test("Fails to encode Never to JSON", t => {
   t->U.assertThrows(
     () => Obj.magic(123)->S.reverseConvertToJsonOrThrow(S.never),
     {
-      code: InvalidType({expected: S.never->S.castToUnknown, received: Obj.magic(123)}),
+      code: InvalidType({expected: S.never->S.castToUnknown, value: Obj.magic(123)}),
       operation: ReverseConvertToJson,
       path: S.Path.empty,
     },

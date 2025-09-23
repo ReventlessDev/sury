@@ -25,7 +25,7 @@ test("Fails to parse wrapped schema", t => {
   t->U.assertThrows(
     () => 123->S.parseOrThrow(schema),
     {
-      code: InvalidType({received: 123->Obj.magic, expected: schema->S.castToUnknown}),
+      code: InvalidType({value: 123->Obj.magic, expected: schema->S.castToUnknown}),
       operation: Parse,
       path: S.Path.empty,
     },
@@ -90,7 +90,7 @@ test("Successfully parses when tuple is destructured", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[2](i)}let v0=i["0"],v1=i["1"];if(v0!==true){e[0](v0)}if(v1!==12){e[1](v1)}return 12}`,
+    `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(v0!==true){e[0](v0)}if(v1!==12){e[1](v1)}return 12}`,
   )
 })
 
@@ -235,11 +235,11 @@ test("Reverse convert of tagged tuple with destructured bool", t => {
 
   t->Assert.deepEqual((false, "foo")->S.reverseConvertOrThrow(schema), %raw(`[true, "foo",false]`))
 
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [true,i["1"],i["0"],]}`)
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [true,"foo",i["0"],]}`)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseParse,
-    `i=>{if(!Array.isArray(i)){e[2](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="boolean"){e[0](v0)}if(v1!=="foo"){e[1](v1)}return [true,v1,v0,]}`,
+    `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="boolean"){e[0](v0)}if(v1!=="foo"){e[1](v1)}return [true,v1,v0,]}`,
   )
 })
 
@@ -281,7 +281,7 @@ test("Can destructure object value passed to S.shape", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="string"){e[2](v1)}return {"foo":v0,"bar":v1,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foo"],v1=i["bar"];if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="string"){e[1](v1)}return {"foo":v0,"bar":v1,}}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -296,7 +296,7 @@ test("Compiled code snapshot of variant applied to object", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="string"){e[1](v0)}return {"TAG":"Ok","_0":v0,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["foo"];if(typeof v0!=="string"){e[0](v0)}return {"TAG":"Ok","_0":v0,}}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"foo":i["_0"],}}`)
 
@@ -305,7 +305,7 @@ test("Compiled code snapshot of variant applied to object", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="string"){e[1](v0)}let v1;(v1=v0==="true")||v0==="false"||e[2](v0);return {"TAG":"Ok","_0":v1,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v1=i["foo"];if(typeof v1!=="string"){e[1](v1)}let v0;(v0=v1==="true")||v1==="false"||e[0](v1);return {"TAG":"Ok","_0":v0,}}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"foo":""+i["_0"],}}`)
 })

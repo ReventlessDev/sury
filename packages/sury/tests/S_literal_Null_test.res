@@ -21,7 +21,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal(%raw(`null`))->S.castToUnknown,
-          received: invalidTypeAny,
+          value: invalidTypeAny,
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -43,7 +43,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal(%raw(`null`))->S.castToUnknown,
-          received: invalidValue,
+          value: invalidValue,
         }),
         operation: ReverseConvert,
         path: S.Path.empty,

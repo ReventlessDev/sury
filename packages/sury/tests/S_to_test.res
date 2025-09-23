@@ -17,7 +17,7 @@ test("Coerce from string to bool", t => {
     {
       code: InvalidType({
         expected: S.bool->S.castToUnknown,
-        received: %raw(`"tru"`),
+        value: %raw(`"tru"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -48,7 +48,7 @@ test("Coerce from bool to string", t => {
     {
       code: InvalidType({
         expected: S.bool->S.castToUnknown,
-        received: %raw(`"tru"`),
+        value: %raw(`"tru"`),
       }),
       path: S.Path.empty,
       operation: ReverseConvert,
@@ -74,7 +74,7 @@ test("Coerce from string to bool literal", t => {
     {
       code: InvalidType({
         expected: S.literal(false)->S.castToUnknown,
-        received: %raw(`"true"`),
+        value: %raw(`"true"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -99,7 +99,7 @@ test("Coerce from string to null literal", t => {
     {
       code: InvalidType({
         expected: S.literal(%raw(`null`))->S.castToUnknown,
-        received: %raw(`"true"`),
+        value: %raw(`"true"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -124,7 +124,7 @@ test("Coerce from string to undefined literal", t => {
     {
       code: InvalidType({
         expected: S.literal(%raw(`undefined`))->S.castToUnknown,
-        received: %raw(`"true"`),
+        value: %raw(`"true"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -153,7 +153,7 @@ test("Coerce from string to NaN literal", t => {
     {
       code: InvalidType({
         expected: S.literal(%raw(`NaN`))->S.castToUnknown,
-        received: %raw(`"true"`),
+        value: %raw(`"true"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -183,7 +183,7 @@ test("Coerce from string to string literal", t => {
     {
       code: InvalidType({
         expected: S.literal(quotedString)->S.castToUnknown,
-        received: %raw(`"bar"`),
+        value: %raw(`"bar"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -195,7 +195,7 @@ test("Coerce from string to string literal", t => {
     {
       code: InvalidType({
         expected: S.literal(quotedString)->S.castToUnknown,
-        received: %raw(`"bar"`),
+        value: %raw(`"bar"`),
       }),
       path: S.Path.empty,
       operation: ReverseConvert,
@@ -242,7 +242,7 @@ test("Coerce to literal can be used as tag and automatically embeded on reverse 
     {
       code: InvalidType({
         expected: S.literal(true)->S.castToUnknown,
-        received: %raw(`"false"`),
+        value: %raw(`"false"`),
       }),
       path: S.Path.fromLocation("tag"),
       operation: Parse,
@@ -266,7 +266,7 @@ test("Coerce from string to float", t => {
     {
       code: InvalidType({
         expected: S.float->S.castToUnknown,
-        received: %raw(`"tru"`),
+        value: %raw(`"tru"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -297,7 +297,7 @@ test("Coerce from string to int32", t => {
     {
       code: InvalidType({
         expected: S.int->S.castToUnknown,
-        received: %raw(`"2147483648"`),
+        value: %raw(`"2147483648"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -308,7 +308,7 @@ test("Coerce from string to int32", t => {
     {
       code: InvalidType({
         expected: S.int->S.castToUnknown,
-        received: %raw(`"10.2"`),
+        value: %raw(`"10.2"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -376,7 +376,7 @@ test("Coerce from string to bigint literal", t => {
     {
       code: InvalidType({
         expected: S.literal(10n)->S.castToUnknown,
-        received: %raw(`"11"`),
+        value: %raw(`"11"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -402,7 +402,7 @@ test("Coerce from string to bigint", t => {
     {
       code: InvalidType({
         expected: S.bigint->S.castToUnknown,
-        received: %raw(`"10.2"`),
+        value: %raw(`"10.2"`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -535,7 +535,7 @@ test("Coerce from unit to null literal", t => {
     {
       code: InvalidType({
         expected: S.unit->S.castToUnknown,
-        received: %raw(`null`),
+        value: %raw(`null`),
       }),
       path: S.Path.empty,
       operation: Parse,
@@ -557,7 +557,7 @@ test("Coerce from string to optional bool", t => {
     {
       code: InvalidType({
         expected: schema->S.castToUnknown,
-        received: %raw(`null`),
+        value: %raw(`null`),
       }),
       path: S.Path.empty,
       operation: Parse,

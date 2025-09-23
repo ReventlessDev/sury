@@ -21,7 +21,7 @@ module Tuple0 = {
       {
         code: InvalidType({
           expected: schema->S.castToUnknown,
-          received: invalidAny,
+          value: invalidAny,
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -41,7 +41,7 @@ module Tuple0 = {
     t->U.assertThrows(
       () => invalidTypeAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, received: invalidTypeAny}),
+        code: InvalidType({expected: schema->S.castToUnknown, value: invalidTypeAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -71,16 +71,9 @@ test("Successfully parses tuple with holes", t => {
 test("Fails to parse tuple with holes", t => {
   let schema = S.tuple(s => (s.item(0, S.string), s.item(2, S.int)))
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`["value", "smth", 123]`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: schema->S.castToUnknown,
-        received: %raw(`["value", "smth", 123]`),
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Failed parsing at ["1"]: Expected undefined, received "smth"`,
   )
 })
 
@@ -191,7 +184,7 @@ test("Fails to serialize tuple transformed to variant", t => {
 
   t->U.assertThrowsMessage(
     () => Error("foo")->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing: Expected { TAG: "Ok"; _0: boolean; }, received { TAG: "Error"; _0: "foo"; }`,
+    `Failed parsing at ["TAG"]: Expected "Ok", received "Error"`,
   )
 })
 
@@ -221,55 +214,29 @@ test("Tuple schema parsing checks order", t => {
   })
 
   // Type check should be the first
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`"foo"`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Failed parsing: Expected [string, "value"], received "foo"`,
   )
   // Length check should be the second
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`["value"]`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: schema->S.castToUnknown,
-        received: %raw(`["value"]`),
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Failed parsing: Expected [string, "value"], received ["value"]`,
   )
   // Length check should be the second (extra items in strict mode)
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`["value", "value", "value"]`)->S.parseOrThrow(schema->S.strict),
-    {
-      code: InvalidType({
-        expected: schema->S.castToUnknown,
-        received: %raw(`["value", "value", "value"]`),
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Failed parsing: Expected [string, "value"], received ["value", "value", "value"]`,
   )
   // Tag check should be the third
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`["value", "wrong"]`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`["value", "wrong"]`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Failed parsing at ["1"]: Expected "value", received "wrong"`,
   )
   // Field check should be the last
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`[1, "value"]`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: %raw(`1`)}),
-      operation: Parse,
-      path: S.Path.fromLocation("0"),
-    },
+    `Failed parsing at ["0"]: Expected string, received 1`,
   )
   // Parses valid
   t->Assert.deepEqual(
@@ -294,7 +261,7 @@ module Compiled = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{if(!Array.isArray(i)||i.length!==2){e[0](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}return [v0,v1,]}`,
+      `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="boolean"){e[1](v1)}return [v0,v1,]}`,
     )
   })
 
@@ -307,7 +274,7 @@ module Compiled = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ParseAsync,
-      `i=>{if(!Array.isArray(i)||i.length!==2){e[0](i)}let v0=i["1"];if(typeof v0!=="boolean"){e[2](v0)}return Promise.all([e[1](i["0"]),]).then(a=>([a[0],v0,]))}`,
+      `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["1"];if(typeof v0!=="boolean"){e[1](v0)}return Promise.all([e[0](i["0"]),]).then(a=>([a[0],v0,]))}`,
     )
   })
 
@@ -339,7 +306,7 @@ module Compiled = {
       t->U.assertCompiledCode(
         ~schema,
         ~op=#Parse,
-        `i=>{if(!Array.isArray(i)||i.length!==3||i["0"]!==0){e[0](i)}let v0=i["1"],v1=i["2"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}return {"foo":v0,"bar":v1,"zoo":1,}}`,
+        `i=>{if(!Array.isArray(i)||i.length!==3){e[3](i)}let v0=i["0"],v1=i["1"],v2=i["2"];if(v0!==0){e[0](v0)}if(typeof v1!=="string"){e[1](v1)}if(typeof v2!=="boolean"){e[2](v2)}return {"foo":v1,"bar":v2,"zoo":1,}}`,
       )
     },
   )

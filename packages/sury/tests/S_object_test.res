@@ -23,7 +23,7 @@ test("Fails to parse object with inlinable string field", t => {
   t->U.assertThrows(
     () => %raw(`{field: 123}`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: %raw(`123`)}),
+      code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`123`)}),
       operation: Parse,
       path: S.Path.fromArray(["field"]),
     },
@@ -70,7 +70,7 @@ test("Fails to parse object with inlinable bool field", t => {
   t->U.assertThrows(
     () => %raw(`{field: 123}`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.bool->S.castToUnknown, received: %raw(`123`)}),
+      code: InvalidType({expected: S.bool->S.castToUnknown, value: %raw(`123`)}),
       operation: Parse,
       path: S.Path.fromArray(["field"]),
     },
@@ -113,7 +113,7 @@ test("Fails to parse object with inlinable never field", t => {
   t->U.assertThrows(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.never->S.castToUnknown, received: %raw(`true`)}),
+      code: InvalidType({expected: S.never->S.castToUnknown, value: %raw(`true`)}),
       operation: Parse,
       path: S.Path.fromArray(["field"]),
     },
@@ -140,7 +140,7 @@ test("Fails to parse object with inlinable float field", t => {
   t->U.assertThrows(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.float->S.castToUnknown, received: %raw(`true`)}),
+      code: InvalidType({expected: S.float->S.castToUnknown, value: %raw(`true`)}),
       operation: Parse,
       path: S.Path.fromArray(["field"]),
     },
@@ -167,7 +167,7 @@ test("Fails to parse object with inlinable int field", t => {
   t->U.assertThrows(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.int->S.castToUnknown, received: %raw(`true`)}),
+      code: InvalidType({expected: S.int->S.castToUnknown, value: %raw(`true`)}),
       operation: Parse,
       path: S.Path.fromArray(["field"]),
     },
@@ -208,7 +208,7 @@ test("Fails to parse object when provided invalid data", t => {
   t->U.assertThrows(
     () => %raw(`12`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`12`)}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`12`)}),
       operation: Parse,
       path: S.Path.empty,
     },
@@ -1029,7 +1029,7 @@ test("Object schema parsing checks order", t => {
   t->U.assertThrows(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`"foo"`)}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`"foo"`)}),
       operation: Parse,
       path: S.Path.empty,
     },
@@ -1043,7 +1043,7 @@ test("Object schema parsing checks order", t => {
     {
       code: InvalidType({
         expected: schema->S.castToUnknown,
-        received: %raw(`{tag: "wrong", key: 123, unknownKey: "value", unknownKey2: "value"}`),
+        value: %raw(`{tag: "wrong", key: 123, unknownKey: "value", unknownKey2: "value"}`),
       }),
       operation: Parse,
       path: S.Path.empty,
@@ -1056,7 +1056,7 @@ test("Object schema parsing checks order", t => {
         schema,
       ),
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: %raw(`123`)}),
+      code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`123`)}),
       operation: Parse,
       path: S.Path.fromLocation("key"),
     },

@@ -22,7 +22,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          received: "Hello world!"->Obj.magic,
+          value: "Hello world!"->Obj.magic,
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -38,7 +38,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          received: invalidTypeAny,
+          value: invalidTypeAny,
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -60,7 +60,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          received: "Hello world!"->Obj.magic,
+          value: "Hello world!"->Obj.magic,
         }),
         operation: ReverseConvert,
         path: S.Path.empty,

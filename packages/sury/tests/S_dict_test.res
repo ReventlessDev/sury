@@ -25,7 +25,7 @@ module CommonWithNested = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, received: invalidAny}),
+        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -38,7 +38,7 @@ module CommonWithNested = {
     t->U.assertThrows(
       () => nestedInvalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: S.string->S.castToUnknown, received: %raw(`true`)}),
+        code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`true`)}),
         operation: Parse,
         path: S.Path.fromArray(["key2"]),
       },

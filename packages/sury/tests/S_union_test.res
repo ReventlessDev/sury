@@ -264,7 +264,7 @@ module Advanced = {
     let error: U.errorPayload = {
       code: InvalidType({
         expected: shapeSchema->S.castToUnknown,
-        received: shape->Obj.magic,
+        value: shape->Obj.magic,
       }),
       operation: Parse,
       path: S.Path.empty,
@@ -288,7 +288,7 @@ module Advanced = {
     let error: U.errorPayload = {
       code: InvalidType({
         expected: shapeSchema->S.castToUnknown,
-        received: shape->Obj.magic,
+        value: shape->Obj.magic,
       }),
       operation: Parse,
       path: S.Path.fromLocation("field"),
@@ -313,7 +313,7 @@ module Advanced = {
       {
         code: InvalidType({
           expected: shapeSchema->S.castToUnknown,
-          received: %raw(`"Hello world!"`),
+          value: %raw(`"Hello world!"`),
         }),
         operation: Parse,
         path: S.Path.empty,

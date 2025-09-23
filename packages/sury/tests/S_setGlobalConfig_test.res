@@ -15,7 +15,7 @@ asyncTest("Resets S.float cache after disableNanNumberValidation=true removed", 
     {
       code: S.InvalidType({
         expected: S.float->S.castToUnknown,
-        received: nan,
+        value: nan,
       }),
       operation: Parse,
       path: S.Path.empty,
@@ -26,7 +26,7 @@ asyncTest("Resets S.float cache after disableNanNumberValidation=true removed", 
     {
       code: S.InvalidType({
         expected: S.float->S.castToUnknown,
-        received: nan,
+        value: nan,
       }),
       operation: ParseAsync,
       path: S.Path.empty,

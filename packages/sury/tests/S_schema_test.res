@@ -210,7 +210,7 @@ test(
       {
         code: InvalidType({
           expected: schema->S.strict->S.castToUnknown,
-          received: %raw(`["foo", true]`),
+          value: %raw(`["foo", true]`),
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -231,7 +231,7 @@ test(
       {
         code: InvalidType({
           expected: schema->S.strict->S.castToUnknown,
-          received: %raw(`["foo", true, 1]`),
+          value: %raw(`["foo", true, 1]`),
         }),
         operation: Parse,
         path: S.Path.empty,

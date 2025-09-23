@@ -19,7 +19,7 @@ module CommonWithNested = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, received: invalidAny}),
+        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -32,7 +32,7 @@ module CommonWithNested = {
     t->U.assertThrows(
       () => nestedInvalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: S.string->S.castToUnknown, received: 1->Obj.magic}),
+        code: InvalidType({expected: S.string->S.castToUnknown, value: 1->Obj.magic}),
         operation: Parse,
         path: S.Path.fromArray(["1"]),
       },
@@ -118,7 +118,7 @@ test("Fails to parse matrix", t => {
   t->U.assertThrows(
     () => %raw(`[["a", 1], ["c", "d"]]`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, received: %raw(`1`)}),
+      code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`1`)}),
       operation: Parse,
       path: S.Path.fromArray(["0", "1"]),
     },

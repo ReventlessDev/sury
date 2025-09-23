@@ -9,7 +9,7 @@ test("Successfully parses", t => {
     {
       code: S.InvalidType({
         expected: schema->S.castToUnknown,
-        received: %raw(`1`),
+        value: %raw(`1`),
       }),
       operation: Parse,
       path: S.Path.empty,
@@ -27,7 +27,7 @@ test("Works for literals", t => {
     {
       code: S.InvalidType({
         expected: schema->S.castToUnknown,
-        received: %raw(`1`),
+        value: %raw(`1`),
       }),
       operation: Parse,
       path: S.Path.empty,

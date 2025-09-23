@@ -18,7 +18,7 @@ module Common = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, received: invalidAny}),
+        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -71,7 +71,7 @@ test("Fails to parse NaN", t => {
   t->U.assertThrows(
     () => %raw(`NaN`)->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw(`NaN`)}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`NaN`)}),
       operation: Parse,
       path: S.Path.empty,
     },

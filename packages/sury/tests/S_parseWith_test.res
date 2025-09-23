@@ -18,7 +18,7 @@ test("Fails to parse", t => {
   t->U.assertThrows(
     () => %raw("123")->S.parseOrThrow(schema),
     {
-      code: InvalidType({expected: schema->S.castToUnknown, received: %raw("123")}),
+      code: InvalidType({expected: schema->S.castToUnknown, value: %raw("123")}),
       operation: Parse,
       path: S.Path.empty,
     },

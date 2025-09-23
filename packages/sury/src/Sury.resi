@@ -257,7 +257,12 @@ and error = private {
 and errorCode =
   | OperationFailed(string)
   | InvalidOperation({description: string})
-  | InvalidType({expected: schema<unknown>, received: unknown, unionErrors?: array<error>})
+  | InvalidType({
+      expected: schema<unknown>,
+      received?: schema<unknown>,
+      value: unknown,
+      unionErrors?: array<error>,
+    })
   | FailedTransformation({from: schema<unknown>, to: schema<unknown>, error: exn})
   | UnsupportedTransformation({from: schema<unknown>, to: schema<unknown>})
   | ExcessField(string)

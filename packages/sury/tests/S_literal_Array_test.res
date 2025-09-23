@@ -19,7 +19,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal(("bar", true))->S.castToUnknown,
-          received: invalid,
+          value: invalid,
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -56,7 +56,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal(("bar", true))->S.castToUnknown,
-          received: %raw(`{0: "bar",1:true}`),
+          value: %raw(`{0: "bar",1:true}`),
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -72,7 +72,7 @@ module Common = {
       {
         code: InvalidType({
           expected: S.literal(("bar", true))->S.castToUnknown,
-          received: %raw(`["bar", true, false]`),
+          value: %raw(`["bar", true, false]`),
         }),
         operation: Parse,
         path: S.Path.empty,
@@ -129,7 +129,7 @@ module EmptyArray = {
       {
         code: InvalidType({
           expected: S.literal([])->S.castToUnknown,
-          received: invalid->U.castAnyToUnknown,
+          value: invalid->U.castAnyToUnknown,
         }),
         operation: Parse,
         path: S.Path.empty,

@@ -296,7 +296,7 @@ function reason(error, nestedLevelOpt) {
       return reason$1.description;
     case "InvalidType" :
       let unionErrors = reason$1.unionErrors;
-      let m = "Expected " + toExpression(reason$1.expected) + ", received " + stringify(reason$1.received);
+      let m = "Expected " + toExpression(reason$1.expected) + ", received " + stringify(reason$1.value);
       if (unionErrors !== undefined) {
         let lineBreak = "\n" + " ".repeat((nestedLevel << 1));
         let reasonsDict = {};
@@ -486,18 +486,59 @@ function initialAllocate(v) {
 }
 
 function rootScope(flag, defs) {
-  let global = {
+  let root = {
     c: "",
     l: "",
     a: initialAllocate,
-    v: -1,
-    o: flag,
     f: undefined,
-    e: [],
-    d: defs
+    p: "",
+    g: {
+      a: initialAllocate,
+      v: -1,
+      o: flag,
+      e: [],
+      d: defs
+    }
   };
-  global.g = global;
-  return global;
+  root.g.a = $$var => root.a($$var);
+  return root;
+}
+
+function scope(b, path) {
+  return {
+    c: "",
+    l: "",
+    a: initialAllocate,
+    f: undefined,
+    p: path,
+    g: b.g
+  };
+}
+
+function $$throw(b, code, path) {
+  throw new SuryError(code, b.g.o, path);
+}
+
+function failWithArg(b, fn, arg) {
+  return embed(b, arg => $$throw(b, fn(arg), b.p)) + "(" + arg + ")";
+}
+
+function embedInvalidType(b, input, expected) {
+  return failWithArg(b, value => ({
+    TAG: "InvalidType",
+    expected: expected,
+    received: input.s,
+    value: value
+  }), input.v(b));
+}
+
+function embedInvalidTypeWithVarOnly(b, inputVar, expected) {
+  return failWithArg(b, value => ({
+    TAG: "InvalidType",
+    expected: expected,
+    received: unknown,
+    value: value
+  }), inputVar);
 }
 
 function allocateScope(b, input) {
@@ -505,7 +546,7 @@ function allocateScope(b, input) {
   let validationCode;
   if (validation !== undefined) {
     let inputVar = input.v(b);
-    validationCode = "if(" + validation(inputVar, true) + "){" + validation(inputVar, 0) + "}";
+    validationCode = "if(" + validation(inputVar, true) + "){" + embedInvalidType(b, input, input.s) + "}";
   } else {
     validationCode = "";
   }
@@ -539,7 +580,7 @@ function _notVarBefore(b) {
 
 function _notVar(b) {
   let val = this;
-  let v = varWithoutAllocation(b.g);
+  let v = varWithoutAllocation(val.b.g);
   let i = val.i;
   if (i === "") {
     val.b.a(v);
@@ -749,10 +790,6 @@ function map(b, inlinedFn, input) {
   };
 }
 
-function $$throw(b, code, path) {
-  throw new SuryError(code, b.g.o, path);
-}
-
 function embedSyncOperation(b, input, fn) {
   if (input.f & 2) {
     return asyncVal(input.b, input.i + ".then(" + embed(b, fn) + ")");
@@ -761,18 +798,14 @@ function embedSyncOperation(b, input, fn) {
   }
 }
 
-function failWithArg(b, path, fn, arg) {
-  return embed(b, arg => $$throw(b, fn(arg), path)) + "(" + arg + ")";
-}
-
-function fail(b, message, path) {
+function fail(b, message) {
   return embed(b, () => $$throw(b, {
     TAG: "OperationFailed",
     _0: message
-  }, path)) + "()";
+  }, b.p)) + "()";
 }
 
-function effectCtx(b, selfSchema, path) {
+function effectCtx(b, selfSchema) {
   return {
     schema: selfSchema,
     fail: (message, customPathOpt) => {
@@ -780,42 +813,37 @@ function effectCtx(b, selfSchema, path) {
       return $$throw(b, {
         TAG: "OperationFailed",
         _0: message
-      }, path + customPath);
+      }, b.p + customPath);
     }
   };
 }
 
-function invalidOperation(b, path, description) {
+function invalidOperation(b, description) {
   return $$throw(b, {
     TAG: "InvalidOperation",
     description: description
-  }, path);
+  }, b.p);
 }
 
-function withPathPrepend(b, input, path, maybeDynamicLocationVar, appendSafe, fn) {
-  if (path === "" && maybeDynamicLocationVar === undefined) {
-    return fn(b, input, path);
+function withPathPrepend(b, input, maybeDynamicLocationVar, appendSafe, fn) {
+  if (b.p === "" && maybeDynamicLocationVar === undefined) {
+    return fn(b, input);
   }
   try {
+    let path = "";
     let $$catch = (b, errorVar) => {
-      b.c = errorVar + ".path=" + fromString(path) + "+" + (
+      b.c = errorVar + ".path=" + fromString(b.p) + "+" + (
         maybeDynamicLocationVar !== undefined ? "'[\"'+" + maybeDynamicLocationVar + "+'\"]'+" : ""
       ) + errorVar + ".path";
     };
-    let fn$1 = b => fn(b, input, "");
+    let fn$1 = b => fn(b, input);
     let prevCode = b.c;
     b.c = "";
     let errorVar = varWithoutAllocation(b.g);
     let maybeResolveVal = $$catch(b, errorVar);
     let catchCode = "if(" + (errorVar + "&&" + errorVar + ".s===s") + "){" + b.c;
     b.c = "";
-    let bb = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
+    let bb = scope(b, path);
     let fnOutput = fn$1(bb);
     b.c = b.c + allocateScope(bb, input);
     let isNoop = fnOutput.i === input.i && b.c === "";
@@ -844,16 +872,16 @@ function withPathPrepend(b, input, path, maybeDynamicLocationVar, appendSafe, fn
     return output;
   } catch (exn) {
     let error = getOrRethrow(exn);
-    throw new SuryError(error.code, error.flag, path + "[]" + error.path);
+    throw new SuryError(error.code, error.flag, b.p + "[]" + error.path);
   }
 }
 
-function unsupportedTransform(b, from, target, path) {
+function unsupportedTransform(b, from, target) {
   return $$throw(b, {
     TAG: "UnsupportedTransformation",
     from: from,
     to: target
-  }, path);
+  }, b.p);
 }
 
 function noopOperation(i) {
@@ -864,18 +892,11 @@ function inputToString(b, input) {
   return val(b, "\"\"+" + input.i, string);
 }
 
-function numberDecoder(b, input, selfSchema, path) {
+function numberDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
     b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      }
       let match = selfSchema.format;
       let tmp;
       let exit = 0;
@@ -921,7 +942,7 @@ function numberDecoder(b, input, selfSchema, path) {
     if (inputTagFlag & 4) {
       return input;
     } else {
-      return unsupportedTransform(b, input.s, selfSchema, path);
+      return unsupportedTransform(b, input.s, selfSchema);
     }
   }
   let inputVar = input.v(b);
@@ -946,11 +967,7 @@ function numberDecoder(b, input, selfSchema, path) {
   if (exit === 1) {
     tmp = "Number.isNaN(" + output.v(b) + ")";
   }
-  b.c = b.c + tmp + ("&&" + failWithArg(b, path, input => ({
-    TAG: "InvalidType",
-    expected: selfSchema,
-    received: input
-  }), inputVar) + ";");
+  b.c = b.c + tmp + ("&&" + embedInvalidType(b, input, selfSchema) + ";");
   return output;
 }
 
@@ -958,23 +975,13 @@ float.decoder = numberDecoder;
 
 int.decoder = numberDecoder;
 
-function stringDecoder(b, input, selfSchema, path) {
+function stringDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return "typeof " + inputVar + (
-          mode ? "!==" : "==="
-        ) + "\"" + stringTag + "\"";
-      }
-    };
+    b.f = (inputVar, mode) => "typeof " + inputVar + (
+      mode ? "!==" : "==="
+    ) + "\"" + stringTag + "\"";
     return input;
   }
   if (!(inputTagFlag & 3132 && constField in input.s)) {
@@ -983,7 +990,7 @@ function stringDecoder(b, input, selfSchema, path) {
     } else if (inputTagFlag & 2) {
       return input;
     } else {
-      return unsupportedTransform(b, input.s, selfSchema, path);
+      return unsupportedTransform(b, input.s, selfSchema);
     }
   }
   let $$const = (""+input.s.const);
@@ -1000,61 +1007,37 @@ function stringDecoder(b, input, selfSchema, path) {
 
 string.decoder = stringDecoder;
 
-function booleanDecoder(b, input, selfSchema, path) {
+function booleanDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return "typeof " + inputVar + (
-          mode ? "!==" : "==="
-        ) + "\"" + booleanTag + "\"";
-      }
-    };
+    b.f = (inputVar, mode) => "typeof " + inputVar + (
+      mode ? "!==" : "==="
+    ) + "\"" + booleanTag + "\"";
     return input;
   }
   if (!(inputTagFlag & 2)) {
     if (inputTagFlag & 8) {
       return input;
     } else {
-      return unsupportedTransform(b, input.s, selfSchema, path);
+      return unsupportedTransform(b, input.s, selfSchema);
     }
   }
   let output = allocateVal(b, selfSchema);
   let inputVar = input.v(b);
-  b.c = b.c + ("(" + output.i + "=" + inputVar + "===\"true\")||" + inputVar + "===\"false\"||" + failWithArg(b, path, input => ({
-    TAG: "InvalidType",
-    expected: selfSchema,
-    received: input
-  }), inputVar) + ";");
+  b.c = b.c + ("(" + output.i + "=" + inputVar + "===\"true\")||" + inputVar + "===\"false\"||" + embedInvalidType(b, input, selfSchema) + ";");
   return output;
 }
 
 bool.decoder = booleanDecoder;
 
-function bigintDecoder(b, input, selfSchema, path) {
+function bigintDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return "typeof " + inputVar + (
-          mode ? "!==" : "==="
-        ) + "\"" + bigintTag + "\"";
-      }
-    };
+    b.f = (inputVar, mode) => "typeof " + inputVar + (
+      mode ? "!==" : "==="
+    ) + "\"" + bigintTag + "\"";
     return input;
   }
   if (!(inputTagFlag & 2)) {
@@ -1063,16 +1046,12 @@ function bigintDecoder(b, input, selfSchema, path) {
     } else if (inputTagFlag & 1024) {
       return input;
     } else {
-      return unsupportedTransform(b, input.s, selfSchema, path);
+      return unsupportedTransform(b, input.s, selfSchema);
     }
   }
   let output = allocateVal(b, selfSchema);
   let inputVar = input.v(b);
-  b.c = b.c + ("try{" + output.i + "=BigInt(" + inputVar + ")}catch(_){" + failWithArg(b, path, input => ({
-    TAG: "InvalidType",
-    expected: selfSchema,
-    received: input
-  }), inputVar) + "}");
+  b.c = b.c + ("try{" + output.i + "=BigInt(" + inputVar + ")}catch(_){" + embedInvalidType(b, input, selfSchema) + "}");
   return output;
 }
 
@@ -1088,7 +1067,7 @@ let jsonString = shaken("jsonString");
 
 let json = shaken("json");
 
-function literalDecoder(b, input, selfSchema, path) {
+function literalDecoder(b, input, selfSchema) {
   if (selfSchema.noValidation) {
     return constVal(b, selfSchema);
   }
@@ -1101,50 +1080,20 @@ function literalDecoder(b, input, selfSchema, path) {
   }
   let schemaTagFlag = flags[selfSchema.type];
   if (flags[input.s.type] & 2 && schemaTagFlag & 3132) {
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return inputVar + (
-          mode ? "!==" : "==="
-        ) + "\"" + selfSchema.const + "\"";
-      }
-    };
+    b.f = (inputVar, mode) => inputVar + (
+      mode ? "!==" : "==="
+    ) + "\"" + selfSchema.const + "\"";
     return constVal(b, selfSchema);
   } else if (schemaTagFlag & 2048) {
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return (
-          mode ? "!" : ""
-        ) + "Number.isNaN(" + inputVar + ")";
-      }
-    };
+    b.f = (inputVar, mode) => (
+      mode ? "!" : ""
+    ) + "Number.isNaN(" + inputVar + ")";
     input.s = selfSchema;
     return input;
   } else {
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return inputVar + (
-          mode ? "!==" : "==="
-        ) + inlineConst(b, selfSchema);
-      }
-    };
+    b.f = (inputVar, mode) => inputVar + (
+      mode ? "!==" : "==="
+    ) + inlineConst(b, selfSchema);
     input.s = selfSchema;
     return input;
   }
@@ -1180,31 +1129,25 @@ function parse(value) {
   return s$1;
 }
 
-function parse$1(prevB, schema, inputArg, path) {
+function parse$1(prevB, schema, inputArg) {
   if (schema.$defs) {
     prevB.g.d = schema.$defs;
   }
   let input = inputArg;
   let encoder = input.s.encoder;
   if (encoder !== undefined) {
-    input = encoder(prevB, input, schema, path);
+    input = encoder(prevB, input, schema);
   }
   let inputAfterEncoder = input;
-  let b = prevB.u ? prevB : ({
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: prevB.g
-    });
+  let b = prevB.u ? prevB : scope(prevB, prevB.p);
   let decoder = schema.decoder;
   if (decoder !== undefined) {
-    input = decoder(b, input, schema, path);
+    input = decoder(b, input, schema);
   }
   if (input.t !== true) {
     let refiner = schema.refiner;
     if (refiner !== undefined) {
-      b.c = b.c + refiner(b, input.v(b), schema, path);
+      b.c = b.c + refiner(b, input.v(b), schema);
     }
     
   }
@@ -1212,10 +1155,10 @@ function parse$1(prevB, schema, inputArg, path) {
   if (to !== undefined) {
     let parser = schema.parser;
     if (parser !== undefined) {
-      input = parser(b, input, schema, path);
+      input = parser(b, input, schema);
     }
     if (input.t !== true) {
-      input = parse$1(b, to, input, path);
+      input = parse$1(b, to, input);
     }
     
   }
@@ -1223,44 +1166,6 @@ function parse$1(prevB, schema, inputArg, path) {
     prevB.c = prevB.c + allocateScope(b, inputAfterEncoder);
   }
   return input;
-}
-
-function internalCompile(schema, flag, defs) {
-  let b = rootScope(flag, defs);
-  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
-      let t = copySchema(unit);
-      t.noValidation = true;
-      mut.to = t;
-    }) : (
-      flag & 16 ? updateOutput(schema, mut => {
-          mut.to = jsonString;
-        }) : (
-          flag & 8 ? updateOutput(schema, mut => {
-              mut.to = json;
-            }) : schema
-        )
-    );
-  let input = {
-    b: b,
-    v: _var,
-    i: "i",
-    f: 0,
-    s: flag & 1 || schema$1.type === unionTag || constField in schema$1 ? unknown : schema$1
-  };
-  let output = parse$1(b, schema$1, input, "");
-  let code = allocateScope(b, input);
-  let isAsync = has(output.f, 2);
-  schema$1.isAsync = isAsync;
-  if (code === "" && output === input && !(flag & 2)) {
-    return noopOperation;
-  }
-  let inlinedOutput = output.i;
-  if (flag & 2 && !isAsync && !defs) {
-    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
-  }
-  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
-  let ctxVarValue1 = b.g.e;
-  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
 }
 
 function getOutputSchema(_schema) {
@@ -1375,11 +1280,49 @@ function reverse(schema) {
   return r;
 }
 
+function internalCompile(schema, flag, defs) {
+  let b = rootScope(flag, defs);
+  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
+      let t = copySchema(unit);
+      t.noValidation = true;
+      mut.to = t;
+    }) : (
+      flag & 16 ? updateOutput(schema, mut => {
+          mut.to = jsonString;
+        }) : (
+          flag & 8 ? updateOutput(schema, mut => {
+              mut.to = json;
+            }) : schema
+        )
+    );
+  let input = {
+    b: b,
+    v: _var,
+    i: "i",
+    f: 0,
+    s: flag & 1 || schema$1.type === unionTag || constField in schema$1 ? unknown : schema$1
+  };
+  let output = parse$1(b, schema$1, input);
+  let code = allocateScope(b, input);
+  let isAsync = has(output.f, 2);
+  schema$1.isAsync = isAsync;
+  if (code === "" && output === input && !(flag & 2)) {
+    return noopOperation;
+  }
+  let inlinedOutput = output.i;
+  if (flag & 2 && !isAsync && !defs) {
+    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
+  }
+  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
+  let ctxVarValue1 = b.g.e;
+  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
+}
+
+let reverseKey = "r";
+
 let valKey = "value";
 
 let valueOptions = {};
-
-let reverseKey = "r";
 
 function initOperation(s, flag) {
   let f = internalCompile(s, flag, 0);
@@ -1398,7 +1341,7 @@ function isAsyncInternal(schema, defs) {
       f: 0,
       s: unknown
     };
-    let output = parse$1(b, schema, input, "");
+    let output = parse$1(b, schema, input);
     let isAsync = has(output.f, 2);
     schema.isAsync = isAsync;
     return isAsync;
@@ -1408,24 +1351,14 @@ function isAsyncInternal(schema, defs) {
   }
 }
 
-function objectDecoder(b, input, selfSchema, path) {
+function objectDecoder(b, input, selfSchema) {
   let addValidation = fn => {
     let prevValidation = b.f;
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return (
-          prevValidation !== undefined ? prevValidation(inputVar, mode) + (
-              mode ? "||" : "&&"
-            ) : ""
-        ) + fn(inputVar, mode);
-      }
-    };
+    b.f = (inputVar, mode) => (
+      prevValidation !== undefined ? prevValidation(inputVar, mode) + (
+          mode ? "||" : "&&"
+        ) : ""
+    ) + fn(inputVar, mode);
   };
   let inputTagFlag = flags[input.s.type];
   let itemInputSchema;
@@ -1455,7 +1388,7 @@ function objectDecoder(b, input, selfSchema, path) {
     let s = input.s.additionalItems;
     itemInputSchema = s.type !== unionTag ? s : unknown;
   } else {
-    itemInputSchema = unsupportedTransform(b, input.s, selfSchema, path);
+    itemInputSchema = unsupportedTransform(b, input.s, selfSchema);
   }
   let itemSchema = selfSchema.additionalItems;
   if (itemSchema === "strip" || itemSchema === "strict") {
@@ -1467,16 +1400,10 @@ function objectDecoder(b, input, selfSchema, path) {
     }
     let inputVar = input.v(b);
     let keyVar = varWithoutAllocation(b.g);
-    let bb = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
+    let bb = scope(b, b.p);
     let itemInput = val(bb, inputVar + "[" + keyVar + "]", itemInputSchema);
     itemInput.v = _notVarBefore;
-    let itemOutput = withPathPrepend(bb, itemInput, path, keyVar, undefined, (b, input, path) => parse$1(b, itemSchema, input, path));
+    let itemOutput = withPathPrepend(bb, itemInput, keyVar, undefined, (b, input) => parse$1(b, itemSchema, input));
     let itemCode = allocateScope(bb, itemInput);
     let isTransformed = itemInput !== itemOutput;
     let output = isTransformed ? val(b, "{}", selfSchema) : input;
@@ -1505,21 +1432,14 @@ function objectDecoder(b, input, selfSchema, path) {
     let key = keys[idx];
     let schema = properties[key];
     let itemInput$1 = get(b, input, key);
-    let bb$1 = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
+    let inlinedLocation = inlineLocation(b, key);
+    let locationAsPath = "[" + inlinedLocation + "]";
+    let bb$1 = scope(b, b.p + locationAsPath);
     bb$1.u = isUnion;
-    let inlinedLocation = inlineLocation(bb$1, key);
-    let itemPath = "[" + inlinedLocation + "]";
-    let path$1 = path + itemPath;
-    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1, path$1);
+    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1);
     let validation = bb$1.f;
     if (validation !== undefined && isUnion && constField in schema) {
-      addValidation((inputVar, negative) => validation(inputVar + itemPath, negative));
+      addValidation((inputVar, negative) => validation(inputVar + locationAsPath, negative));
       bb$1.f = undefined;
     }
     b.c = b.c + allocateScope(bb$1, itemInput$1);
@@ -1551,7 +1471,7 @@ function objectDecoder(b, input, selfSchema, path) {
     } else {
       b.c = b.c + "true";
     }
-    b.c = b.c + ("){" + failWithArg(b, path, exccessFieldName => ({
+    b.c = b.c + ("){" + failWithArg(b, exccessFieldName => ({
       TAG: "ExcessField",
       _0: exccessFieldName
     }), keyVar$1) + "}}");
@@ -1570,7 +1490,7 @@ function objectDecoder(b, input, selfSchema, path) {
   }
 }
 
-function recursiveDecoder(b, input, selfSchema, path) {
+function recursiveDecoder(b, input, selfSchema) {
   let ref = selfSchema.$ref;
   let defs = b.g.d;
   let identifier = ref.slice(8);
@@ -1587,7 +1507,7 @@ function recursiveDecoder(b, input, selfSchema, path) {
     def[flag] = fn$2;
     recOperation = embed(b, fn$2);
   }
-  let output = withPathPrepend(b, input, path, undefined, undefined, (param, input, param$1) => {
+  let output = withPathPrepend(b, input, undefined, undefined, (param, input) => {
     let output = map(b, recOperation, input);
     if (def.isAsync === undefined) {
       let defsMut = copy(defs);
@@ -1603,18 +1523,11 @@ function recursiveDecoder(b, input, selfSchema, path) {
   return output;
 }
 
-function instanceDecoder(b, input, selfSchema, path) {
+function instanceDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
     b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      }
       let c = inputVar + " instanceof " + embed(b, selfSchema.class);
       if (mode) {
         return "!(" + c + ")";
@@ -1626,7 +1539,7 @@ function instanceDecoder(b, input, selfSchema, path) {
   } else if (inputTagFlag & 8192 && input.s.class === selfSchema.class) {
     return input;
   } else {
-    return unsupportedTransform(b, input.s, selfSchema, path);
+    return unsupportedTransform(b, input.s, selfSchema);
   }
 }
 
@@ -1868,7 +1781,7 @@ function noValidation(schema, value) {
 
 function appendRefiner(maybeExistingRefiner, refiner) {
   if (maybeExistingRefiner !== undefined) {
-    return (b, inputVar, selfSchema, path) => maybeExistingRefiner(b, inputVar, selfSchema, path) + refiner(b, inputVar, selfSchema, path);
+    return (b, inputVar, selfSchema) => maybeExistingRefiner(b, inputVar, selfSchema) + refiner(b, inputVar, selfSchema);
   } else {
     return refiner;
   }
@@ -1881,7 +1794,7 @@ function internalRefine(schema, refiner) {
 }
 
 function refine(schema, refiner) {
-  return internalRefine(schema, (b, inputVar, selfSchema, path) => embed(b, refiner(effectCtx(b, selfSchema, path))) + "(" + inputVar + ");");
+  return internalRefine(schema, (b, inputVar, selfSchema) => embed(b, refiner(effectCtx(b, selfSchema))) + "(" + inputVar + ");");
 }
 
 function addRefinement(schema, metadataId, refinement, refiner) {
@@ -1891,12 +1804,12 @@ function addRefinement(schema, metadataId, refinement, refiner) {
 
 function transform(schema, transformer) {
   return updateOutput(schema, mut => {
-    mut.parser = (b, input, selfSchema, path) => {
-      let match = transformer(effectCtx(b, selfSchema, path));
+    mut.parser = (b, input, selfSchema) => {
+      let match = transformer(effectCtx(b, selfSchema));
       let parser = match.p;
       if (parser !== undefined) {
         if (match.a !== undefined) {
-          return invalidOperation(b, path, "The S.transform doesn't allow parser and asyncParser at the same time. Remove parser in favor of asyncParser");
+          return invalidOperation(b, "The S.transform doesn't allow parser and asyncParser at the same time. Remove parser in favor of asyncParser");
         } else {
           return embedSyncOperation(b, input, parser);
         }
@@ -1910,19 +1823,19 @@ function transform(schema, transformer) {
         val.f = val.f | 2;
         return val;
       } else if (match.s !== undefined) {
-        return invalidOperation(b, path, "The S.transform parser is missing");
+        return invalidOperation(b, "The S.transform parser is missing");
       } else {
         return input;
       }
     };
     let to = new Schema(unknownTag);
-    mut.to = (to.serializer = (b, input, selfSchema, path) => {
-      let match = transformer(effectCtx(b, selfSchema, path));
+    mut.to = (to.serializer = (b, input, selfSchema) => {
+      let match = transformer(effectCtx(b, selfSchema));
       let serializer = match.s;
       if (serializer !== undefined) {
         return embedSyncOperation(b, input, serializer);
       } else if (match.a !== undefined || match.p !== undefined) {
-        return invalidOperation(b, path, "The S.transform serializer is missing");
+        return invalidOperation(b, "The S.transform serializer is missing");
       } else {
         return input;
       }
@@ -1939,12 +1852,8 @@ nullAsUnit.to = unit;
 
 nullAsUnit.decoder = literalDecoder;
 
-function neverBuilder(b, input, selfSchema, path) {
-  b.c = b.c + failWithArg(b, path, input => ({
-    TAG: "InvalidType",
-    expected: selfSchema,
-    received: input
-  }), input.i) + ";";
+function neverBuilder(b, input, selfSchema) {
+  b.c = b.c + embedInvalidType(b, input, selfSchema) + ";";
   input.t = true;
   return input;
 }
@@ -1983,24 +1892,14 @@ function factory$1(item) {
   return mut;
 }
 
-function arrayDecoder(b, input, selfSchema, path) {
+function arrayDecoder(b, input, selfSchema) {
   let addValidation = fn => {
     let prevValidation = b.f;
-    b.f = (inputVar, mode) => {
-      if (mode === 0) {
-        return failWithArg(b, path, input => ({
-          TAG: "InvalidType",
-          expected: selfSchema,
-          received: input
-        }), inputVar);
-      } else {
-        return (
-          prevValidation !== undefined ? prevValidation(inputVar, mode) + (
-              mode ? "||" : "&&"
-            ) : ""
-        ) + fn(inputVar, mode);
-      }
-    };
+    b.f = (inputVar, mode) => (
+      prevValidation !== undefined ? prevValidation(inputVar, mode) + (
+          mode ? "||" : "&&"
+        ) : ""
+    ) + fn(inputVar, mode);
   };
   let inputTagFlag = flags[input.s.type];
   let items = selfSchema.items;
@@ -2035,7 +1934,7 @@ function arrayDecoder(b, input, selfSchema, path) {
     let match$2 = input.s.additionalItems;
     itemInputSchema = match$2 !== undefined && match$2 !== "strip" && match$2 !== "strict" && match$2.type !== unionTag ? match$2 : unknown;
   } else {
-    itemInputSchema = unsupportedTransform(b, input.s, selfSchema, path);
+    itemInputSchema = unsupportedTransform(b, input.s, selfSchema);
   }
   let itemSchema = selfSchema.additionalItems;
   if (itemSchema === "strip" || itemSchema === "strict") {
@@ -2047,16 +1946,10 @@ function arrayDecoder(b, input, selfSchema, path) {
     }
     let inputVar = input.v(b);
     let iteratorVar = varWithoutAllocation(b.g);
-    let bb = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
+    let bb = scope(b, b.p);
     let itemInput = val(bb, inputVar + "[" + iteratorVar + "]", itemInputSchema);
     itemInput.v = _notVarBefore;
-    let itemOutput = withPathPrepend(bb, itemInput, path, iteratorVar, undefined, (b, input, path) => parse$1(b, itemSchema, input, path));
+    let itemOutput = withPathPrepend(bb, itemInput, iteratorVar, undefined, (b, input) => parse$1(b, itemSchema, input));
     let itemCode = allocateScope(bb, itemInput);
     let isTransformed = itemInput !== itemOutput;
     let output = isTransformed ? val(b, "new Array(" + inputVar + ".length)", selfSchema) : input;
@@ -2080,21 +1973,14 @@ function arrayDecoder(b, input, selfSchema, path) {
     let schema = item.schema;
     let key = item.location;
     let itemInput$1 = get(b, input, key);
-    let bb$1 = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
+    let inlinedLocation = inlineLocation(b, key);
+    let locationAsPath = "[" + inlinedLocation + "]";
+    let bb$1 = scope(b, b.p + locationAsPath);
     bb$1.u = isUnion;
-    let inlinedLocation = inlineLocation(bb$1, key);
-    let itemPath = "[" + inlinedLocation + "]";
-    let path$1 = path + itemPath;
-    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1, path$1);
+    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1);
     let validation = bb$1.f;
     if (validation !== undefined && isUnion && constField in schema) {
-      addValidation((inputVar, negative) => validation(inputVar + itemPath, negative));
+      addValidation((inputVar, negative) => validation(inputVar + locationAsPath, negative));
       bb$1.f = undefined;
     }
     b.c = b.c + allocateScope(bb$1, itemInput$1);
@@ -2118,20 +2004,14 @@ function arrayDecoder(b, input, selfSchema, path) {
   }
 }
 
-function getItemCode(b, schema, input, output, deopt, path) {
+function getItemCode(b, schema, input, output, deopt) {
   try {
     let globalFlag = b.g.o;
     if (deopt) {
       b.g.o = globalFlag | 1;
     }
-    let bb = {
-      c: "",
-      l: "",
-      a: initialAllocate,
-      f: undefined,
-      g: b.g
-    };
-    let itemOutput = parse$1(bb, schema, input, path);
+    let bb = scope(b, b.p);
+    let itemOutput = parse$1(bb, schema, input);
     if (itemOutput !== input) {
       itemOutput.b = bb;
       if (itemOutput.f & 2) {
@@ -2167,7 +2047,7 @@ function isWiderUnionSchema(schemaAnyOf, inputAnyOf) {
   });
 }
 
-function unionDecoder(b, input, selfSchema, path) {
+function unionDecoder(b, input, selfSchema) {
   let schemas = selfSchema.anyOf;
   if (input.s.type === unionTag && isWiderUnionSchema(schemas, input.s.anyOf)) {
     return input;
@@ -2180,9 +2060,10 @@ function unionDecoder(b, input, selfSchema, path) {
     return $$throw(b, {
       TAG: "InvalidType",
       expected: selfSchema,
-      received: args[0],
+      received: unknown,
+      value: args[0],
       unionErrors: args.length > 1 ? Array.from(args).slice(1) : undefined
-    }, path);
+    }, b.p);
   }) + "(" + input.v(b) + caught + ")";
   let typeValidation = b.g.o & 1;
   let initialInline = input.i;
@@ -2241,7 +2122,7 @@ function unionDecoder(b, input, selfSchema, path) {
     for (let idx$1 = 0; idx$1 <= deoptIdx$1; ++idx$1) {
       if (!exit) {
         let schema$1 = updatedSchemas[idx$1];
-        let itemCode = getItemCode(b, schema$1, copy$1(input), input, true, path);
+        let itemCode = getItemCode(b, schema$1, copy$1(input), input, true);
         if (itemCode) {
           let errorVar = "e" + idx$1;
           start = start + ("try{" + itemCode + "}catch(" + errorVar + "){");
@@ -2289,15 +2170,9 @@ function unionDecoder(b, input, selfSchema, path) {
       } else {
         throw new Error("[Sury] " + ("Union of " + tag$1 + " is not supported"));
       }
-      let bb = {
-        c: "",
-        l: "",
-        a: initialAllocate,
-        f: undefined,
-        g: b.g
-      };
+      let bb = scope(b, b.p);
       bb.u = true;
-      parse$1(bb, primitiveSchema, input$1, path);
+      parse$1(bb, primitiveSchema, input$1);
       let validation = bb.f;
       let cond;
       if (validation !== undefined) {
@@ -2322,15 +2197,9 @@ function unionDecoder(b, input, selfSchema, path) {
         let itemCode$1 = "";
         let itemCond = "";
         try {
-          let bb$1 = {
-            c: "",
-            l: "",
-            a: initialAllocate,
-            f: undefined,
-            g: b.g
-          };
+          let bb$1 = scope(b, b.p);
           bb$1.u = true;
-          let itemOutput = parse$1(bb$1, schema$2, input$2, path);
+          let itemOutput = parse$1(bb$1, schema$2, input$2);
           let validation$1 = bb$1.f;
           if (validation$1 !== undefined) {
             itemCond = validation$1(input$2.v(b), false);
@@ -2512,7 +2381,7 @@ function nestedNone() {
   properties[nestedLoc] = itemSchema;
   return {
     type: objectTag,
-    serializer: (b, param, selfSchema, param$1) => constVal(b, selfSchema.to),
+    serializer: (b, param, selfSchema) => constVal(b, selfSchema.to),
     decoder: objectDecoder,
     additionalItems: "strip",
     items: [item],
@@ -2520,7 +2389,7 @@ function nestedNone() {
   };
 }
 
-function parser(b, param, selfSchema, param$1) {
+function parser(b, param, selfSchema) {
   return val(b, "{" + nestedLoc + ":" + getOutputSchema(selfSchema).items[0].schema.const + "}", selfSchema.to);
 }
 
@@ -2626,7 +2495,7 @@ function getWithDefault(schema, $$default) {
         let message$1 = "Can't set default for " + toExpression(mut);
         throw new Error("[Sury] " + message$1);
       }
-      mut.parser = (b, input, selfSchema, param) => {
+      mut.parser = (b, input, selfSchema) => {
         let operation = (b, input) => {
           let inputVar = input.v(b);
           let tmp;
@@ -2636,13 +2505,7 @@ function getWithDefault(schema, $$default) {
         if (!(input.f & 2)) {
           return operation(b, input);
         }
-        let bb = {
-          c: "",
-          l: "",
-          a: initialAllocate,
-          f: undefined,
-          g: b.g
-        };
+        let bb = scope(b, b.p);
         let operationInput = {
           b: b,
           v: _var,
@@ -2660,7 +2523,7 @@ function getWithDefault(schema, $$default) {
         to.serializer = decoder;
         ((delete to.decoder));
       } else {
-        to.serializer = (_b, input, param, param$1) => input;
+        to.serializer = (_b, input, param) => input;
       }
       mut.to = to;
       if ($$default.TAG !== "Value") {
@@ -2761,7 +2624,7 @@ let emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-
 
 let datetimeRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-function jsonEncoder(b, input, to, path) {
+function jsonEncoder(b, input, to) {
   let toTagFlag = flags[to.type];
   if (toTagFlag & 46) {
     input.s = unknown;
@@ -2769,16 +2632,16 @@ function jsonEncoder(b, input, to, path) {
   }
   if (toTagFlag & 1024) {
     input.s = unknown;
-    return stringDecoder(b, input, string, path);
+    return stringDecoder(b, input, string);
   }
   if (toTagFlag & 2064) {
     input.s = unknown;
-    return literalDecoder(b, input, nullLiteral, path);
+    return literalDecoder(b, input, nullLiteral);
   }
   if (toTagFlag & 128) {
     input.s = unknown;
     let encoderSchema = factory$1(unknown);
-    let output = arrayDecoder(b, input, encoderSchema, path);
+    let output = arrayDecoder(b, input, encoderSchema);
     encoderSchema.additionalItems = json;
     return output;
   }
@@ -2787,12 +2650,12 @@ function jsonEncoder(b, input, to, path) {
   }
   input.s = unknown;
   let encoderSchema$1 = factory(unknown);
-  let output$1 = objectDecoder(b, input, encoderSchema$1, path);
+  let output$1 = objectDecoder(b, input, encoderSchema$1);
   encoderSchema$1.additionalItems = json;
   return output$1;
 }
 
-function jsonDecoder(b, input, selfSchema, path) {
+function jsonDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 46 || input.s.$ref === json.$ref) {
     return input;
@@ -2813,7 +2676,7 @@ function jsonDecoder(b, input, selfSchema, path) {
     let tmp;
     tmp = v === "strip" || v === "strict" ? v : json;
     mut.additionalItems = tmp;
-    return arrayDecoder(b, input, mut, path);
+    return arrayDecoder(b, input, mut);
   }
   if (inputTagFlag & 64) {
     let mut$1 = new Schema(objectTag);
@@ -2830,18 +2693,18 @@ function jsonDecoder(b, input, selfSchema, path) {
     let tmp$1;
     tmp$1 = v$1 === "strip" || v$1 === "strict" ? v$1 : json;
     mut$1.additionalItems = tmp$1;
-    return objectDecoder(b, input, mut$1, path);
+    return objectDecoder(b, input, mut$1);
   }
   if (!(inputTagFlag & 1)) {
-    return unsupportedTransform(b, input.s, selfSchema, path);
+    return unsupportedTransform(b, input.s, selfSchema);
   }
   let to = selfSchema.to;
   let preEncode = to && !selfSchema.parser && !selfSchema.refiner;
   if (preEncode) {
     input.s = json;
-    return jsonEncoder(b, input, selfSchema, path);
+    return jsonEncoder(b, input, selfSchema);
   } else {
-    return recursiveDecoder(b, input, selfSchema, path);
+    return recursiveDecoder(b, input, selfSchema);
   }
 }
 
@@ -2885,7 +2748,7 @@ function enableJson() {
   json.$defs = defs;
 }
 
-function inlineJsonString(b, schema, selfSchema, path) {
+function inlineJsonString(b, schema, selfSchema) {
   let tagFlag = flags[schema.type];
   let $$const = schema.const;
   if (tagFlag & 48) {
@@ -2897,30 +2760,20 @@ function inlineJsonString(b, schema, selfSchema, path) {
   } else if (tagFlag & 12) {
     return "\"" + $$const + "\"";
   } else {
-    return unsupportedTransform(b, schema, selfSchema, path);
+    return unsupportedTransform(b, schema, selfSchema);
   }
 }
 
 function makeJsonStringEncoder(validateOnly) {
-  return (b, input, to, path) => {
+  return (b, input, to) => {
     let selfSchema = input.s;
     if (!(validateOnly || to.format !== "json")) {
       return input;
     }
     if (constField in to) {
-      b.f = (inputVar, mode) => {
-        if (mode === 0) {
-          return failWithArg(b, path, input => ({
-            TAG: "InvalidType",
-            expected: to,
-            received: input
-          }), inputVar);
-        } else {
-          return inputVar + (
-            mode ? "!==" : "==="
-          ) + inlineJsonString(b, to, selfSchema, path);
-        }
-      };
+      b.f = (inputVar, mode) => inputVar + (
+        mode ? "!==" : "==="
+      ) + inlineJsonString(b, to, selfSchema);
       return constVal(b, to);
     }
     let inputVar = input.v(b);
@@ -2933,21 +2786,11 @@ function makeJsonStringEncoder(validateOnly) {
       output = targetVal;
       tmp = targetVal.i + "=";
     }
-    b.c = b.c + "try{" + tmp + ("JSON.parse(" + inputVar + ")}catch(t){" + failWithArg(b, path, input => ({
-      TAG: "InvalidType",
-      expected: selfSchema,
-      received: input
-    }), inputVar) + "}");
+    b.c = b.c + "try{" + tmp + ("JSON.parse(" + inputVar + ")}catch(t){" + embedInvalidType(b, input, selfSchema) + "}");
     if (!validateOnly) {
-      let bb = {
-        c: "",
-        l: "",
-        a: initialAllocate,
-        f: undefined,
-        g: b.g
-      };
+      let bb = scope(b, b.p);
       let input$1 = output;
-      output = jsonEncoder(bb, input$1, to, path);
+      output = jsonEncoder(bb, input$1, to);
       b.c = b.c + allocateScope(bb, input$1);
     }
     return output;
@@ -2962,18 +2805,18 @@ function enableJsonString() {
     jsonString.format = "json";
     jsonString.name = jsonName + " string";
     jsonString.encoder = makeJsonStringEncoder(false);
-    jsonString.decoder = (b, input, selfSchema, path) => {
+    jsonString.decoder = (b, input, selfSchema) => {
       let inputTagFlag = flags[input.s.type];
       if (inputTagFlag & 1) {
         let to = selfSchema.to;
         let preEncode = to && !selfSchema.parser && !selfSchema.refiner;
-        return makeJsonStringEncoder(!preEncode)(b, stringDecoder(b, input, selfSchema, path), selfSchema, path);
+        return makeJsonStringEncoder(!preEncode)(b, stringDecoder(b, input, selfSchema), selfSchema);
       }
       if (input.s.format === "json") {
         return input;
       }
       if (constField in input.s) {
-        return val(b, inlineJsonString(b, input.s, selfSchema, path), selfSchema);
+        return val(b, inlineJsonString(b, input.s, selfSchema), selfSchema);
       }
       if (inputTagFlag & 2) {
         return val(b, "JSON.stringify(" + input.i + ")", selfSchema);
@@ -2987,9 +2830,9 @@ function enableJsonString() {
         return val(b, "\"\\\"\"+" + input.i + "+\"\\\"\"", selfSchema);
       }
       if (!(inputTagFlag & 192)) {
-        return unsupportedTransform(b, input.s, selfSchema, path);
+        return unsupportedTransform(b, input.s, selfSchema);
       }
-      let jsonVal = jsonDecoder(b, input, json, path);
+      let jsonVal = jsonDecoder(b, input, json);
       let v = selfSchema.space;
       return val(b, "JSON.stringify(" + jsonVal.i + (
         v !== undefined && v !== 0 ? ",null," + v : ""
@@ -3013,13 +2856,13 @@ function enableUint8Array() {
     ((delete uint8Array.as));
     uint8Array.type = instanceTag;
     uint8Array.class = (Uint8Array);
-    uint8Array.decoder = (b, inputArg, selfSchema, path) => {
+    uint8Array.decoder = (b, inputArg, selfSchema) => {
       let inputTagFlag = flags[inputArg.s.type];
       let input = inputArg;
       if (inputTagFlag & 2) {
         input = val(b, embed(b, (new TextEncoder())) + ".encode(" + input.i + ")", uint8Array);
       } else if (inputTagFlag & 8193) {
-        input = instanceDecoder(b, input, selfSchema, path);
+        input = instanceDecoder(b, input, selfSchema);
       }
       let match = selfSchema.parser;
       if (match !== undefined) {
@@ -3151,7 +2994,7 @@ function definitionToOutput(b, definition, getItemOutput, outputSchema) {
   return complete(objectVal);
 }
 
-function objectStrictModeCheck(b, input, items, selfSchema, path) {
+function objectStrictModeCheck(b, input, items, selfSchema) {
   if (!(selfSchema.type === objectTag && selfSchema.additionalItems === "strict" && b.g.o & 1)) {
     return;
   }
@@ -3169,7 +3012,7 @@ function objectStrictModeCheck(b, input, items, selfSchema, path) {
   } else {
     b.c = b.c + "true";
   }
-  b.c = b.c + ("){" + failWithArg(b, path, exccessFieldName => ({
+  b.c = b.c + ("){" + failWithArg(b, exccessFieldName => ({
     TAG: "ExcessField",
     _0: exccessFieldName
   }), keyVar) + "}}");
@@ -3401,7 +3244,7 @@ function nested(fieldName) {
 }
 
 function advancedBuilder(definition, flattened) {
-  return (b, input, selfSchema, path) => {
+  return (b, input, selfSchema) => {
     let getItemOutput = item => {
       switch (item.k) {
         case 0 :
@@ -3421,7 +3264,7 @@ function definitionToTarget(definition, to, flattened) {
   let ritem = definitionToRitem(definition, "", ritemsByItemPath);
   let mut = ritem.s;
   ((delete mut.refiner));
-  mut.serializer = (b, input, selfSchema, path) => {
+  mut.serializer = (b, input, selfSchema) => {
     let getRitemInput = ritem => {
       let ritemPath = ritem.p;
       if (ritemPath === "") {
@@ -3447,7 +3290,7 @@ function definitionToTarget(definition, to, flattened) {
         return constVal(b, outputSchema);
       }
       if (constField in schema) {
-        return parse$1(b, schema, constVal(b, schema), path);
+        return parse$1(b, schema, constVal(b, schema));
       }
       let additionalItems = outputSchema.additionalItems;
       let items = outputSchema.items;
@@ -3458,13 +3301,13 @@ function definitionToTarget(definition, to, flattened) {
           let inlinedLocation = inlineLocation(b, item.location);
           let itemPath = originalPath + ("[" + inlinedLocation + "]");
           let ritem = ritemsByItemPath[itemPath];
-          let itemInput = ritem !== undefined ? parse$1(b, item.schema, getRitemInput(ritem), ritem.p) : schemaToOutput(item.schema, itemPath);
+          let itemInput = ritem !== undefined ? parse$1(b, item.schema, getRitemInput(ritem)) : schemaToOutput(item.schema, itemPath);
           add(objectVal, item.location, itemInput);
         }
         return complete(objectVal);
       }
       let tmp = originalPath === "" ? "Schema isn't registered" : "Schema for " + originalPath + " isn't registered";
-      return invalidOperation(b, path, tmp);
+      return invalidOperation(b, tmp);
     };
     let getItemOutput = (item, itemPath, shouldReverse) => {
       let ritem = item.r;
@@ -3475,14 +3318,13 @@ function definitionToTarget(definition, to, flattened) {
           itemPath === "" ? getOutputSchema(item.schema) : item.schema
         );
       let itemInput = getRitemInput(ritem);
-      let path$1 = path + ritem.p;
-      return parse$1(b, targetSchema, itemInput, path$1);
+      return parse$1(b, targetSchema, itemInput);
     };
     if (to !== undefined) {
       return getItemOutput(to, "", false);
     }
     let originalSchema = selfSchema.to;
-    objectStrictModeCheck(b, input, selfSchema.items, selfSchema, path);
+    objectStrictModeCheck(b, input, selfSchema.items, selfSchema);
     let items = originalSchema.items;
     let objectVal = make(b, originalSchema);
     if (flattened !== undefined) {
@@ -3512,7 +3354,7 @@ function shape(schema, definer) {
       i: 0
     };
     let definition = definer(proxify(ditem));
-    mut.parser = (b, input, selfSchema, param) => {
+    mut.parser = (b, input, selfSchema) => {
       let getItemOutput = item => {
         switch (item.k) {
           case 1 :
@@ -3677,19 +3519,13 @@ function $$enum(values) {
   return factory$2(values.map(js_schema));
 }
 
-function unnestSerializer(b, input, selfSchema, path) {
+function unnestSerializer(b, input, selfSchema) {
   let schema = selfSchema.additionalItems;
   let items = schema.items;
   let inputVar = input.v(b);
   let iteratorVar = varWithoutAllocation(b.g);
   let outputVar = varWithoutAllocation(b.g);
-  let bb = {
-    c: "",
-    l: "",
-    a: initialAllocate,
-    f: undefined,
-    g: b.g
-  };
+  let bb = scope(b, b.p);
   let itemInput = {
     b: bb,
     v: _var,
@@ -3697,7 +3533,7 @@ function unnestSerializer(b, input, selfSchema, path) {
     f: 0,
     s: unknown
   };
-  let itemOutput = withPathPrepend(bb, itemInput, path, iteratorVar, (bb, output) => {
+  let itemOutput = withPathPrepend(bb, itemInput, iteratorVar, (bb, output) => {
     let initialArraysCode = "";
     let settingCode = "";
     for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
@@ -3707,7 +3543,7 @@ function unnestSerializer(b, input, selfSchema, path) {
     }
     b.a(outputVar + "=[" + initialArraysCode + "]");
     bb.c = bb.c + settingCode;
-  }, (b, input, path) => parse$1(b, schema, input, path));
+  }, (b, input) => parse$1(b, schema, input));
   let itemCode = allocateScope(bb, itemInput);
   b.c = b.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
   if (itemOutput.f & 2) {
@@ -3744,30 +3580,20 @@ function unnest(schema) {
       };
     });
     mut.additionalItems = "strict";
-    mut.parser = (b, input, selfSchema, path) => {
+    mut.parser = (b, input, selfSchema) => {
       let inputTagFlag = flags[input.s.type];
       if (inputTagFlag & 1) {
-        b.f = (inputVar, mode) => {
-          if (mode === 0) {
-            return failWithArg(b, path, input => ({
-              TAG: "InvalidType",
-              expected: selfSchema,
-              received: input
-            }), inputVar);
-          } else {
-            return (
-              mode ? "!" : ""
-            ) + "Array.isArray(" + inputVar + ")" + ((
-              mode ? "||" : "&&"
-            ) + inputVar + ".length" + (
-              mode ? "!==" : "==="
-            ) + items.length) + items.map((param, idx) => (
-              mode ? "||" : "&&"
-            ) + (
-              mode ? "!" : ""
-            ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
-          }
-        };
+        b.f = (inputVar, mode) => (
+          mode ? "!" : ""
+        ) + "Array.isArray(" + inputVar + ")" + ((
+          mode ? "||" : "&&"
+        ) + inputVar + ".length" + (
+          mode ? "!==" : "==="
+        ) + items.length) + items.map((param, idx) => (
+          mode ? "||" : "&&"
+        ) + (
+          mode ? "!" : ""
+        ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
         let mut = new Schema(arrayTag);
         let itemSchema = factory$1(unknown);
         mut.items = items.map((param, idx) => {
@@ -3788,17 +3614,11 @@ function unnest(schema) {
         })) {
         
       } else {
-        unsupportedTransform(b, input.s, selfSchema, path);
+        unsupportedTransform(b, input.s, selfSchema);
       }
       let inputVar = input.v(b);
       let iteratorVar = varWithoutAllocation(b.g);
-      let bb = {
-        c: "",
-        l: "",
-        a: initialAllocate,
-        f: undefined,
-        g: b.g
-      };
+      let bb = scope(b, b.p);
       let itemInput = make(bb, schema);
       let lengthCode = "";
       for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
@@ -3809,9 +3629,9 @@ function unnest(schema) {
       let output = val(b, "new Array(Math.max(" + lengthCode + "))", selfSchema.to);
       let outputVar = output.v(b);
       let itemInput$1 = complete(itemInput);
-      let itemOutput = withPathPrepend(bb, itemInput$1, path, iteratorVar, (bb, itemOutput) => {
+      let itemOutput = withPathPrepend(bb, itemInput$1, iteratorVar, (bb, itemOutput) => {
         bb.c = bb.c + addKey(bb, output, iteratorVar, itemOutput) + ";";
-      }, (b, input, path) => parse$1(b, schema, input, path));
+      }, (b, input) => parse$1(b, schema, input));
       let itemCode = allocateScope(bb, itemInput$1);
       b.c = b.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + outputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
       if (itemOutput.f & 2) {
@@ -3862,7 +3682,7 @@ function intMin(schema, minValue, maybeMessage) {
       value: minValue
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + "<" + embed(b, minValue) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + "<" + embed(b, minValue) + "){" + fail(b, message) + "}");
 }
 
 function intMax(schema, maxValue, maybeMessage) {
@@ -3873,16 +3693,12 @@ function intMax(schema, maxValue, maybeMessage) {
       value: maxValue
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ">" + embed(b, maxValue) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ">" + embed(b, maxValue) + "){" + fail(b, message) + "}");
 }
 
 function port(schema, message) {
-  let mutStandard = internalRefine(schema, (b, inputVar, selfSchema, path) => inputVar + ">0&&" + inputVar + "<65536&&" + inputVar + "%1===0||" + (
-    message !== undefined ? fail(b, message, path) : failWithArg(b, path, input => ({
-        TAG: "InvalidType",
-        expected: selfSchema,
-        received: input
-      }), inputVar)
+  let mutStandard = internalRefine(schema, (b, inputVar, selfSchema) => inputVar + ">0&&" + inputVar + "<65536&&" + inputVar + "%1===0||" + (
+    message !== undefined ? fail(b, message) : embedInvalidTypeWithVarOnly(b, inputVar, selfSchema)
   ) + ";");
   mutStandard.format = "port";
   reverse(mutStandard).format = "port";
@@ -3897,7 +3713,7 @@ function floatMin(schema, minValue, maybeMessage) {
       value: minValue
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + "<" + embed(b, minValue) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + "<" + embed(b, minValue) + "){" + fail(b, message) + "}");
 }
 
 function floatMax(schema, maxValue, maybeMessage) {
@@ -3908,7 +3724,7 @@ function floatMax(schema, maxValue, maybeMessage) {
       value: maxValue
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ">" + embed(b, maxValue) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ">" + embed(b, maxValue) + "){" + fail(b, message) + "}");
 }
 
 function arrayMinLength(schema, length, maybeMessage) {
@@ -3919,7 +3735,7 @@ function arrayMinLength(schema, length, maybeMessage) {
       length: length
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ".length<" + embed(b, length) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ".length<" + embed(b, length) + "){" + fail(b, message) + "}");
 }
 
 function arrayMaxLength(schema, length, maybeMessage) {
@@ -3930,7 +3746,7 @@ function arrayMaxLength(schema, length, maybeMessage) {
       length: length
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ".length>" + embed(b, length) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ".length>" + embed(b, length) + "){" + fail(b, message) + "}");
 }
 
 function stringMinLength(schema, length, maybeMessage) {
@@ -3941,7 +3757,7 @@ function stringMinLength(schema, length, maybeMessage) {
       length: length
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ".length<" + embed(b, length) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ".length<" + embed(b, length) + "){" + fail(b, message) + "}");
 }
 
 function stringMaxLength(schema, length, maybeMessage) {
@@ -3952,7 +3768,7 @@ function stringMaxLength(schema, length, maybeMessage) {
       length: length
     },
     message: message
-  }, (b, inputVar, param, path) => "if(" + inputVar + ".length>" + embed(b, length) + "){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(" + inputVar + ".length>" + embed(b, length) + "){" + fail(b, message) + "}");
 }
 
 function email(schema, messageOpt) {
@@ -3960,7 +3776,7 @@ function email(schema, messageOpt) {
   return addRefinement(schema, metadataId$1, {
     kind: "Email",
     message: message
-  }, (b, inputVar, param, path) => "if(!" + embed(b, emailRegex) + ".test(" + inputVar + ")){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(!" + embed(b, emailRegex) + ".test(" + inputVar + ")){" + fail(b, message) + "}");
 }
 
 function uuid(schema, messageOpt) {
@@ -3968,7 +3784,7 @@ function uuid(schema, messageOpt) {
   return addRefinement(schema, metadataId$1, {
     kind: "Uuid",
     message: message
-  }, (b, inputVar, param, path) => "if(!" + embed(b, uuidRegex) + ".test(" + inputVar + ")){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(!" + embed(b, uuidRegex) + ".test(" + inputVar + ")){" + fail(b, message) + "}");
 }
 
 function cuid(schema, messageOpt) {
@@ -3976,7 +3792,7 @@ function cuid(schema, messageOpt) {
   return addRefinement(schema, metadataId$1, {
     kind: "Cuid",
     message: message
-  }, (b, inputVar, param, path) => "if(!" + embed(b, cuidRegex) + ".test(" + inputVar + ")){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "if(!" + embed(b, cuidRegex) + ".test(" + inputVar + ")){" + fail(b, message) + "}");
 }
 
 function url(schema, messageOpt) {
@@ -3984,7 +3800,7 @@ function url(schema, messageOpt) {
   return addRefinement(schema, metadataId$1, {
     kind: "Url",
     message: message
-  }, (b, inputVar, param, path) => "try{new URL(" + inputVar + ")}catch(_){" + fail(b, message, path) + "}");
+  }, (b, inputVar, param) => "try{new URL(" + inputVar + ")}catch(_){" + fail(b, message) + "}");
 }
 
 function pattern(schema, re, messageOpt) {
@@ -3995,9 +3811,9 @@ function pattern(schema, re, messageOpt) {
       re: re
     },
     message: message
-  }, (b, inputVar, param, path) => (
+  }, (b, inputVar, param) => (
     re.global ? embed(b, re) + ".lastIndex=0;" : ""
-  ) + ("if(!" + embed(b, re) + ".test(" + inputVar + ")){" + fail(b, message, path) + "}"));
+  ) + ("if(!" + embed(b, re) + ".test(" + inputVar + ")){" + fail(b, message) + "}"));
 }
 
 function datetime(schema, messageOpt) {
@@ -4179,9 +3995,9 @@ function js_union(values) {
 }
 
 function customBuilder(from, target, fn) {
-  return (b, input, param, path) => {
+  return (b, input, param) => {
     let output = allocateVal(b, target);
-    b.c = "try{" + output.i + "=" + embed(b, fn) + "(" + input.i + ")}catch(x){" + failWithArg(b, path, e => ({
+    b.c = "try{" + output.i + "=" + embed(b, fn) + "(" + input.i + ")}catch(x){" + failWithArg(b, e => ({
       TAG: "FailedTransformation",
       from: from,
       to: target,
@@ -4934,7 +4750,7 @@ function length(schema, length$1, maybeMessage) {
           length: length$1
         },
         message: message
-      }, (b, inputVar, param, path) => "if(" + inputVar + ".length!==" + embed(b, length$1) + "){" + fail(b, message, path) + "}");
+      }, (b, inputVar, param) => "if(" + inputVar + ".length!==" + embed(b, length$1) + "){" + fail(b, message) + "}");
     case "array" :
       let message$1 = maybeMessage !== undefined ? maybeMessage : "Array must be exactly " + length$1 + " items long";
       return addRefinement(schema, metadataId, {
@@ -4943,7 +4759,7 @@ function length(schema, length$1, maybeMessage) {
           length: length$1
         },
         message: message$1
-      }, (b, inputVar, param, path) => "if(" + inputVar + ".length!==" + embed(b, length$1) + "){" + fail(b, message$1, path) + "}");
+      }, (b, inputVar, param) => "if(" + inputVar + ".length!==" + embed(b, length$1) + "){" + fail(b, message$1) + "}");
     default:
       let message$2 = "S.length is not supported for " + toExpression(schema) + " schema. Coerce the schema to string or array using S.to first.";
       throw new Error("[Sury] " + message$2);

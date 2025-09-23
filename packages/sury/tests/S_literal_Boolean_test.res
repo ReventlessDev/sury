@@ -20,7 +20,7 @@ module Common = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: S.literal(false)->S.castToUnknown, received: true->Obj.magic}),
+        code: InvalidType({expected: S.literal(false)->S.castToUnknown, value: true->Obj.magic}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -33,7 +33,7 @@ module Common = {
     t->U.assertThrows(
       () => invalidTypeAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: S.literal(false)->S.castToUnknown, received: invalidTypeAny}),
+        code: InvalidType({expected: S.literal(false)->S.castToUnknown, value: invalidTypeAny}),
         operation: Parse,
         path: S.Path.empty,
       },
@@ -52,7 +52,7 @@ module Common = {
     t->U.assertThrows(
       () => invalidValue->S.reverseConvertOrThrow(schema),
       {
-        code: InvalidType({expected: S.literal(false)->S.castToUnknown, received: invalidValue}),
+        code: InvalidType({expected: S.literal(false)->S.castToUnknown, value: invalidValue}),
         operation: ReverseConvert,
         path: S.Path.empty,
       },
