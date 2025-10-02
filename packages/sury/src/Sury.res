@@ -1081,13 +1081,21 @@ module Builder = {
       `v${newCounter->X.Int.unsafeToString}`
     }
 
-    // Var before validation
-    let _notVarBefore = () => {
+    let _notVarBeforeValidation = () => {
       let val = %raw(`this`)
       let v = val.global->varWithoutAllocation
       val.codeBeforeValidation = Some(`let ${v}=${val.inline};`)
       val.inline = v
       val.var = _var
+      v
+    }
+
+    let _notVarAtParent = () => {
+      let val = %raw(`this`)
+      let v = val.global->varWithoutAllocation
+      (val.parent->X.Option.getUnsafe).allocate(`${v}=${val.inline}`)
+      val.var = _var
+      val.inline = v
       v
     }
 
@@ -1207,6 +1215,15 @@ module Builder = {
         | None => ()
         }
 
+        if val.varsAllocation !== "" {
+          itemCode := itemCode.contents ++ `let ${val.varsAllocation};`
+        }
+
+        // Delete allocate,
+        // this is used to handle Val.var
+        // linked to allocated scopes
+        let _ = %raw(`delete val$1.a`)
+
         itemCode := itemCode.contents ++ val.code
 
         if val.skipTo !== Some(true) {
@@ -1225,15 +1242,6 @@ module Builder = {
           }
         }
 
-        if val.varsAllocation !== "" {
-          itemCode := itemCode.contents ++ `let ${val.varsAllocation};`
-        }
-
-        // Delete allocate,
-        // this is used to handle Val.var
-        // linked to allocated scopes
-        let _ = %raw(`delete val$1.a`)
-
         code :=
           switch val.codeBeforeValidation {
           | Some(codeBeforeValidation) => codeBeforeValidation
@@ -1246,7 +1254,7 @@ module Builder = {
       code.contents
     }
 
-    let refine = (val: val, ~schema, ~validation) => {
+    let refineInPlace = (val: val, ~schema, ~validation) => {
       if val.from !== None {
         let inputVar = val.var()
         if val.varsAllocation !== "" {
@@ -1300,7 +1308,7 @@ module Builder = {
       v.from = None
       v.parent = Some(from)
       v.path = Path.empty
-      v.var = _notVarBefore
+      v.var = _notVarBeforeValidation
       v
     }
 
@@ -1346,7 +1354,7 @@ module Builder = {
           ...val,
           @as("j")
           mutable join: (string, string) => string,
-          @as("c")
+          @as("ac")
           mutable asyncCount: int,
           @as("r")
           mutable promiseAllContent: string,
@@ -1360,8 +1368,9 @@ module Builder = {
           value ++ ","
         }
 
-        let make = (b: val, ~schema): t => {
+        let make = (from: val, ~schema): t => {
           {
+            from,
             var: _notVar,
             inline: "",
             flag: ValFlag.none,
@@ -1370,13 +1379,12 @@ module Builder = {
             promiseAllContent: "",
             schema,
             vals: Js.Dict.empty(),
-            // FIXME: this is probably wrong
             code: "",
             varsAllocation: "",
             allocate: initialAllocate,
             validation: None,
-            path: b.path,
-            global: b.global,
+            path: from.path,
+            global: from.global,
           }
         }
 
@@ -1445,12 +1453,12 @@ module Builder = {
         }
       }
 
-      let get = (b, targetVal: val, location) => {
-        let vals = switch targetVal.vals {
+      let get = (parent: val, location) => {
+        let vals = switch parent.vals {
         | Some(d) => d
         | None => {
             let d = Js.Dict.empty()
-            targetVal.vals = Some(d)
+            parent.vals = Some(d)
             d
           }
         }
@@ -1458,10 +1466,10 @@ module Builder = {
         switch vals->X.Dict.getUnsafeOption(location) {
         | Some(v) => v
         | None => {
-            let locationSchema = if targetVal.schema.tag === objectTag {
-              targetVal.schema.properties->X.Option.getUnsafe->X.Dict.getUnsafeOption(location)
+            let locationSchema = if parent.schema.tag === objectTag {
+              parent.schema.properties->X.Option.getUnsafe->X.Dict.getUnsafeOption(location)
             } else {
-              switch targetVal.schema.items
+              switch parent.schema.items
               ->X.Option.getUnsafe
               ->X.Array.getUnsafeOptionByString(location) {
               | Some(s) => Some(s.schema->castToInternal)
@@ -1471,28 +1479,27 @@ module Builder = {
             let schema = switch locationSchema {
             | Some(s) => s
             | None =>
-              switch targetVal.schema.additionalItems->X.Option.getUnsafe {
+              switch parent.schema.additionalItems->X.Option.getUnsafe {
               | Schema(s) => s->castToInternal
               | _ => InternalError.panic("The schema doesn't have additional items")
               }
             }
 
-            let val = {
-              // FIXME: This is probably wrong
-              ...b,
-              var: _notVar,
-              inline: if schema->isLiteral {
-                b->inlineConst(schema)
+            let pathAppend = Path.fromInlinedLocation(parent.global->inlineLocation(location))
+            let item = parent->val(
+              if schema->isLiteral {
+                parent->inlineConst(schema)
               } else {
-                `${targetVal->var}${Path.fromInlinedLocation(b.global->inlineLocation(location))}`
+                `${parent->var}${pathAppend}`
               },
-              flag: ValFlag.none,
-              schema,
-            }
-
-            // FIXME: Create additionalItems and properties for obj schemas
-            vals->Js.Dict.set(location, val)
-            val
+              ~schema,
+            )
+            item.from = None
+            item.parent = Some(parent)
+            item.path = parent.path->Path.concat(pathAppend)
+            item.var = _notVarAtParent
+            vals->Js.Dict.set(location, item)
+            item
           }
         }
       }
@@ -1678,7 +1685,7 @@ let inputToString = (b, input: val) => {
 let numberDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(numberTag :> string)}"` ++
       {
         switch selfSchema.format {
@@ -1733,7 +1740,7 @@ int.decoder = Some(numberDecoder)
 let stringDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(stringTag :> string)}"`
     })
   } else if (
@@ -1769,7 +1776,7 @@ string.decoder = Some(stringDecoder)
 let booleanDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(booleanTag :> string)}"`
     })
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
@@ -1793,7 +1800,7 @@ let bigintDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
 
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(bigintTag :> string)}"`
     })
   } // TODO: Skip formats which 100% don't match
@@ -1864,12 +1871,12 @@ module Literal = {
         )
         output
       } else if schemaTagFlag->Flag.unsafeHas(TagFlag.nan) {
-        input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+        input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
           `${B.exp(~negative)}Number.isNaN(${inputVar})`
         })
       } else {
         // TODO: Determine impossible cases during compilation
-        input->B.refine(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+        input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
           `${inputVar}${B.eq(~negative)}${b->B.inlineConst(selfSchema)}`
         })
       }
@@ -2181,7 +2188,6 @@ and reverse = (schema: internal) => {
 
 let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
-  let input = ref(input)
 
   let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     let isObjectInput = inputTagFlag->Flag.unsafeHas(TagFlag.object)
@@ -2191,25 +2197,24 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
       mut.properties = Some(X.Object.immutableEmpty)
       mut.items = Some(X.Array.immutableEmpty)
       mut.additionalItems = Some(Schema(unknown->castToPublic))
-      input :=
-        input.contents->B.refine(~schema=mut, ~validation=(~inputVar, ~negative) =>
+      let _ =
+        input->B.refineInPlace(~schema=mut, ~validation=(~inputVar, ~negative) =>
           `typeof ${inputVar}${B.eq(~negative)}"${(objectTag :> string)}"${B.and_(
               ~negative,
             )}${B.exp(~negative)}${inputVar}`
         )
     }
     if selfSchema.additionalItems->X.Option.getUnsafe !== Strip {
-      input :=
-        input.contents->B.refine(~schema=input.contents.schema, ~validation=(
-          ~inputVar,
-          ~negative,
-        ) => `${B.exp(~negative=!negative)}Array.isArray(${inputVar})`)
+      let _ =
+        input->B.refineInPlace(~schema=input.schema, ~validation=(~inputVar, ~negative) =>
+          `${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
+        )
     }
 
     unknown
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
     // FIXME: Won't work for Strict and Strip modes
-    let s = input.contents.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
+    let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
 
     // TODO: Remove it when unionDecoder is improved
     if s.tag !== unionTag {
@@ -2218,9 +2223,8 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
       unknown
     }
   } else {
-    b->B.unsupportedTransform(~from=input.contents.schema, ~target=selfSchema)
+    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema)
   }
-  let input = input.contents
 
   switch selfSchema.additionalItems->X.Option.getUnsafe {
   | Schema(itemSchema) => {
@@ -2271,29 +2275,27 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
       let properties = selfSchema.properties->X.Option.getUnsafe
       let keys = Js.Dict.keys(properties)
 
-      let objectVal = b->B.Val.Object.make(~schema=selfSchema)
+      let objectVal = input->B.Val.Object.make(~schema=selfSchema)
       let isTransformed = ref(false)
 
       for idx in 0 to keys->Js.Array2.length - 1 {
         let key = keys->Js.Array2.unsafe_get(idx)
         let schema = properties->Js.Dict.unsafeGet(key)
-        let itemInput = b->B.Val.get(input, key)
-        let locationAsPath = b.global->B.inlineLocation(key)->Path.fromInlinedLocation
-        let bb = b->B.scope(~path=b.path->Path.concat(locationAsPath))
-        bb.isUnion = Some(isUnion) // We want to controll validation on the decoder side
-        let itemOutput = bb->parse(~schema, ~input=itemInput)
+        let itemInput = input->B.Val.get(key)
+        itemInput.isUnion = Some(isUnion) // We want to controll validation on the decoder side
+        let itemOutput = itemInput->parse(~schema, ~input=itemInput)
 
-        switch bb.validation {
-        | Some(validation) if isUnion && schema->isLiteral =>
-          // Move validation to the top level for union cases
-          // addValidation((~inputVar, ~negative) =>
-          //   validation(~inputVar=inputVar ++ locationAsPath, ~negative)
-          // )
-          bb.validation = None
-        | _ => ()
-        }
+        // switch bb.validation {
+        // | Some(validation) if isUnion && schema->isLiteral =>
+        //   // Move validation to the top level for union cases
+        //   // addValidation((~inputVar, ~negative) =>
+        //   //   validation(~inputVar=inputVar ++ locationAsPath, ~negative)
+        //   // )
+        //   bb.validation = None
+        // | _ => ()
+        // }
 
-        b.code = b.code ++ bb->B.merge
+        objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
         if itemOutput !== itemInput {
           isTransformed := true
@@ -2307,35 +2309,37 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
           | _ => false
           }
       ) {
-        let key = b->B.allocateVal(~schema=unknown)
-        let keyVar = key.inline
-        b.code = b.code ++ `for(${keyVar} in ${input.var()}){if(`
+        let keyVar = objectVal.global->B.varWithoutAllocation
+        objectVal.allocate(keyVar)
+        objectVal.code = objectVal.code ++ `for(${keyVar} in ${input.var()}){if(`
         switch keys {
-        | [] => b.code = b.code ++ "true"
+        | [] => objectVal.code = objectVal.code ++ "true"
         | _ =>
           for idx in 0 to keys->Js.Array2.length - 1 {
             let key = keys->Js.Array2.unsafe_get(idx)
             if idx !== 0 {
-              b.code = b.code ++ "&&"
+              objectVal.code = objectVal.code ++ "&&"
             }
-            b.code = b.code ++ `${keyVar}!==${b.global->B.inlineLocation(key)}`
+            objectVal.code = objectVal.code ++ `${keyVar}!==${input.global->B.inlineLocation(key)}`
           }
         }
-        b.code =
-          b.code ++
-          `){${b->B.failWithArg(exccessFieldName => ExcessField(exccessFieldName), keyVar)}}}`
+        objectVal.code =
+          objectVal.code ++
+          `){${input->B.failWithArg(exccessFieldName => ExcessField(exccessFieldName), keyVar)}}}`
       }
 
       if (
-        isTransformed.contents ||
-        switch input.schema.additionalItems->X.Option.getUnsafe {
-        | Schema(_) => true
+        !isTransformed.contents &&
+        switch selfSchema.additionalItems->X.Option.getUnsafe {
+        | Strict => true
         | _ => false // FIXME: For Strip mode check that the input is not wider
         }
       ) {
-        objectVal->B.Val.Object.complete
-      } else {
+        input.code = objectVal.code // FIXME: Delete from and merge?
+        input.vals = objectVal.vals
         input
+      } else {
+        objectVal->B.Val.Object.complete
       }
     }
   }
@@ -2885,7 +2889,7 @@ module Array = {
       let isArrayInput = inputTagFlag->Flag.unsafeHas(TagFlag.array)
       if !isArrayInput {
         input :=
-          input.contents->B.refine(
+          input.contents->B.refineInPlace(
             ~schema=factory(unknown->castToPublic)->castToInternal,
             ~validation=(~inputVar, ~negative) => `${B.exp(~negative)}Array.isArray(${inputVar})`,
           )
@@ -2899,13 +2903,13 @@ module Array = {
         switch selfSchema.additionalItems->X.Option.getUnsafe {
         | Strict =>
           input :=
-            input.contents->B.refine(~schema=input.contents.schema, ~validation=(
+            input.contents->B.refineInPlace(~schema=input.contents.schema, ~validation=(
               ~inputVar,
               ~negative,
             ) => `${inputVar}.length${B.eq(~negative)}${length->X.Int.unsafeToString}`)
         | Strip =>
           input :=
-            input.contents->B.refine(~schema=input.contents.schema, ~validation=(
+            input.contents->B.refineInPlace(~schema=input.contents.schema, ~validation=(
               ~inputVar,
               ~negative,
             ) => `${inputVar}.length${B.lt(~negative=!negative)}${length->X.Int.unsafeToString}`)
@@ -2973,7 +2977,7 @@ module Array = {
         let item = items->Js.Array2.unsafe_get(idx)
         let schema = item.schema->castToInternal
         let key = item.location
-        let itemInput = b->B.Val.get(input, key)
+        let itemInput = input->B.Val.get(key)
         let locationAsPath = b.global->B.inlineLocation(key)->Path.fromInlinedLocation
         let bb = b->B.scope(~path=b.path->Path.concat(locationAsPath))
         bb.isUnion = Some(isUnion) // We want to controll validation on the decoder side
@@ -4052,7 +4056,6 @@ let enableJsonString = {
               ""
             } else {
               let targetVal = input->B.allocateVal(~schema=json)
-              targetVal.var = B._notVarBefore
               output := targetVal
               targetVal.inline ++ "="
             } ++
@@ -4517,9 +4520,9 @@ module Schema = {
 
       let rec getItemOutput = item => {
         switch item {
-        | ItemField({target: item, location}) => b->B.Val.get(item->getItemOutput, location)
-        | Item({location}) => b->B.Val.get(input, location)
-        | Root({idx}) => b->B.Val.get(input, idx->X.Int.unsafeToString)
+        | ItemField({target: item, location}) => item->getItemOutput->B.Val.get(location)
+        | Item({location}) => input->B.Val.get(location)
+        | Root({idx}) => input->B.Val.get(idx->X.Int.unsafeToString)
         }
       }
 
@@ -4556,7 +4559,7 @@ module Schema = {
                   | _ => {
                       let location = locations->Js.Array2.unsafe_get(0)
                       loop(
-                        ~input=b->B.Val.get(input, location),
+                        ~input=input->B.Val.get(location),
                         ~locations=locations->Js.Array2.sliceFrom(1),
                       )
                     }
@@ -4705,7 +4708,7 @@ module Schema = {
           Builder.make((b, ~input, ~selfSchema) => {
             let rec getItemOutput = item => {
               switch item {
-              | ItemField({target: item, location}) => b->B.Val.get(item->getItemOutput, location)
+              | ItemField({target: item, location}) => item->getItemOutput->B.Val.get(location)
               | _ => input
               }
             }
@@ -5167,7 +5170,7 @@ let unnestSerializer = Builder.make((b, ~input, ~selfSchema) => {
         settingCode :=
           settingCode.contents ++
           `${outputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]=${(
-              b->B.Val.get(output, toItem.location)
+              output->B.Val.get(toItem.location)
             ).inline};`
       }
       b.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
