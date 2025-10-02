@@ -340,7 +340,7 @@ test("Transforms array of bigint to array of string", (t) => {
 
   t.deepEqual(
     fn.toString(),
-    `i=>{let v5=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v4;try{v4=""+i[v2]}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v5[v2]=v4}return v5}`
+    `i=>{let v2=new Array(i.length);for(let v1=0;v1<i.length;++v1){v2[v1]=""+i[v1]}return v2}`
   );
   t.deepEqual(fn([123n]), ["123"]);
 });

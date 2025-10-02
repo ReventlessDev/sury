@@ -18,7 +18,10 @@ module Common = {
     t->U.assertThrows(
       () => invalidAny->S.parseOrThrow(schema),
       {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
+        code: InvalidType({
+          expected: schema->S.castToUnknown,
+          value: invalidAny,
+        }),
         operation: Parse,
         path: S.Path.empty,
       },

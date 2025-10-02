@@ -205,7 +205,7 @@ test("Coerce from string to string literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="\\"\'\`"){e[0](i)}return i}`,
+    `i=>{if(typeof i!=="string"||i!=="\\"\'\`"){e[0](i)}return i}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!=="\\"\'\`"){e[0](i)}return i}`)
 })
@@ -278,12 +278,12 @@ test("Coerce from string to float", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;Number.isNaN(v0)&&e[0](i);return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;if(Number.isNaN(v0)){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Convert,
-    `i=>{let v0=+i;Number.isNaN(v0)&&e[0](i);return v0}`,
+    `i=>{let v0=+i;if(Number.isNaN(v0)){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
 })
@@ -319,12 +319,12 @@ test("Coerce from string to int32", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;(v0>2147483647||v0<-2147483648||v0%1!==0)&&e[0](i);return v0}`,
+    `i=>{if(typeof i!=="string"){e[1](i)}let v0=+i;if(v0>2147483647||v0<-2147483648||v0%1!==0){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Convert,
-    `i=>{let v0=+i;(v0>2147483647||v0<-2147483648||v0%1!==0)&&e[0](i);return v0}`,
+    `i=>{let v0=+i;if(v0>2147483647||v0<-2147483648||v0%1!==0){e[0](i)}return v0}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
 })
@@ -346,12 +346,12 @@ test("Coerce from string to port", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[2](i)}let v0=+i;Number.isNaN(v0)&&e[0](i);v0>0&&v0<65536&&v0%1===0||e[1](v0);return v0}`,
+    `i=>{if(typeof i!=="string"){e[2](i)}let v0=+i;if(Number.isNaN(v0)){e[0](i)}v0>0&&v0<65536&&v0%1===0||e[1](v0);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Convert,
-    `i=>{let v0=+i;Number.isNaN(v0)&&e[0](i);v0>0&&v0<65536&&v0%1===0||e[1](v0);return v0}`,
+    `i=>{let v0=+i;if(Number.isNaN(v0)){e[0](i)}v0>0&&v0<65536&&v0%1===0||e[1](v0);return v0}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -710,12 +710,12 @@ test("Coerce from JSON to array of bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[2](i)}let v5=new Array(i.length);for(let v0=0;v0<i.length;++v0){let v4;try{let v3=i[v0];if(typeof v3!=="string"){e[1](v3)}let v2;try{v2=BigInt(v3)}catch(_){e[0](v3)}v4=v2}catch(v1){if(v1&&v1.s===s){v1.path=""+\'["\'+v0+\'"]\'+v1.path}throw v1}v5[v0]=v4}return v5}`,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v4=new Array(i.length);for(let v0=0;v0<i.length;++v0){try{let v2=i[v0];if(typeof v2!=="string"){e[1](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[0](v2)}v4[v0]=v1}catch(v3){if(v3&&v3.s===s){v3.path=\'["\'+v0+\'"]\'+v3.path}throw v3}}return v4}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{let v5=new Array(i.length);for(let v2=0;v2<i.length;++v2){let v4;try{v4=""+i[v2]}catch(v3){if(v3&&v3.s===s){v3.path=""+\'["\'+v2+\'"]\'+v3.path}throw v3}v5[v2]=v4}return v5}`,
+    `i=>{let v2=new Array(i.length);for(let v1=0;v1<i.length;++v1){v2[v1]=""+i[v1]}return v2}`,
   )
 })
 

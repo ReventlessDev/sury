@@ -463,14 +463,14 @@ function inlineConst(b, schema) {
   }
 }
 
-function inlineLocation(b, location) {
+function inlineLocation(global, location) {
   let key = "\"" + location + "\"";
-  let i = b.g[key];
+  let i = global[key];
   if (i !== undefined) {
     return i;
   }
   let inlinedLocation = fromString(location);
-  b.g[key] = inlinedLocation;
+  global[key] = inlinedLocation;
   return inlinedLocation;
 }
 
@@ -485,32 +485,72 @@ function initialAllocate(v) {
   b.a = secondAllocate;
 }
 
-function rootScope(flag, defs) {
-  let root = {
+function _var() {
+  return this.i;
+}
+
+function varWithoutAllocation(global) {
+  let newCounter = global.v + 1;
+  global.v = newCounter;
+  return "v" + newCounter;
+}
+
+function _notVarBefore() {
+  let val = this;
+  let v = varWithoutAllocation(val.g);
+  val.cb = "let " + v + "=" + val.i + ";";
+  val.i = v;
+  val.v = _var;
+  return v;
+}
+
+function _notVar() {
+  let val = this;
+  let v = varWithoutAllocation(val.g);
+  let from = val.from;
+  let target = from !== undefined ? from : val;
+  let i = val.i;
+  if (i === "") {
+    target.a(v);
+  } else {
+    target.a(v + "=" + i);
+  }
+  val.v = _var;
+  val.i = v;
+  return v;
+}
+
+function operationArg(schema, flag, defs) {
+  return {
+    v: _var,
+    i: "i",
+    f: 0,
+    s: schema,
     c: "",
     l: "",
     a: initialAllocate,
-    f: undefined,
-    p: "",
+    validation: undefined,
+    path: "",
     g: {
-      a: initialAllocate,
       v: -1,
       o: flag,
       e: [],
       d: defs
     }
   };
-  root.g.a = $$var => root.a($$var);
-  return root;
 }
 
 function scope(b, path) {
   return {
+    v: _var,
+    i: "",
+    f: 0,
+    s: unknown,
     c: "",
     l: "",
     a: initialAllocate,
-    f: undefined,
-    p: path,
+    validation: undefined,
+    path: path,
     g: b.g
   };
 }
@@ -520,16 +560,17 @@ function $$throw(b, code, path) {
 }
 
 function failWithArg(b, fn, arg) {
-  return embed(b, arg => $$throw(b, fn(arg), b.p)) + "(" + arg + ")";
+  return embed(b, arg => $$throw(b, fn(arg), b.path)) + "(" + arg + ")";
 }
 
 function embedInvalidType(b, input, expected) {
+  let received = input.s;
   return failWithArg(b, value => ({
     TAG: "InvalidType",
     expected: expected,
-    received: input.s,
+    received: received,
     value: value
-  }), input.v(b));
+  }), input.v());
 }
 
 function embedInvalidTypeWithVarOnly(b, inputVar, expected) {
@@ -541,107 +582,112 @@ function embedInvalidTypeWithVarOnly(b, inputVar, expected) {
   }), inputVar);
 }
 
-function allocateScope(b, input) {
-  let validation = b.f;
-  let validationCode;
-  if (validation !== undefined) {
-    let inputVar = input.v(b);
-    validationCode = "if(" + validation(inputVar, true) + "){" + embedInvalidType(b, input, input.s) + "}";
-  } else {
-    validationCode = "";
-  }
-  ((delete b.a));
-  let varsAllocation = b.l;
-  if (varsAllocation === "") {
-    return validationCode + b.c;
-  } else {
-    return validationCode + "let " + varsAllocation + ";" + b.c;
-  }
-}
-
-function varWithoutAllocation(global) {
-  let newCounter = global.v + 1;
-  global.v = newCounter;
-  return "v" + newCounter;
-}
-
-function _var(_b) {
-  return this.i;
-}
-
-function _notVarBefore(b) {
-  let val = this;
-  let v = varWithoutAllocation(b.g);
-  val.b.c = "let " + v + "=" + val.i + ";" + val.b.c;
-  val.i = v;
-  val.v = _var;
-  return v;
-}
-
-function _notVar(b) {
-  let val = this;
-  let v = varWithoutAllocation(val.b.g);
-  let i = val.i;
-  if (i === "") {
-    val.b.a(v);
-  } else if (val.b.a !== (void 0)) {
-    val.b.a(v + "=" + i);
-  } else {
-    b.c = b.c + (v + "=" + i + ";");
-    b.g.a(v);
-  }
-  val.v = _var;
-  val.i = v;
-  return v;
-}
-
-function allocateVal(b, schema) {
-  let v = varWithoutAllocation(b.g);
-  b.a(v);
-  return {
-    b: b,
-    v: _var,
-    i: v,
-    f: 0,
-    s: schema
+function merge(val) {
+  let current = val;
+  let code = "";
+  while (current !== undefined) {
+    let val$1 = current;
+    current = val$1.from;
+    let itemCode = "";
+    let from = val$1.from;
+    let input = from !== undefined ? from : val$1;
+    let validation = val$1.validation;
+    if (validation !== undefined) {
+      let inputVar = input.v();
+      itemCode = "if(" + validation(inputVar, true) + "){" + embedInvalidType(input, input, val$1.s) + "}";
+    }
+    itemCode = itemCode + val$1.c;
+    if (val$1.t !== true) {
+      let refiner = val$1.s.refiner;
+      if (refiner !== undefined) {
+        itemCode = itemCode + refiner(val$1, val$1.v(), val$1.s);
+      }
+      
+    }
+    if (val$1.l !== "") {
+      itemCode = itemCode + ("let " + val$1.l + ";");
+    }
+    ((delete val$1.a));
+    let codeBeforeValidation = val$1.cb;
+    code = (
+      codeBeforeValidation !== undefined ? codeBeforeValidation : ""
+    ) + itemCode + code;
   };
+  return code;
 }
 
-function val(b, initial, schema) {
+function refine(val, schema, validation) {
+  if (val.from !== undefined) {
+    let inputVar = val.v();
+    if (val.l !== "") {
+      val.c = val.c + ("let " + val.l + ";");
+      val.l = "";
+      val.a = initialAllocate;
+    }
+    val.c = val.c + ("if(" + validation(inputVar, true) + "){" + embedInvalidType(val, val, schema) + "}");
+  } else {
+    let prevValidation = val.validation;
+    val.validation = (inputVar, negative) => (
+      prevValidation !== undefined ? prevValidation(inputVar, negative) + (
+          negative ? "||" : "&&"
+        ) : ""
+    ) + validation(inputVar, negative);
+  }
+  val.s = schema;
+  return val;
+}
+
+function val(from, initial, schema) {
   return {
-    b: b,
+    from: from,
     v: _notVar,
     i: initial,
     f: 0,
-    s: schema
+    s: schema,
+    c: "",
+    l: "",
+    a: initialAllocate,
+    validation: undefined,
+    path: from.path,
+    g: from.g
   };
 }
 
-function constVal(b, schema) {
-  return {
-    b: b,
-    v: _notVar,
-    i: inlineConst(b, schema),
-    f: 0,
-    s: schema
-  };
+function dynamicScope(from, locationVar, schema) {
+  let v = val(from, from.v() + "[" + locationVar + "]", schema);
+  v.from = undefined;
+  v.p = from;
+  v.path = "";
+  v.v = _notVarBefore;
+  return v;
+}
+
+function allocateVal(from, schema) {
+  let $$var = varWithoutAllocation(from.g);
+  from.c = from.c + ("let " + $$var + ";");
+  let v = val(from, $$var, schema);
+  v.v = _var;
+  return v;
+}
+
+function newConst(from, schema) {
+  return val(from, inlineConst(from, schema), schema);
 }
 
 function asyncVal(b, initial) {
-  return {
-    b: b,
-    v: _notVar,
-    i: initial,
-    f: 2,
-    s: unknown
-  };
+  let newrecord = {...b};
+  newrecord.s = unknown;
+  newrecord.f = 2;
+  newrecord.i = initial;
+  newrecord.v = _notVar;
+  return newrecord;
 }
 
 function copy$1(val) {
   let $$new = copy(val);
   if (val.v !== _var) {
-    $$new.v = b => {
-      let v = val.v(b);
+    $$new.v = () => {
+      let v = val.v();
       $$new.i = v;
       $$new.v = _var;
       return v;
@@ -660,12 +706,17 @@ function arrayJoin(_inlinedLocation, value) {
 
 function make(b, schema) {
   return {
-    b: b,
     v: _notVar,
     i: "",
     f: 0,
     s: schema,
     d: {},
+    c: "",
+    l: "",
+    a: initialAllocate,
+    validation: undefined,
+    path: b.path,
+    g: b.g,
     j: schema.type === arrayTag ? arrayJoin : objectJoin,
     c: 0,
     r: ""
@@ -673,7 +724,7 @@ function make(b, schema) {
 }
 
 function add(objectVal, location, val) {
-  let inlinedLocation = inlineLocation(objectVal.b, location);
+  let inlinedLocation = inlineLocation(objectVal.g, location);
   objectVal.d[location] = val;
   if (val.f & 2) {
     objectVal.r = objectVal.r + val.i + ",";
@@ -683,7 +734,7 @@ function add(objectVal, location, val) {
   }
 }
 
-function merge(target, vals) {
+function merge$1(target, vals) {
   let locations = Object.keys(vals);
   for (let idx = 0, idx_finish = locations.length; idx < idx_finish; ++idx) {
     let location = locations[idx];
@@ -700,27 +751,8 @@ function complete(objectVal) {
   return objectVal;
 }
 
-function addKey(b, input, key, val) {
-  return input.v(b) + "[" + key + "]=" + val.i;
-}
-
-function set(b, input, val) {
-  if (input === val) {
-    return "";
-  }
-  let inputVar = input.v(b);
-  let match = input.f & 2;
-  let match$1 = val.f & 2;
-  if (match) {
-    if (!match$1) {
-      return inputVar + "=Promise.resolve(" + val.i + ")";
-    }
-    
-  } else if (match$1) {
-    input.f = input.f | 2;
-    return inputVar + "=" + val.i;
-  }
-  return inputVar + "=" + val.i;
+function addKey(objVal, key, value) {
+  return objVal.v() + "[" + key + "]=" + value.i;
 }
 
 function get(b, targetVal, location) {
@@ -758,43 +790,31 @@ function get(b, targetVal, location) {
       schema = s$1;
     }
   }
+  let newrecord = {...b};
+  newrecord.s = schema;
+  newrecord.f = 0;
   let tmp;
   if (constField in schema) {
     tmp = inlineConst(b, schema);
   } else {
-    let inlinedLocation = inlineLocation(b, location);
-    tmp = targetVal.v(b) + ("[" + inlinedLocation + "]");
+    let inlinedLocation = inlineLocation(b.g, location);
+    tmp = targetVal.v() + ("[" + inlinedLocation + "]");
   }
-  let val = {
-    b: b,
-    v: _notVar,
-    i: tmp,
-    f: 0,
-    s: schema
-  };
-  vals[location] = val;
-  return val;
+  newrecord.i = tmp;
+  newrecord.v = _notVar;
+  vals[location] = newrecord;
+  return newrecord;
 }
 
-function setInlined(b, input, inlined) {
-  return input.v(b) + "=" + inlined;
+function map(from, inlinedFn) {
+  return val(from, inlinedFn + "(" + from.i + ")", unknown);
 }
 
-function map(b, inlinedFn, input) {
-  return {
-    b: b,
-    v: _notVar,
-    i: inlinedFn + "(" + input.i + ")",
-    f: 0,
-    s: unknown
-  };
-}
-
-function embedSyncOperation(b, input, fn) {
+function embedSyncOperation(input, fn) {
   if (input.f & 2) {
-    return asyncVal(input.b, input.i + ".then(" + embed(b, fn) + ")");
+    return asyncVal(input, input.i + ".then(" + embed(input, fn) + ")");
   } else {
-    return map(b, embed(b, fn), input);
+    return map(input, embed(input, fn));
   }
 }
 
@@ -802,7 +822,7 @@ function fail(b, message) {
   return embed(b, () => $$throw(b, {
     TAG: "OperationFailed",
     _0: message
-  }, b.p)) + "()";
+  }, b.path)) + "()";
 }
 
 function effectCtx(b, selfSchema) {
@@ -813,7 +833,7 @@ function effectCtx(b, selfSchema) {
       return $$throw(b, {
         TAG: "OperationFailed",
         _0: message
-      }, b.p + customPath);
+      }, b.path + customPath);
     }
   };
 }
@@ -822,58 +842,39 @@ function invalidOperation(b, description) {
   return $$throw(b, {
     TAG: "InvalidOperation",
     description: description
-  }, b.p);
+  }, b.path);
+}
+
+function mergeWithPathPrepend(val, locationVar, appendSafe) {
+  if (val.path === "" && locationVar === undefined) {
+    return merge(val);
+  } else {
+    let $$catch = errorVar => {
+      let path = val.path;
+      let tmp = path === "" ? "" : fromString(path) + "+";
+      return errorVar + ".path=" + tmp + (
+        locationVar !== undefined ? "'[\"'+" + locationVar + "+'\"]'+" : ""
+      ) + errorVar + ".path";
+    };
+    let valCode = merge(val);
+    if (valCode === "" && !(val.f & 2)) {
+      return valCode + (
+        appendSafe !== undefined ? appendSafe() : ""
+      );
+    }
+    let errorVar = varWithoutAllocation(val.g);
+    let catchCode = "if(" + (errorVar + "&&" + errorVar + ".s===s") + "){" + $$catch(errorVar) + "}throw " + errorVar;
+    if (val.f & 2) {
+      val.i = val.i + ".catch(" + errorVar + "=>{" + catchCode + "})";
+    }
+    return "try{" + valCode + (
+      appendSafe !== undefined ? appendSafe() : ""
+    ) + "}catch(" + errorVar + "){" + catchCode + "}";
+  }
 }
 
 function withPathPrepend(b, input, maybeDynamicLocationVar, appendSafe, fn) {
-  if (b.p === "" && maybeDynamicLocationVar === undefined) {
-    return fn(b, input);
-  }
-  try {
-    let path = "";
-    let $$catch = (b, errorVar) => {
-      b.c = errorVar + ".path=" + fromString(b.p) + "+" + (
-        maybeDynamicLocationVar !== undefined ? "'[\"'+" + maybeDynamicLocationVar + "+'\"]'+" : ""
-      ) + errorVar + ".path";
-    };
-    let fn$1 = b => fn(b, input);
-    let prevCode = b.c;
-    b.c = "";
-    let errorVar = varWithoutAllocation(b.g);
-    let maybeResolveVal = $$catch(b, errorVar);
-    let catchCode = "if(" + (errorVar + "&&" + errorVar + ".s===s") + "){" + b.c;
-    b.c = "";
-    let bb = scope(b, path);
-    let fnOutput = fn$1(bb);
-    b.c = b.c + allocateScope(bb, input);
-    let isNoop = fnOutput.i === input.i && b.c === "";
-    if (appendSafe !== undefined) {
-      appendSafe(b, fnOutput);
-    }
-    if (isNoop) {
-      return fnOutput;
-    }
-    let isAsync = fnOutput.f & 2;
-    let output = input === fnOutput ? input : (
-        appendSafe !== undefined ? fnOutput : ({
-            b: b,
-            v: _notVar,
-            i: "",
-            f: isAsync ? 2 : 0,
-            s: unknown
-          })
-      );
-    let catchCode$1 = maybeResolveVal !== undefined ? catchLocation => catchCode + (
-        catchLocation === 1 ? "return " + maybeResolveVal.i : set(b, output, maybeResolveVal)
-      ) + ("}else{throw " + errorVar + "}") : param => catchCode + "}throw " + errorVar;
-    b.c = prevCode + ("try{" + b.c + (
-      isAsync ? setInlined(b, output, fnOutput.i + ".catch(" + errorVar + "=>{" + catchCode$1(1) + "})") : set(b, output, fnOutput)
-    ) + "}catch(" + errorVar + "){" + catchCode$1(0) + "}");
-    return output;
-  } catch (exn) {
-    let error = getOrRethrow(exn);
-    throw new SuryError(error.code, error.flag, b.p + "[]" + error.path);
-  }
+  return fn(b, input);
 }
 
 function unsupportedTransform(b, from, target) {
@@ -881,7 +882,7 @@ function unsupportedTransform(b, from, target) {
     TAG: "UnsupportedTransformation",
     from: from,
     to: target
-  }, b.p);
+  }, b.path);
 }
 
 function noopOperation(i) {
@@ -895,8 +896,7 @@ function inputToString(b, input) {
 function numberDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
-    input.s = selfSchema;
-    b.f = (inputVar, mode) => {
+    return refine(input, selfSchema, (inputVar, negative) => {
       let match = selfSchema.format;
       let tmp;
       let exit = 0;
@@ -904,17 +904,17 @@ function numberDecoder(b, input, selfSchema) {
         switch (match) {
           case "int32" :
             tmp = (
-              mode ? "||" : "&&"
+              negative ? "||" : "&&"
             ) + inputVar + (
-              mode ? ">" : "<"
+              negative ? ">" : "<"
             ) + "2147483647" + (
-              mode ? "||" : "&&"
+              negative ? "||" : "&&"
             ) + inputVar + (
-              mode ? "<" : ">"
+              negative ? "<" : ">"
             ) + "-2147483648" + (
-              mode ? "||" : "&&"
+              negative ? "||" : "&&"
             ) + inputVar + "%1" + (
-              mode ? "!==" : "==="
+              negative ? "!==" : "==="
             ) + "0";
             break;
           case "port" :
@@ -927,16 +927,15 @@ function numberDecoder(b, input, selfSchema) {
       }
       if (exit === 1) {
         tmp = globalConfig.n ? "" : (
-            mode ? "||" : "&&"
+            negative ? "||" : "&&"
           ) + (
-            mode ? "" : "!"
+            negative ? "" : "!"
           ) + "Number.isNaN(" + inputVar + ")";
       }
       return "typeof " + inputVar + (
-        mode ? "!==" : "==="
+        negative ? "!==" : "==="
       ) + "\"" + numberTag + "\"" + tmp;
-    };
-    return input;
+    });
   }
   if (!(inputTagFlag & 2)) {
     if (inputTagFlag & 4) {
@@ -945,29 +944,35 @@ function numberDecoder(b, input, selfSchema) {
       return unsupportedTransform(b, input.s, selfSchema);
     }
   }
-  let inputVar = input.v(b);
-  let output = val(b, "+" + inputVar, selfSchema);
-  let match = selfSchema.format;
-  let tmp;
-  let exit = 0;
-  if (match !== undefined) {
-    switch (match) {
-      case "int32" :
-        let $$var = output.v(b);
-        tmp = "(" + $$var + ">2147483647||" + $$var + "<-2147483648||" + $$var + "%1!==0)";
-        break;
-      case "port" :
-      case "json" :
-        exit = 1;
-        break;
+  let outputVar = varWithoutAllocation(input.g);
+  input.a(outputVar + "=+" + input.v());
+  let output = val(input, outputVar, selfSchema);
+  output.v = _var;
+  output.validation = (param, negative) => {
+    let match = selfSchema.format;
+    if (match !== undefined) {
+      switch (match) {
+        case "int32" :
+          return outputVar + (
+            negative ? ">" : "<"
+          ) + "2147483647" + (
+            negative ? "||" : "&&"
+          ) + outputVar + (
+            negative ? "<" : ">"
+          ) + "-2147483648" + (
+            negative ? "||" : "&&"
+          ) + outputVar + "%1" + (
+            negative ? "!==" : "==="
+          ) + "0";
+        case "port" :
+        case "json" :
+          break;
+      }
     }
-  } else {
-    exit = 1;
-  }
-  if (exit === 1) {
-    tmp = "Number.isNaN(" + output.v(b) + ")";
-  }
-  b.c = b.c + tmp + ("&&" + embedInvalidType(b, input, selfSchema) + ";");
+    return (
+      negative ? "" : "!"
+    ) + "Number.isNaN(" + outputVar + ")";
+  };
   return output;
 }
 
@@ -978,11 +983,9 @@ int.decoder = numberDecoder;
 function stringDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
-    input.s = selfSchema;
-    b.f = (inputVar, mode) => "typeof " + inputVar + (
-      mode ? "!==" : "==="
-    ) + "\"" + stringTag + "\"";
-    return input;
+    return refine(input, selfSchema, (inputVar, negative) => "typeof " + inputVar + (
+      negative ? "!==" : "==="
+    ) + "\"" + stringTag + "\"");
   }
   if (!(inputTagFlag & 3132 && constField in input.s)) {
     if (inputTagFlag & 1036) {
@@ -996,13 +999,7 @@ function stringDecoder(b, input, selfSchema) {
   let $$const = (""+input.s.const);
   let schema = new Schema(stringTag);
   schema.const = $$const;
-  return {
-    b: b,
-    v: _notVar,
-    i: "\"" + $$const + "\"",
-    f: 0,
-    s: schema
-  };
+  return val(input, "\"" + $$const + "\"", schema);
 }
 
 string.decoder = stringDecoder;
@@ -1010,11 +1007,9 @@ string.decoder = stringDecoder;
 function booleanDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
-    input.s = selfSchema;
-    b.f = (inputVar, mode) => "typeof " + inputVar + (
-      mode ? "!==" : "==="
-    ) + "\"" + booleanTag + "\"";
-    return input;
+    return refine(input, selfSchema, (inputVar, negative) => "typeof " + inputVar + (
+      negative ? "!==" : "==="
+    ) + "\"" + booleanTag + "\"");
   }
   if (!(inputTagFlag & 2)) {
     if (inputTagFlag & 8) {
@@ -1023,9 +1018,9 @@ function booleanDecoder(b, input, selfSchema) {
       return unsupportedTransform(b, input.s, selfSchema);
     }
   }
-  let output = allocateVal(b, selfSchema);
-  let inputVar = input.v(b);
-  b.c = b.c + ("(" + output.i + "=" + inputVar + "===\"true\")||" + inputVar + "===\"false\"||" + embedInvalidType(b, input, selfSchema) + ";");
+  let output = allocateVal(input, selfSchema);
+  let inputVar = input.v();
+  output.c = "(" + output.i + "=" + inputVar + "===\"true\")||" + inputVar + "===\"false\"||" + embedInvalidType(b, input, selfSchema) + ";";
   return output;
 }
 
@@ -1034,24 +1029,22 @@ bool.decoder = booleanDecoder;
 function bigintDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
-    input.s = selfSchema;
-    b.f = (inputVar, mode) => "typeof " + inputVar + (
-      mode ? "!==" : "==="
-    ) + "\"" + bigintTag + "\"";
-    return input;
+    return refine(input, selfSchema, (inputVar, negative) => "typeof " + inputVar + (
+      negative ? "!==" : "==="
+    ) + "\"" + bigintTag + "\"");
   }
   if (!(inputTagFlag & 2)) {
     if (inputTagFlag & 4) {
-      return val(b, "BigInt(" + input.i + ")", selfSchema);
+      return val(input, "BigInt(" + input.i + ")", selfSchema);
     } else if (inputTagFlag & 1024) {
       return input;
     } else {
       return unsupportedTransform(b, input.s, selfSchema);
     }
   }
-  let output = allocateVal(b, selfSchema);
-  let inputVar = input.v(b);
-  b.c = b.c + ("try{" + output.i + "=BigInt(" + inputVar + ")}catch(_){" + embedInvalidType(b, input, selfSchema) + "}");
+  let output = allocateVal(input, selfSchema);
+  let inputVar = input.v();
+  output.c = "try{" + output.i + "=BigInt(" + inputVar + ")}catch(_){" + embedInvalidType(b, input, selfSchema) + "}";
   return output;
 }
 
@@ -1069,34 +1062,32 @@ let json = shaken("json");
 
 function literalDecoder(b, input, selfSchema) {
   if (selfSchema.noValidation) {
-    return constVal(b, selfSchema);
+    return newConst(input, selfSchema);
   }
   if (constField in input.s) {
     if (input.s.const === selfSchema.const) {
       return input;
     } else {
-      return constVal(b, selfSchema);
+      return newConst(input, selfSchema);
     }
   }
   let schemaTagFlag = flags[selfSchema.type];
-  if (flags[input.s.type] & 2 && schemaTagFlag & 3132) {
-    b.f = (inputVar, mode) => inputVar + (
-      mode ? "!==" : "==="
-    ) + "\"" + selfSchema.const + "\"";
-    return constVal(b, selfSchema);
-  } else if (schemaTagFlag & 2048) {
-    b.f = (inputVar, mode) => (
-      mode ? "!" : ""
-    ) + "Number.isNaN(" + inputVar + ")";
-    input.s = selfSchema;
-    return input;
-  } else {
-    b.f = (inputVar, mode) => inputVar + (
-      mode ? "!==" : "==="
-    ) + inlineConst(b, selfSchema);
-    input.s = selfSchema;
-    return input;
+  if (!(flags[input.s.type] & 2 && schemaTagFlag & 3132)) {
+    if (schemaTagFlag & 2048) {
+      return refine(input, selfSchema, (inputVar, negative) => (
+        negative ? "!" : ""
+      ) + "Number.isNaN(" + inputVar + ")");
+    } else {
+      return refine(input, selfSchema, (inputVar, negative) => inputVar + (
+        negative ? "!==" : "==="
+      ) + inlineConst(b, selfSchema));
+    }
   }
+  let output = newConst(input, selfSchema);
+  output.validation = (inputVar, negative) => inputVar + (
+    negative ? "!==" : "==="
+  ) + "\"" + selfSchema.const + "\"";
+  return output;
 }
 
 nullLiteral.decoder = literalDecoder;
@@ -1129,27 +1120,18 @@ function parse(value) {
   return s$1;
 }
 
-function parse$1(prevB, schema, inputArg) {
+function parse$1(b, schema, inputArg) {
   if (schema.$defs) {
-    prevB.g.d = schema.$defs;
+    b.g.d = schema.$defs;
   }
   let input = inputArg;
   let encoder = input.s.encoder;
   if (encoder !== undefined) {
-    input = encoder(prevB, input, schema);
+    input = encoder(b, input, schema);
   }
-  let inputAfterEncoder = input;
-  let b = prevB.u ? prevB : scope(prevB, prevB.p);
   let decoder = schema.decoder;
   if (decoder !== undefined) {
     input = decoder(b, input, schema);
-  }
-  if (input.t !== true) {
-    let refiner = schema.refiner;
-    if (refiner !== undefined) {
-      b.c = b.c + refiner(b, input.v(b), schema);
-    }
-    
   }
   let to = schema.to;
   if (to !== undefined) {
@@ -1161,9 +1143,6 @@ function parse$1(prevB, schema, inputArg) {
       input = parse$1(b, to, input);
     }
     
-  }
-  if (!prevB.u) {
-    prevB.c = prevB.c + allocateScope(b, inputAfterEncoder);
   }
   return input;
 }
@@ -1178,6 +1157,37 @@ function getOutputSchema(_schema) {
     _schema = to;
     continue;
   };
+}
+
+function internalCompile(schema, flag, defs) {
+  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
+      let t = copySchema(unit);
+      t.noValidation = true;
+      mut.to = t;
+    }) : (
+      flag & 16 ? updateOutput(schema, mut => {
+          mut.to = jsonString;
+        }) : (
+          flag & 8 ? updateOutput(schema, mut => {
+              mut.to = json;
+            }) : schema
+        )
+    );
+  let input = operationArg(flag & 1 || schema$1.type === unionTag || constField in schema$1 ? unknown : schema$1, flag, defs);
+  let output = parse$1(input, schema$1, input);
+  let code = merge(output);
+  let isAsync = has(output.f, 2);
+  schema$1.isAsync = isAsync;
+  if (code === "" && output === input && !(flag & 2)) {
+    return noopOperation;
+  }
+  let inlinedOutput = output.i;
+  if (flag & 2 && !isAsync && !defs) {
+    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
+  }
+  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
+  let ctxVarValue1 = input.g.e;
+  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
 }
 
 function reverse(schema) {
@@ -1280,49 +1290,11 @@ function reverse(schema) {
   return r;
 }
 
-function internalCompile(schema, flag, defs) {
-  let b = rootScope(flag, defs);
-  let schema$1 = flag & 4 ? updateOutput(schema, mut => {
-      let t = copySchema(unit);
-      t.noValidation = true;
-      mut.to = t;
-    }) : (
-      flag & 16 ? updateOutput(schema, mut => {
-          mut.to = jsonString;
-        }) : (
-          flag & 8 ? updateOutput(schema, mut => {
-              mut.to = json;
-            }) : schema
-        )
-    );
-  let input = {
-    b: b,
-    v: _var,
-    i: "i",
-    f: 0,
-    s: flag & 1 || schema$1.type === unionTag || constField in schema$1 ? unknown : schema$1
-  };
-  let output = parse$1(b, schema$1, input);
-  let code = allocateScope(b, input);
-  let isAsync = has(output.f, 2);
-  schema$1.isAsync = isAsync;
-  if (code === "" && output === input && !(flag & 2)) {
-    return noopOperation;
-  }
-  let inlinedOutput = output.i;
-  if (flag & 2 && !isAsync && !defs) {
-    inlinedOutput = "Promise.resolve(" + inlinedOutput + ")";
-  }
-  let inlinedFunction = "i=>{" + code + "return " + inlinedOutput + "}";
-  let ctxVarValue1 = b.g.e;
-  return new Function("e", "s", "return " + inlinedFunction)(ctxVarValue1, s);
-}
-
-let reverseKey = "r";
-
 let valKey = "value";
 
 let valueOptions = {};
+
+let reverseKey = "r";
 
 function initOperation(s, flag) {
   let f = internalCompile(s, flag, 0);
@@ -1331,17 +1303,22 @@ function initOperation(s, flag) {
   return f;
 }
 
+function parseDynamic(input, schema) {
+  try {
+    return parse$1(input, schema, input);
+  } catch (exn) {
+    let error = getOrRethrow(exn);
+    let p = input.p;
+    throw new SuryError(error.code, error.flag, (
+      p !== undefined ? p.path : ""
+    ) + (input.path + "[]" + error.path));
+  }
+}
+
 function isAsyncInternal(schema, defs) {
   try {
-    let b = rootScope(2, defs);
-    let input = {
-      b: b,
-      v: _var,
-      i: "i",
-      f: 0,
-      s: unknown
-    };
-    let output = parse$1(b, schema, input);
+    let input = operationArg(unknown, 2, defs);
+    let output = parse$1(input, schema, input);
     let isAsync = has(output.f, 2);
     schema.isAsync = isAsync;
     return isAsync;
@@ -1352,76 +1329,65 @@ function isAsyncInternal(schema, defs) {
 }
 
 function objectDecoder(b, input, selfSchema) {
-  let addValidation = fn => {
-    let prevValidation = b.f;
-    b.f = (inputVar, mode) => (
-      prevValidation !== undefined ? prevValidation(inputVar, mode) + (
-          mode ? "||" : "&&"
-        ) : ""
-    ) + fn(inputVar, mode);
-  };
   let inputTagFlag = flags[input.s.type];
+  let input$1 = input;
   let itemInputSchema;
   if (inputTagFlag & 1) {
     let isObjectInput = inputTagFlag & 64;
     if (!isObjectInput) {
-      addValidation((inputVar, negative) => "typeof " + inputVar + (
+      let mut = new Schema(objectTag);
+      mut.properties = immutableEmpty;
+      mut.items = immutableEmpty$1;
+      mut.additionalItems = unknown;
+      input$1 = refine(input$1, mut, (inputVar, negative) => "typeof " + inputVar + (
         negative ? "!==" : "==="
       ) + "\"" + objectTag + "\"" + (
         negative ? "||" : "&&"
       ) + (
         negative ? "!" : ""
       ) + inputVar);
-      let mut = new Schema(objectTag);
-      mut.properties = immutableEmpty;
-      mut.items = immutableEmpty$1;
-      mut.additionalItems = unknown;
-      input.s = mut;
     }
     if (selfSchema.additionalItems !== "strip") {
-      addValidation((inputVar, negative) => (
+      input$1 = refine(input$1, input$1.s, (inputVar, negative) => (
         negative ? "" : "!"
       ) + "Array.isArray(" + inputVar + ")");
     }
     itemInputSchema = unknown;
   } else if (inputTagFlag & 64) {
-    let s = input.s.additionalItems;
+    let s = input$1.s.additionalItems;
     itemInputSchema = s.type !== unionTag ? s : unknown;
   } else {
-    itemInputSchema = unsupportedTransform(b, input.s, selfSchema);
+    itemInputSchema = unsupportedTransform(b, input$1.s, selfSchema);
   }
+  let input$2 = input$1;
   let itemSchema = selfSchema.additionalItems;
   if (itemSchema === "strip" || itemSchema === "strict") {
     itemSchema === "strip";
   } else {
     if (itemSchema === unknown) {
-      input.s = selfSchema;
-      return input;
+      input$2.s = selfSchema;
+      return input$2;
     }
-    let inputVar = input.v(b);
+    let inputVar = input$2.v();
     let keyVar = varWithoutAllocation(b.g);
-    let bb = scope(b, b.p);
-    let itemInput = val(bb, inputVar + "[" + keyVar + "]", itemInputSchema);
-    itemInput.v = _notVarBefore;
-    let itemOutput = withPathPrepend(bb, itemInput, keyVar, undefined, (b, input) => parse$1(b, itemSchema, input));
-    let itemCode = allocateScope(bb, itemInput);
+    let itemInput = dynamicScope(input$2, keyVar, itemInputSchema);
+    let itemOutput = parseDynamic(itemInput, itemSchema);
     let isTransformed = itemInput !== itemOutput;
-    let output = isTransformed ? val(b, "{}", selfSchema) : input;
+    let output = isTransformed ? val(input$2, "{}", selfSchema) : input$2;
     output.s = selfSchema;
+    let itemCode = mergeWithPathPrepend(itemOutput, keyVar, isTransformed ? () => addKey(output, keyVar, itemOutput) : undefined);
     if (isTransformed || itemCode !== "") {
-      b.c = b.c + ("for(let " + keyVar + " in " + inputVar + "){" + itemCode + (
-        isTransformed ? addKey(b, output, keyVar, itemOutput) : ""
-      ) + "}");
+      output.c = output.c + ("for(let " + keyVar + " in " + inputVar + "){" + itemCode + "}");
     }
     if (!(itemOutput.f & 2)) {
       return output;
     }
-    let resolveVar = varWithoutAllocation(b.g);
-    let rejectVar = varWithoutAllocation(b.g);
-    let asyncParseResultVar = varWithoutAllocation(b.g);
-    let counterVar = varWithoutAllocation(b.g);
-    let outputVar = output.v(b);
-    return asyncVal(b, "new Promise((" + resolveVar + "," + rejectVar + ")=>{let " + counterVar + "=Object.keys(" + outputVar + ").length;for(let " + keyVar + " in " + outputVar + "){" + outputVar + "[" + keyVar + "].then(" + asyncParseResultVar + "=>{" + outputVar + "[" + keyVar + "]=" + asyncParseResultVar + ";if(" + counterVar + "--===1){" + resolveVar + "(" + outputVar + ")}}," + rejectVar + ")}})");
+    let resolveVar = varWithoutAllocation(output.g);
+    let rejectVar = varWithoutAllocation(output.g);
+    let asyncParseResultVar = varWithoutAllocation(output.g);
+    let counterVar = varWithoutAllocation(output.g);
+    let outputVar = output.v();
+    return asyncVal(output, "new Promise((" + resolveVar + "," + rejectVar + ")=>{let " + counterVar + "=Object.keys(" + outputVar + ").length;for(let " + keyVar + " in " + outputVar + "){" + outputVar + "[" + keyVar + "].then(" + asyncParseResultVar + "=>{" + outputVar + "[" + keyVar + "]=" + asyncParseResultVar + ";if(" + counterVar + "--===1){" + resolveVar + "(" + outputVar + ")}}," + rejectVar + ")}})");
   }
   let isUnion = b.u;
   let properties = selfSchema.properties;
@@ -1431,18 +1397,17 @@ function objectDecoder(b, input, selfSchema) {
   for (let idx = 0, idx_finish = keys.length; idx < idx_finish; ++idx) {
     let key = keys[idx];
     let schema = properties[key];
-    let itemInput$1 = get(b, input, key);
-    let inlinedLocation = inlineLocation(b, key);
+    let itemInput$1 = get(b, input$2, key);
+    let inlinedLocation = inlineLocation(b.g, key);
     let locationAsPath = "[" + inlinedLocation + "]";
-    let bb$1 = scope(b, b.p + locationAsPath);
-    bb$1.u = isUnion;
-    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1);
-    let validation = bb$1.f;
+    let bb = scope(b, b.path + locationAsPath);
+    bb.u = isUnion;
+    let itemOutput$1 = parse$1(bb, schema, itemInput$1);
+    let validation = bb.validation;
     if (validation !== undefined && isUnion && constField in schema) {
-      addValidation((inputVar, negative) => validation(inputVar + locationAsPath, negative));
-      bb$1.f = undefined;
+      bb.validation = undefined;
     }
-    b.c = b.c + allocateScope(bb$1, itemInput$1);
+    b.c = b.c + merge(bb);
     add(objectVal, key, itemOutput$1);
     if (itemOutput$1 !== itemInput$1) {
       isTransformed$1 = true;
@@ -1451,7 +1416,7 @@ function objectDecoder(b, input, selfSchema) {
   }
   let tmp = false;
   if (selfSchema.additionalItems === "strict") {
-    let match = input.s.additionalItems;
+    let match = input$2.s.additionalItems;
     let tmp$1;
     tmp$1 = match !== "strip" && match !== "strict";
     tmp = tmp$1;
@@ -1459,14 +1424,14 @@ function objectDecoder(b, input, selfSchema) {
   if (tmp) {
     let key$1 = allocateVal(b, unknown);
     let keyVar$1 = key$1.i;
-    b.c = b.c + ("for(" + keyVar$1 + " in " + input.v(b) + "){if(");
+    b.c = b.c + ("for(" + keyVar$1 + " in " + input$2.v() + "){if(");
     if (keys.length !== 0) {
       for (let idx$1 = 0, idx_finish$1 = keys.length; idx$1 < idx_finish$1; ++idx$1) {
         let key$2 = keys[idx$1];
         if (idx$1 !== 0) {
           b.c = b.c + "&&";
         }
-        b.c = b.c + (keyVar$1 + "!==" + inlineLocation(b, key$2));
+        b.c = b.c + (keyVar$1 + "!==" + inlineLocation(b.g, key$2));
       }
     } else {
       b.c = b.c + "true";
@@ -1478,7 +1443,7 @@ function objectDecoder(b, input, selfSchema) {
   }
   let tmp$2 = true;
   if (!isTransformed$1) {
-    let match$1 = input.s.additionalItems;
+    let match$1 = input$2.s.additionalItems;
     let tmp$3;
     tmp$3 = match$1 !== "strip" && match$1 !== "strict";
     tmp$2 = tmp$3;
@@ -1486,7 +1451,7 @@ function objectDecoder(b, input, selfSchema) {
   if (tmp$2) {
     return complete(objectVal);
   } else {
-    return input;
+    return input$2;
   }
 }
 
@@ -1508,7 +1473,7 @@ function recursiveDecoder(b, input, selfSchema) {
     recOperation = embed(b, fn$2);
   }
   let output = withPathPrepend(b, input, undefined, undefined, (param, input) => {
-    let output = map(b, recOperation, input);
+    let output = map(input, recOperation);
     if (def.isAsync === undefined) {
       let defsMut = copy(defs);
       defsMut[identifier] = unknown;
@@ -1519,7 +1484,7 @@ function recursiveDecoder(b, input, selfSchema) {
     }
     return output;
   });
-  output.v(b);
+  output.v();
   return output;
 }
 
@@ -1527,9 +1492,9 @@ function instanceDecoder(b, input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   if (inputTagFlag & 1) {
     input.s = selfSchema;
-    b.f = (inputVar, mode) => {
+    b.validation = (inputVar, negative) => {
       let c = inputVar + " instanceof " + embed(b, selfSchema.class);
-      if (mode) {
+      if (negative) {
         return "!(" + c + ")";
       } else {
         return c;
@@ -1736,7 +1701,7 @@ function get$1(schema, id) {
   return schema[id];
 }
 
-function set$1(schema, id, metadata) {
+function set(schema, id, metadata) {
   let mut = copySchema(schema);
   mut[id] = metadata;
   return mut;
@@ -1789,17 +1754,21 @@ function appendRefiner(maybeExistingRefiner, refiner) {
 
 function internalRefine(schema, refiner) {
   return updateOutput(schema, mut => {
-    mut.refiner = appendRefiner(mut.refiner, refiner);
+    mut.refiner = appendRefiner(mut.refiner, refiner(mut));
   });
 }
 
-function refine(schema, refiner) {
-  return internalRefine(schema, (b, inputVar, selfSchema) => embed(b, refiner(effectCtx(b, selfSchema))) + "(" + inputVar + ");");
+function refine$1(schema, refiner) {
+  return internalRefine(schema, param => ((b, inputVar, selfSchema) => embed(b, refiner(effectCtx(b, selfSchema))) + "(" + inputVar + ");"));
 }
 
 function addRefinement(schema, metadataId, refinement, refiner) {
-  let refinements = schema[metadataId];
-  return internalRefine(set$1(schema, metadataId, refinements !== undefined ? refinements.concat(refinement) : [refinement]), refiner);
+  return internalRefine(schema, mut => {
+    let refinements = schema[metadataId];
+    let metadata = refinements !== undefined ? refinements.concat(refinement) : [refinement];
+    mut[metadataId] = metadata;
+    return refiner;
+  });
 }
 
 function transform(schema, transformer) {
@@ -1811,7 +1780,7 @@ function transform(schema, transformer) {
         if (match.a !== undefined) {
           return invalidOperation(b, "The S.transform doesn't allow parser and asyncParser at the same time. Remove parser in favor of asyncParser");
         } else {
-          return embedSyncOperation(b, input, parser);
+          return embedSyncOperation(input, parser);
         }
       }
       let asyncParser = match.a;
@@ -1819,7 +1788,7 @@ function transform(schema, transformer) {
         if (!(b.g.o & 2)) {
           $$throw(b, "UnexpectedAsync", "");
         }
-        let val = embedSyncOperation(b, input, asyncParser);
+        let val = embedSyncOperation(input, asyncParser);
         val.f = val.f | 2;
         return val;
       } else if (match.s !== undefined) {
@@ -1833,7 +1802,7 @@ function transform(schema, transformer) {
       let match = transformer(effectCtx(b, selfSchema));
       let serializer = match.s;
       if (serializer !== undefined) {
-        return embedSyncOperation(b, input, serializer);
+        return embedSyncOperation(input, serializer);
       } else if (match.a !== undefined || match.p !== undefined) {
         return invalidOperation(b, "The S.transform serializer is missing");
       } else {
@@ -1893,74 +1862,59 @@ function factory$1(item) {
 }
 
 function arrayDecoder(b, input, selfSchema) {
-  let addValidation = fn => {
-    let prevValidation = b.f;
-    b.f = (inputVar, mode) => (
-      prevValidation !== undefined ? prevValidation(inputVar, mode) + (
-          mode ? "||" : "&&"
-        ) : ""
-    ) + fn(inputVar, mode);
-  };
   let inputTagFlag = flags[input.s.type];
   let items = selfSchema.items;
   let length = items.length;
+  let input$1 = input;
   let itemInputSchema;
   if (inputTagFlag & 129) {
     let isArrayInput = inputTagFlag & 128;
     if (!isArrayInput) {
-      addValidation((inputVar, negative) => (
+      input$1 = refine(input$1, factory$1(unknown), (inputVar, negative) => (
         negative ? "!" : ""
       ) + "Array.isArray(" + inputVar + ")");
-      input.s = factory$1(unknown);
     }
-    let match = input.s.additionalItems;
+    let match = input$1.s.additionalItems;
     let isExactSize;
-    isExactSize = match === "strip" || match === "strict" ? input.s.items.length === length : false;
+    isExactSize = match === "strip" || match === "strict" ? input$1.s.items.length === length : false;
     if (!isExactSize) {
       let match$1 = selfSchema.additionalItems;
       if (match$1 === "strip" || match$1 === "strict") {
-        if (match$1 === "strip") {
-          addValidation((inputVar, negative) => inputVar + ".length" + (
+        input$1 = match$1 === "strip" ? refine(input$1, input$1.s, (inputVar, negative) => inputVar + ".length" + (
             negative ? "<" : ">"
-          ) + length);
-        } else {
-          addValidation((inputVar, negative) => inputVar + ".length" + (
+          ) + length) : refine(input$1, input$1.s, (inputVar, negative) => inputVar + ".length" + (
             negative ? "!==" : "==="
           ) + length);
-        }
       }
       
     }
-    let match$2 = input.s.additionalItems;
+    let match$2 = input$1.s.additionalItems;
     itemInputSchema = match$2 !== undefined && match$2 !== "strip" && match$2 !== "strict" && match$2.type !== unionTag ? match$2 : unknown;
   } else {
-    itemInputSchema = unsupportedTransform(b, input.s, selfSchema);
+    itemInputSchema = unsupportedTransform(b, input$1.s, selfSchema);
   }
+  let input$2 = input$1;
   let itemSchema = selfSchema.additionalItems;
   if (itemSchema === "strip" || itemSchema === "strict") {
     itemSchema === "strip";
   } else {
     if (itemSchema === unknown) {
-      input.s = selfSchema;
-      return input;
+      input$2.s = selfSchema;
+      return input$2;
     }
-    let inputVar = input.v(b);
-    let iteratorVar = varWithoutAllocation(b.g);
-    let bb = scope(b, b.p);
-    let itemInput = val(bb, inputVar + "[" + iteratorVar + "]", itemInputSchema);
-    itemInput.v = _notVarBefore;
-    let itemOutput = withPathPrepend(bb, itemInput, iteratorVar, undefined, (b, input) => parse$1(b, itemSchema, input));
-    let itemCode = allocateScope(bb, itemInput);
+    let inputVar = input$2.v();
+    let iteratorVar = varWithoutAllocation(input$2.g);
+    let itemInput = dynamicScope(input$2, iteratorVar, itemInputSchema);
+    let itemOutput = parseDynamic(itemInput, itemSchema);
     let isTransformed = itemInput !== itemOutput;
-    let output = isTransformed ? val(b, "new Array(" + inputVar + ".length)", selfSchema) : input;
+    let output = isTransformed ? val(input$2, "new Array(" + inputVar + ".length)", selfSchema) : input$2;
     output.s = selfSchema;
+    let itemCode = mergeWithPathPrepend(itemOutput, iteratorVar, isTransformed ? () => addKey(output, iteratorVar, itemOutput) : undefined);
     if (isTransformed || itemCode !== "") {
-      b.c = b.c + ("for(let " + iteratorVar + "=" + length + ";" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + itemCode + (
-        isTransformed ? addKey(b, output, iteratorVar, itemOutput) : ""
-      ) + "}");
+      output.c = output.c + ("for(let " + iteratorVar + "=" + length + ";" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
     }
     if (itemOutput.f & 2) {
-      return asyncVal(output.b, "Promise.all(" + output.i + ")");
+      return asyncVal(output, "Promise.all(" + output.i + ")");
     } else {
       return output;
     }
@@ -1972,18 +1926,13 @@ function arrayDecoder(b, input, selfSchema) {
     let item = items[idx];
     let schema = item.schema;
     let key = item.location;
-    let itemInput$1 = get(b, input, key);
-    let inlinedLocation = inlineLocation(b, key);
+    let itemInput$1 = get(b, input$2, key);
+    let inlinedLocation = inlineLocation(b.g, key);
     let locationAsPath = "[" + inlinedLocation + "]";
-    let bb$1 = scope(b, b.p + locationAsPath);
-    bb$1.u = isUnion;
-    let itemOutput$1 = parse$1(bb$1, schema, itemInput$1);
-    let validation = bb$1.f;
-    if (validation !== undefined && isUnion && constField in schema) {
-      addValidation((inputVar, negative) => validation(inputVar + locationAsPath, negative));
-      bb$1.f = undefined;
-    }
-    b.c = b.c + allocateScope(bb$1, itemInput$1);
+    let bb = scope(b, b.path + locationAsPath);
+    bb.u = isUnion;
+    let itemOutput$1 = parse$1(bb, schema, itemInput$1);
+    b.c = b.c + merge(bb);
     add(objectVal, key, itemOutput$1);
     if (itemOutput$1 !== itemInput$1) {
       isTransformed$1 = true;
@@ -1992,7 +1941,7 @@ function arrayDecoder(b, input, selfSchema) {
   }
   let tmp = true;
   if (!isTransformed$1) {
-    let match$3 = input.s.additionalItems;
+    let match$3 = input$2.s.additionalItems;
     let tmp$1;
     tmp$1 = match$3 !== "strip" && match$3 !== "strict";
     tmp = tmp$1;
@@ -2000,7 +1949,7 @@ function arrayDecoder(b, input, selfSchema) {
   if (tmp) {
     return complete(objectVal);
   } else {
-    return input;
+    return input$2;
   }
 }
 
@@ -2010,17 +1959,16 @@ function getItemCode(b, schema, input, output, deopt) {
     if (deopt) {
       b.g.o = globalFlag | 1;
     }
-    let bb = scope(b, b.p);
+    let bb = scope(b, b.path);
     let itemOutput = parse$1(bb, schema, input);
     if (itemOutput !== input) {
-      itemOutput.b = bb;
       if (itemOutput.f & 2) {
         output.f = output.f | 2;
       }
-      bb.c = bb.c + (output.v(b) + "=" + itemOutput.i);
+      bb.c = bb.c + (output.v() + "=" + itemOutput.i);
     }
     b.g.o = globalFlag;
-    return allocateScope(bb, input);
+    return merge(bb);
   } catch (exn) {
     return "throw " + embed(b, getOrRethrow(exn));
   }
@@ -2063,8 +2011,8 @@ function unionDecoder(b, input, selfSchema) {
       received: unknown,
       value: args[0],
       unionErrors: args.length > 1 ? Array.from(args).slice(1) : undefined
-    }, b.p);
-  }) + "(" + input.v(b) + caught + ")";
+    }, b.path);
+  }) + "(" + input.v() + caught + ")";
   let typeValidation = b.g.o & 1;
   let initialInline = input.i;
   let deoptIdx = -1;
@@ -2170,13 +2118,12 @@ function unionDecoder(b, input, selfSchema) {
       } else {
         throw new Error("[Sury] " + ("Union of " + tag$1 + " is not supported"));
       }
-      let bb = scope(b, b.p);
-      bb.u = true;
-      parse$1(bb, primitiveSchema, input$1);
-      let validation = bb.f;
+      input$1.u = true;
+      parse$1(input$1, primitiveSchema, input$1);
+      let validation = input$1.validation;
       let cond;
       if (validation !== undefined) {
-        cond = param => validation(input.v(b), false);
+        cond = param => validation(input.v(), false);
       } else {
         throw new Error("[Sury] No validation");
       }
@@ -2197,22 +2144,21 @@ function unionDecoder(b, input, selfSchema) {
         let itemCode$1 = "";
         let itemCond = "";
         try {
-          let bb$1 = scope(b, b.p);
-          bb$1.u = true;
-          let itemOutput = parse$1(bb$1, schema$2, input$2);
-          let validation$1 = bb$1.f;
+          let bb = scope(b, b.path);
+          bb.u = true;
+          let itemOutput = parse$1(bb, schema$2, input$2);
+          let validation$1 = bb.validation;
           if (validation$1 !== undefined) {
-            itemCond = validation$1(input$2.v(b), false);
+            itemCond = validation$1(input$2.v(), false);
           }
           if (itemOutput !== input$2) {
-            itemOutput.b = bb$1;
             if (itemOutput.f & 2) {
               input.f = input.f | 2;
             }
-            bb$1.c = bb$1.c + (input.v(b) + "=" + itemOutput.i);
+            bb.c = bb.c + (input.v() + "=" + itemOutput.i);
           }
-          bb$1.f = undefined;
-          itemCode$1 = allocateScope(bb$1, input$2);
+          bb.validation = undefined;
+          itemCode$1 = merge(bb);
         } catch (exn) {
           let errorVar$1 = embed(b, getOrRethrow(exn));
           itemCode$1 = isLast ? fail("," + errorVar$1) : "throw " + errorVar$1;
@@ -2334,7 +2280,7 @@ function unionDecoder(b, input, selfSchema) {
   b.c = b.c + start + end;
   let o = input.f & 2 ? asyncVal(b, "Promise.resolve(" + input.i + ")") : (
       input.v === _var ? (
-          b.c === "" && input.b.c === "" && (input.b.l === input.i + "=" + initialInline || initialInline === "i") ? (input.b.l = "", input.b.a = initialAllocate, input.v = _notVar, input.i = initialInline, input) : copy$1(input)
+          b.c === "" && input.c === "" && (input.l === input.i + "=" + initialInline || initialInline === "i") ? (input.l = "", input.a = initialAllocate, input.v = _notVar, input.i = initialInline, input) : copy$1(input)
         ) : input
     );
   let to = selfSchema.to;
@@ -2381,7 +2327,7 @@ function nestedNone() {
   properties[nestedLoc] = itemSchema;
   return {
     type: objectTag,
-    serializer: (b, param, selfSchema) => constVal(b, selfSchema.to),
+    serializer: (param, input, selfSchema) => newConst(input, selfSchema.to),
     decoder: objectDecoder,
     additionalItems: "strip",
     items: [item],
@@ -2497,7 +2443,7 @@ function getWithDefault(schema, $$default) {
       }
       mut.parser = (b, input, selfSchema) => {
         let operation = (b, input) => {
-          let inputVar = input.v(b);
+          let inputVar = input.v();
           let tmp;
           tmp = $$default.TAG === "Value" ? inlineConst(b, parse($$default._0)) : embed(b, $$default._0) + "()";
           return val(b, inputVar + "===void 0?" + tmp + ":" + inputVar, selfSchema.to);
@@ -2505,17 +2451,15 @@ function getWithDefault(schema, $$default) {
         if (!(input.f & 2)) {
           return operation(b, input);
         }
-        let bb = scope(b, b.p);
-        let operationInput = {
-          b: b,
-          v: _var,
-          i: varWithoutAllocation(bb.g),
-          f: 0,
-          s: unknown
-        };
-        let operationOutputVal = operation(bb, operationInput);
-        let operationCode = allocateScope(bb, input);
-        return asyncVal(input.b, input.i + ".then(" + operationInput.v(b) + "=>{" + operationCode + "return " + operationOutputVal.i + "})");
+        let bb = scope(b, b.path);
+        let newrecord = {...b};
+        newrecord.s = unknown;
+        newrecord.f = 0;
+        newrecord.i = varWithoutAllocation(bb.g);
+        newrecord.v = _var;
+        let operationOutputVal = operation(bb, newrecord);
+        let operationCode = merge(bb);
+        return asyncVal(input, input.i + ".then(" + newrecord.v() + "=>{" + operationCode + "return " + operationOutputVal.i + "})");
       };
       let to = copySchema(itemOutputSchema);
       let decoder = to.decoder;
@@ -2624,7 +2568,7 @@ let emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-
 
 let datetimeRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-function jsonEncoder(b, input, to) {
+function jsonEncoder(param, input, to) {
   let toTagFlag = flags[to.type];
   if (toTagFlag & 46) {
     input.s = unknown;
@@ -2632,16 +2576,16 @@ function jsonEncoder(b, input, to) {
   }
   if (toTagFlag & 1024) {
     input.s = unknown;
-    return stringDecoder(b, input, string);
+    return stringDecoder(input, input, string);
   }
   if (toTagFlag & 2064) {
     input.s = unknown;
-    return literalDecoder(b, input, nullLiteral);
+    return literalDecoder(input, input, nullLiteral);
   }
   if (toTagFlag & 128) {
     input.s = unknown;
     let encoderSchema = factory$1(unknown);
-    let output = arrayDecoder(b, input, encoderSchema);
+    let output = arrayDecoder(input, input, encoderSchema);
     encoderSchema.additionalItems = json;
     return output;
   }
@@ -2650,7 +2594,7 @@ function jsonEncoder(b, input, to) {
   }
   input.s = unknown;
   let encoderSchema$1 = factory(unknown);
-  let output$1 = objectDecoder(b, input, encoderSchema$1);
+  let output$1 = objectDecoder(input, input, encoderSchema$1);
   encoderSchema$1.additionalItems = json;
   return output$1;
 }
@@ -2661,7 +2605,7 @@ function jsonDecoder(b, input, selfSchema) {
     return input;
   }
   if (inputTagFlag & 2064) {
-    return constVal(b, nullLiteral);
+    return newConst(input, nullLiteral);
   }
   if (inputTagFlag & 1024) {
     return inputToString(b, input);
@@ -2771,27 +2715,25 @@ function makeJsonStringEncoder(validateOnly) {
       return input;
     }
     if (constField in to) {
-      b.f = (inputVar, mode) => inputVar + (
-        mode ? "!==" : "==="
+      b.validation = (inputVar, negative) => inputVar + (
+        negative ? "!==" : "==="
       ) + inlineJsonString(b, to, selfSchema);
-      return constVal(b, to);
+      return newConst(input, to);
     }
-    let inputVar = input.v(b);
+    let inputVar = input.v();
     let output = input;
     let tmp;
     if (validateOnly) {
       tmp = "";
     } else {
-      let targetVal = allocateVal(b, json);
+      let targetVal = allocateVal(input, json);
+      targetVal.v = _notVarBefore;
       output = targetVal;
       tmp = targetVal.i + "=";
     }
-    b.c = b.c + "try{" + tmp + ("JSON.parse(" + inputVar + ")}catch(t){" + embedInvalidType(b, input, selfSchema) + "}");
+    input.c = input.c + "try{" + tmp + ("JSON.parse(" + inputVar + ")}catch(t){" + embedInvalidType(b, input, selfSchema) + "}");
     if (!validateOnly) {
-      let bb = scope(b, b.p);
-      let input$1 = output;
-      output = jsonEncoder(bb, input$1, to);
-      b.c = b.c + allocateScope(bb, input$1);
+      output = jsonEncoder(output, output, to);
     }
     return output;
   };
@@ -2983,7 +2925,7 @@ function getFullDitemPath(ditem) {
 
 function definitionToOutput(b, definition, getItemOutput, outputSchema) {
   if (constField in outputSchema) {
-    return constVal(b, outputSchema);
+    return newConst(b, outputSchema);
   }
   let item = definition[itemSymbol];
   if (item !== undefined) {
@@ -3000,14 +2942,14 @@ function objectStrictModeCheck(b, input, items, selfSchema) {
   }
   let key = allocateVal(b, unknown);
   let keyVar = key.i;
-  b.c = b.c + ("for(" + keyVar + " in " + input.v(b) + "){if(");
+  b.c = b.c + ("for(" + keyVar + " in " + input.v() + "){if(");
   if (items.length !== 0) {
     for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
       let match = items[idx];
       if (idx !== 0) {
         b.c = b.c + "&&";
       }
-      b.c = b.c + (keyVar + "!==" + inlineLocation(b, match.location));
+      b.c = b.c + (keyVar + "!==" + inlineLocation(b.g, match.location));
     }
   } else {
     b.c = b.c + "true";
@@ -3050,122 +2992,6 @@ function proxify(item) {
       });
     }
   });
-}
-
-function definitionToRitem(definition, path, ritemsByItemPath) {
-  if (typeof definition !== "object" || definition === null) {
-    return {
-      k: 1,
-      p: path,
-      s: copySchema(parse(definition))
-    };
-  }
-  let item = definition[itemSymbol];
-  if (item !== undefined) {
-    let ritemSchema = copySchema(getOutputSchema(item.schema));
-    ((delete ritemSchema.serializer));
-    let ritem = {
-      k: 0,
-      p: path,
-      s: ritemSchema
-    };
-    item.r = ritem;
-    ritemsByItemPath[getFullDitemPath(item)] = ritem;
-    return ritem;
-  }
-  if (Array.isArray(definition)) {
-    let items = [];
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let location = idx.toString();
-      let inlinedLocation = "\"" + location + "\"";
-      let ritem$1 = definitionToRitem(definition[idx], path + ("[" + inlinedLocation + "]"), ritemsByItemPath);
-      let item_schema = ritem$1.s;
-      let item$1 = {
-        schema: item_schema,
-        location: location
-      };
-      items[idx] = item$1;
-    }
-    let mut = new Schema(arrayTag);
-    return {
-      k: 2,
-      p: path,
-      s: (mut.items = items, mut.additionalItems = "strict", mut.decoder = arrayDecoder, mut.serializer = neverBuilder, mut)
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let properties = {};
-  let items$1 = [];
-  for (let idx$1 = 0, idx_finish$1 = fieldNames.length; idx$1 < idx_finish$1; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let inlinedLocation$1 = fromString(location$1);
-    let ritem$2 = definitionToRitem(definition[location$1], path + ("[" + inlinedLocation$1 + "]"), ritemsByItemPath);
-    let item_schema$1 = ritem$2.s;
-    let item$2 = {
-      schema: item_schema$1,
-      location: location$1
-    };
-    items$1[idx$1] = item$2;
-    properties[location$1] = item_schema$1;
-  }
-  let mut$1 = new Schema(objectTag);
-  return {
-    k: 2,
-    p: path,
-    s: (mut$1.items = items$1, mut$1.properties = properties, mut$1.additionalItems = globalConfig.a, mut$1.serializer = neverBuilder, mut$1.decoder = objectDecoder, mut$1)
-  };
-}
-
-function definitionToSchema(definition) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse(definition);
-  }
-  if (definition["~standard"]) {
-    return definition;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = definitionToSchema(definition[idx]);
-      let location = idx.toString();
-      definition[idx] = {
-        schema: schema,
-        location: location
-      };
-    }
-    let mut = new Schema(arrayTag);
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.decoder = arrayDecoder;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    return {
-      type: instanceTag,
-      decoder: literalDecoder,
-      const: definition,
-      class: cnstr
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  let items = [];
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let schema$1 = definitionToSchema(definition[location$1]);
-    let item = {
-      schema: schema$1,
-      location: location$1
-    };
-    definition[location$1] = schema$1;
-    items[idx$1] = item;
-  }
-  let mut$1 = new Schema(objectTag);
-  mut$1.items = items;
-  mut$1.properties = definition;
-  mut$1.additionalItems = globalConfig.a;
-  mut$1.decoder = objectDecoder;
-  return mut$1;
 }
 
 function nested(fieldName) {
@@ -3243,6 +3069,122 @@ function nested(fieldName) {
   return ctx$1;
 }
 
+function definitionToSchema(definition) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse(definition);
+  }
+  if (definition["~standard"]) {
+    return definition;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = definitionToSchema(definition[idx]);
+      let location = idx.toString();
+      definition[idx] = {
+        schema: schema,
+        location: location
+      };
+    }
+    let mut = new Schema(arrayTag);
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.decoder = arrayDecoder;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    return {
+      type: instanceTag,
+      decoder: literalDecoder,
+      const: definition,
+      class: cnstr
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  let items = [];
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let schema$1 = definitionToSchema(definition[location$1]);
+    let item = {
+      schema: schema$1,
+      location: location$1
+    };
+    definition[location$1] = schema$1;
+    items[idx$1] = item;
+  }
+  let mut$1 = new Schema(objectTag);
+  mut$1.items = items;
+  mut$1.properties = definition;
+  mut$1.additionalItems = globalConfig.a;
+  mut$1.decoder = objectDecoder;
+  return mut$1;
+}
+
+function definitionToRitem(definition, path, ritemsByItemPath) {
+  if (typeof definition !== "object" || definition === null) {
+    return {
+      k: 1,
+      p: path,
+      s: copySchema(parse(definition))
+    };
+  }
+  let item = definition[itemSymbol];
+  if (item !== undefined) {
+    let ritemSchema = copySchema(getOutputSchema(item.schema));
+    ((delete ritemSchema.serializer));
+    let ritem = {
+      k: 0,
+      p: path,
+      s: ritemSchema
+    };
+    item.r = ritem;
+    ritemsByItemPath[getFullDitemPath(item)] = ritem;
+    return ritem;
+  }
+  if (Array.isArray(definition)) {
+    let items = [];
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let location = idx.toString();
+      let inlinedLocation = "\"" + location + "\"";
+      let ritem$1 = definitionToRitem(definition[idx], path + ("[" + inlinedLocation + "]"), ritemsByItemPath);
+      let item_schema = ritem$1.s;
+      let item$1 = {
+        schema: item_schema,
+        location: location
+      };
+      items[idx] = item$1;
+    }
+    let mut = new Schema(arrayTag);
+    return {
+      k: 2,
+      p: path,
+      s: (mut.items = items, mut.additionalItems = "strict", mut.decoder = arrayDecoder, mut.serializer = neverBuilder, mut)
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let properties = {};
+  let items$1 = [];
+  for (let idx$1 = 0, idx_finish$1 = fieldNames.length; idx$1 < idx_finish$1; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let inlinedLocation$1 = fromString(location$1);
+    let ritem$2 = definitionToRitem(definition[location$1], path + ("[" + inlinedLocation$1 + "]"), ritemsByItemPath);
+    let item_schema$1 = ritem$2.s;
+    let item$2 = {
+      schema: item_schema$1,
+      location: location$1
+    };
+    items$1[idx$1] = item$2;
+    properties[location$1] = item_schema$1;
+  }
+  let mut$1 = new Schema(objectTag);
+  return {
+    k: 2,
+    p: path,
+    s: (mut$1.items = items$1, mut$1.properties = properties, mut$1.additionalItems = globalConfig.a, mut$1.serializer = neverBuilder, mut$1.decoder = objectDecoder, mut$1)
+  };
+}
+
 function advancedBuilder(definition, flattened) {
   return (b, input, selfSchema) => {
     let getItemOutput = item => {
@@ -3287,10 +3229,10 @@ function definitionToTarget(definition, to, flattened) {
     let schemaToOutput = (schema, originalPath) => {
       let outputSchema = getOutputSchema(schema);
       if (constField in outputSchema) {
-        return constVal(b, outputSchema);
+        return newConst(b, outputSchema);
       }
       if (constField in schema) {
-        return parse$1(b, schema, constVal(b, schema));
+        return parse$1(b, schema, newConst(b, schema));
       }
       let additionalItems = outputSchema.additionalItems;
       let items = outputSchema.items;
@@ -3298,7 +3240,7 @@ function definitionToTarget(definition, to, flattened) {
         let objectVal = make(b, outputSchema);
         for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
           let item = items[idx];
-          let inlinedLocation = inlineLocation(b, item.location);
+          let inlinedLocation = inlineLocation(b.g, item.location);
           let itemPath = originalPath + ("[" + inlinedLocation + "]");
           let ritem = ritemsByItemPath[itemPath];
           let itemInput = ritem !== undefined ? parse$1(b, item.schema, getRitemInput(ritem)) : schemaToOutput(item.schema, itemPath);
@@ -3329,13 +3271,13 @@ function definitionToTarget(definition, to, flattened) {
     let objectVal = make(b, originalSchema);
     if (flattened !== undefined) {
       for (let idx = 0, idx_finish = flattened.length; idx < idx_finish; ++idx) {
-        merge(objectVal, getItemOutput(flattened[idx], "", true).d);
+        merge$1(objectVal, getItemOutput(flattened[idx], "", true).d);
       }
     }
     for (let idx$1 = 0, idx_finish$1 = items.length; idx$1 < idx_finish$1; ++idx$1) {
       let item = items[idx$1];
       if (!(item.location in objectVal.d)) {
-        let inlinedLocation = inlineLocation(b, item.location);
+        let inlinedLocation = inlineLocation(b.g, item.location);
         add(objectVal, item.location, getItemOutput(item, "[" + inlinedLocation + "]", false));
       }
       
@@ -3522,18 +3464,16 @@ function $$enum(values) {
 function unnestSerializer(b, input, selfSchema) {
   let schema = selfSchema.additionalItems;
   let items = schema.items;
-  let inputVar = input.v(b);
+  let inputVar = input.v();
   let iteratorVar = varWithoutAllocation(b.g);
   let outputVar = varWithoutAllocation(b.g);
-  let bb = scope(b, b.p);
-  let itemInput = {
-    b: bb,
-    v: _var,
-    i: inputVar + "[" + iteratorVar + "]",
-    f: 0,
-    s: unknown
-  };
-  let itemOutput = withPathPrepend(bb, itemInput, iteratorVar, (bb, output) => {
+  let bb = scope(b, b.path);
+  let newrecord = {...bb};
+  newrecord.s = unknown;
+  newrecord.f = 0;
+  newrecord.i = inputVar + "[" + iteratorVar + "]";
+  newrecord.v = _var;
+  let itemOutput = withPathPrepend(bb, newrecord, iteratorVar, (bb, output) => {
     let initialArraysCode = "";
     let settingCode = "";
     for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
@@ -3544,25 +3484,22 @@ function unnestSerializer(b, input, selfSchema) {
     b.a(outputVar + "=[" + initialArraysCode + "]");
     bb.c = bb.c + settingCode;
   }, (b, input) => parse$1(b, schema, input));
-  let itemCode = allocateScope(bb, itemInput);
+  let itemCode = merge(bb);
   b.c = b.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
   if (itemOutput.f & 2) {
-    return {
-      b: b,
-      v: _notVar,
-      i: "Promise.all(" + outputVar + ")",
-      f: 2,
-      s: new Schema(arrayTag)
-    };
-  } else {
-    return {
-      b: b,
-      v: _var,
-      i: outputVar,
-      f: 0,
-      s: new Schema(arrayTag)
-    };
+    let newrecord$1 = {...b};
+    newrecord$1.s = new Schema(arrayTag);
+    newrecord$1.f = 2;
+    newrecord$1.i = "Promise.all(" + outputVar + ")";
+    newrecord$1.v = _notVar;
+    return newrecord$1;
   }
+  let newrecord$2 = {...b};
+  newrecord$2.s = new Schema(arrayTag);
+  newrecord$2.f = 0;
+  newrecord$2.i = outputVar;
+  newrecord$2.v = _var;
+  return newrecord$2;
 }
 
 function unnest(schema) {
@@ -3583,16 +3520,16 @@ function unnest(schema) {
     mut.parser = (b, input, selfSchema) => {
       let inputTagFlag = flags[input.s.type];
       if (inputTagFlag & 1) {
-        b.f = (inputVar, mode) => (
-          mode ? "!" : ""
+        b.validation = (inputVar, negative) => (
+          negative ? "!" : ""
         ) + "Array.isArray(" + inputVar + ")" + ((
-          mode ? "||" : "&&"
+          negative ? "||" : "&&"
         ) + inputVar + ".length" + (
-          mode ? "!==" : "==="
+          negative ? "!==" : "==="
         ) + items.length) + items.map((param, idx) => (
-          mode ? "||" : "&&"
+          negative ? "||" : "&&"
         ) + (
-          mode ? "!" : ""
+          negative ? "!" : ""
         ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
         let mut = new Schema(arrayTag);
         let itemSchema = factory$1(unknown);
@@ -3616,9 +3553,9 @@ function unnest(schema) {
       } else {
         unsupportedTransform(b, input.s, selfSchema);
       }
-      let inputVar = input.v(b);
+      let inputVar = input.v();
       let iteratorVar = varWithoutAllocation(b.g);
-      let bb = scope(b, b.p);
+      let bb = scope(b, b.path);
       let itemInput = make(bb, schema);
       let lengthCode = "";
       for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
@@ -3627,15 +3564,15 @@ function unnest(schema) {
         lengthCode = lengthCode + (inputVar + "[" + idx + "].length,");
       }
       let output = val(b, "new Array(Math.max(" + lengthCode + "))", selfSchema.to);
-      let outputVar = output.v(b);
+      let outputVar = output.v();
       let itemInput$1 = complete(itemInput);
       let itemOutput = withPathPrepend(bb, itemInput$1, iteratorVar, (bb, itemOutput) => {
-        bb.c = bb.c + addKey(bb, output, iteratorVar, itemOutput) + ";";
+        bb.c = bb.c + addKey(output, iteratorVar, itemOutput) + ";";
       }, (b, input) => parse$1(b, schema, input));
-      let itemCode = allocateScope(bb, itemInput$1);
+      let itemCode = merge(bb);
       b.c = b.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + outputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
       if (itemOutput.f & 2) {
-        return asyncVal(output.b, "Promise.all(" + output.i + ")");
+        return asyncVal(output, "Promise.all(" + output.i + ")");
       } else {
         return output;
       }
@@ -3697,12 +3634,12 @@ function intMax(schema, maxValue, maybeMessage) {
 }
 
 function port(schema, message) {
-  let mutStandard = internalRefine(schema, (b, inputVar, selfSchema) => inputVar + ">0&&" + inputVar + "<65536&&" + inputVar + "%1===0||" + (
-    message !== undefined ? fail(b, message) : embedInvalidTypeWithVarOnly(b, inputVar, selfSchema)
-  ) + ";");
-  mutStandard.format = "port";
-  reverse(mutStandard).format = "port";
-  return mutStandard;
+  return internalRefine(schema, mut => {
+    mut.format = "port";
+    return (b, inputVar, selfSchema) => inputVar + ">0&&" + inputVar + "<65536&&" + inputVar + "%1===0||" + (
+      message !== undefined ? fail(b, message) : embedInvalidTypeWithVarOnly(b, inputVar, selfSchema)
+    ) + ";";
+  });
 }
 
 function floatMin(schema, minValue, maybeMessage) {
@@ -3823,7 +3760,7 @@ function datetime(schema, messageOpt) {
     message: message
   };
   let refinements = schema[metadataId$1];
-  return transform(set$1(schema, metadataId$1, refinements !== undefined ? refinements.concat(refinement) : [refinement]), s => ({
+  return transform(set(schema, metadataId$1, refinements !== undefined ? refinements.concat(refinement) : [refinement]), s => ({
     p: string => {
       if (!datetimeRe.test(string)) {
         s.fail(message, undefined);
@@ -4027,7 +3964,7 @@ function js_to(schema, target, maybeDecoder, maybeEncoder) {
 }
 
 function js_refine(schema, refiner) {
-  return refine(schema, s => (v => refiner(v, s)));
+  return refine$1(schema, s => (v => refiner(v, s)));
 }
 
 function noop(a) {
@@ -4385,7 +4322,7 @@ function toJSONSchema(schema) {
 
 function extendJSONSchema(schema, jsonSchema) {
   let existingSchemaExtend = schema[jsonSchemaMetadataId];
-  return set$1(schema, jsonSchemaMetadataId, existingSchemaExtend !== undefined ? Object.assign({}, existingSchemaExtend, jsonSchema) : jsonSchema);
+  return set(schema, jsonSchemaMetadataId, existingSchemaExtend !== undefined ? Object.assign({}, existingSchemaExtend, jsonSchema) : jsonSchema);
 }
 
 let primitiveToSchema = parse;
@@ -4516,7 +4453,7 @@ function fromJSONSchema(jsonSchema) {
     } else if (definitions !== undefined) {
       let len$1 = definitions.length;
       schema = len$1 !== 1 ? (
-          len$1 !== 0 ? refine(json, s => (data => {
+          len$1 !== 0 ? refine$1(json, s => (data => {
               definitions.forEach(d => {
                 try {
                   return assertOrThrow(data, definitionToSchema$1(d));
@@ -4531,7 +4468,7 @@ function fromJSONSchema(jsonSchema) {
       if (definitions$2 !== undefined) {
         let len$2 = definitions$2.length;
         schema = len$2 !== 1 ? (
-            len$2 !== 0 ? refine(json, s => (data => {
+            len$2 !== 0 ? refine$1(json, s => (data => {
                 let hasOneValidRef = {
                   contents: false
                 };
@@ -4561,7 +4498,7 @@ function fromJSONSchema(jsonSchema) {
       } else {
         let not = jsonSchema.not;
         if (not !== undefined) {
-          schema = refine(json, s => (data => {
+          schema = refine$1(json, s => (data => {
             let passed;
             try {
               assertOrThrow(data, definitionToSchema$1(not));
@@ -4669,7 +4606,7 @@ function fromJSONSchema(jsonSchema) {
           let ifSchema = definitionToSchema$1(if_);
           let thenSchema = definitionToSchema$1(then);
           let elseSchema = definitionToSchema$1(else_);
-          schema = refine(json, param => (data => {
+          schema = refine$1(json, param => (data => {
             let passed;
             try {
               assertOrThrow(data, ifSchema);
@@ -4839,7 +4776,7 @@ let $$Array$1 = {
 let Metadata = {
   Id: Id,
   get: get$1,
-  set: set$1
+  set: set
 };
 
 export {
@@ -4877,7 +4814,7 @@ export {
   $$enum,
   meta,
   transform,
-  refine,
+  refine$1 as refine,
   shape,
   to,
   compile,

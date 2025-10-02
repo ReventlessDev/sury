@@ -1,12 +1,7 @@
 # Ideas draft
 
-## Alpha.4
+## Alpha.5
 
-- Use built-in JSON String transformation for JSON String output in `S.compile`
-- Fix https://github.com/DZakh/sury/issues/150
-- Add `S.brand` for TS API
-- Update Standard Schema error message to only include reason part
-- Fix refinement on union schema which also uses `S.to`
 - TS API: Removed `S.transform` in favor of `S.to`
 - Add `S.uint8Array` and `S.enableUint8Array`
 - Updated `InvalidType` error code to include the received schema
