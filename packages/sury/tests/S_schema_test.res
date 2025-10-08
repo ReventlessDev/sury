@@ -156,7 +156,7 @@ test("Nested object with embeded schema", t => {
       ),
     }
   )
-  // t->U.assertEqualSchemas(schema, objectSchema)
+  t->U.assertEqualSchemas(schema, objectSchema)
 
   t->Assert.is(
     schema->U.getCompiledCodeString(~op=#Parse),

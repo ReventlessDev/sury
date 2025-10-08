@@ -2285,15 +2285,20 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
         itemInput.isUnion = Some(isUnion) // We want to controll validation on the decoder side
         let itemOutput = itemInput->parse(~schema, ~input=itemInput)
 
-        // switch bb.validation {
-        // | Some(validation) if isUnion && schema->isLiteral =>
-        //   // Move validation to the top level for union cases
-        //   // addValidation((~inputVar, ~negative) =>
-        //   //   validation(~inputVar=inputVar ++ locationAsPath, ~negative)
-        //   // )
-        //   bb.validation = None
-        // | _ => ()
-        // }
+        switch itemOutput.validation {
+        | Some(validation) if isUnion && schema->isLiteral =>
+          let _ = input->B.refineInPlace(~schema=input.schema, ~validation=(
+            ~inputVar,
+            ~negative,
+          ) => {
+            validation(
+              ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+              ~negative,
+            )
+          })
+          itemOutput.validation = None
+        | _ => ()
+        }
 
         objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
@@ -2332,7 +2337,12 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
         !isTransformed.contents &&
         switch selfSchema.additionalItems->X.Option.getUnsafe {
         | Strict => true
-        | _ => false // FIXME: For Strip mode check that the input is not wider
+        | Strip =>
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => false
+          | _ => true // FIXME: Check that input is not wider
+          }
+        | _ => false
         }
       ) {
         input.code = objectVal.code // FIXME: Delete from and merge?
@@ -3002,10 +3012,15 @@ module Array = {
       }
 
       if (
-        isTransformed.contents ||
-        switch input.schema.additionalItems->X.Option.getUnsafe {
-        | Schema(_) => true
-        | _ => false // FIXME: For Strip mode check that the input is not wider
+        !isTransformed.contents &&
+        switch selfSchema.additionalItems->X.Option.getUnsafe {
+        | Strict => true
+        | Strip =>
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => false
+          | _ => true // FIXME: Check that input is not wider
+          }
+        | _ => false
         }
       ) {
         objectVal->B.Val.Object.complete
@@ -3287,9 +3302,12 @@ module Union = {
             switch input.validation {
             | None => InternalError.panic("No validation") // This shouldn't happen, but I didn't test it 100%
             | Some(validation) =>
-              (~input as _) => validation(~inputVar=output.var(), ~negative=false)
+              (~input as _) => {
+                validation(~inputVar=output.var(), ~negative=false)
+              }
             }
           })
+          input.validation = None
 
           let body = {
             let itemStart = ref("")
@@ -3324,11 +3342,12 @@ module Union = {
               let itemCode = ref("")
               let itemCond = ref("")
               try {
-                let bb = b->B.scope(~path=b.path)
-                bb.isUnion = Some(true)
-                let itemOutput = bb->parse(~schema, ~input)
-                switch bb.validation {
-                | Some(validation) => itemCond := validation(~inputVar=input.var(), ~negative=false)
+                let itemOutput = input->parse(~schema, ~input)
+                switch input.validation {
+                | Some(validation) => {
+                    itemCond := validation(~inputVar=input.var(), ~negative=false)
+                    input.validation = None
+                  }
                 | None => ()
                 }
 
@@ -3338,14 +3357,13 @@ module Union = {
                   if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
                     output.flag = output.flag->Flag.with(ValFlag.async)
                   }
-                  bb.code =
-                    bb.code ++
+                  itemOutput.code =
+                    itemOutput.code ++
                     // Need to allocate a var here, so we don't mutate the input object field
                     `${output.var()}=${itemOutput.inline}`
                 }
 
-                bb.validation = None
-                itemCode := bb->B.merge
+                itemCode := itemOutput->B.merge
               } catch {
               | _ => {
                   let errorVar = b->B.embed(%raw(`exn`)->InternalError.getOrRethrow)

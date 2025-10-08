@@ -1403,6 +1403,14 @@ function objectDecoder(b, input, selfSchema) {
     let itemInput$1 = get(input, key);
     itemInput$1.u = isUnion;
     let itemOutput$1 = parse$1(itemInput$1, schema, itemInput$1);
+    let validation = itemOutput$1.validation;
+    if (validation !== undefined && isUnion && constField in schema) {
+      refineInPlace(input, input.s, (inputVar, negative) => {
+        let inlinedLocation = inlineLocation(input.g, key);
+        return validation(inputVar + ("[" + inlinedLocation + "]"), negative);
+      });
+      itemOutput$1.validation = undefined;
+    }
     objectVal.c = objectVal.c + merge(itemOutput$1);
     add(objectVal, key, itemOutput$1);
     if (itemOutput$1 !== itemInput$1) {
@@ -1441,7 +1449,16 @@ function objectDecoder(b, input, selfSchema) {
   if (!isTransformed$1) {
     let match$1 = selfSchema.additionalItems;
     let tmp$3;
-    tmp$3 = match$1 === "strict";
+    if (match$1 === "strip" || match$1 === "strict") {
+      if (match$1 === "strip") {
+        let match$2 = input.s.additionalItems;
+        tmp$3 = match$2 === "strip" || match$2 === "strict";
+      } else {
+        tmp$3 = true;
+      }
+    } else {
+      tmp$3 = false;
+    }
     tmp$2 = tmp$3;
   }
   if (tmp$2) {
@@ -1937,11 +1954,20 @@ function arrayDecoder(b, input, selfSchema) {
     }
     
   }
-  let tmp = true;
+  let tmp = false;
   if (!isTransformed$1) {
-    let match$3 = input$2.s.additionalItems;
+    let match$3 = selfSchema.additionalItems;
     let tmp$1;
-    tmp$1 = match$3 !== "strip" && match$3 !== "strict";
+    if (match$3 === "strip" || match$3 === "strict") {
+      if (match$3 === "strip") {
+        let match$4 = input$2.s.additionalItems;
+        tmp$1 = match$4 === "strip" || match$4 === "strict";
+      } else {
+        tmp$1 = true;
+      }
+    } else {
+      tmp$1 = false;
+    }
     tmp = tmp$1;
   }
   if (tmp) {
@@ -2125,6 +2151,7 @@ function unionDecoder(b, input, selfSchema) {
       } else {
         throw new Error("[Sury] No validation");
       }
+      input$1.validation = undefined;
       let itemStart = "";
       let itemEnd = "";
       let itemNextElse = false;
@@ -2142,21 +2169,19 @@ function unionDecoder(b, input, selfSchema) {
         let itemCode$1 = "";
         let itemCond = "";
         try {
-          let bb = scope(b, b.path);
-          bb.u = true;
-          let itemOutput = parse$1(bb, schema$2, input$2);
-          let validation$1 = bb.validation;
+          let itemOutput = parse$1(input$2, schema$2, input$2);
+          let validation$1 = input$2.validation;
           if (validation$1 !== undefined) {
             itemCond = validation$1(input$2.v(), false);
+            input$2.validation = undefined;
           }
           if (itemOutput !== input$2) {
             if (itemOutput.f & 2) {
               input.f = input.f | 2;
             }
-            bb.c = bb.c + (input.v() + "=" + itemOutput.i);
+            itemOutput.c = itemOutput.c + (input.v() + "=" + itemOutput.i);
           }
-          bb.validation = undefined;
-          itemCode$1 = merge(bb);
+          itemCode$1 = merge(itemOutput);
         } catch (exn) {
           let errorVar$1 = embed(b, getOrRethrow(exn));
           itemCode$1 = isLast ? fail("," + errorVar$1) : "throw " + errorVar$1;
@@ -2991,58 +3016,6 @@ function proxify(item) {
   });
 }
 
-function definitionToSchema(definition) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse(definition);
-  }
-  if (definition["~standard"]) {
-    return definition;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = definitionToSchema(definition[idx]);
-      let location = idx.toString();
-      definition[idx] = {
-        schema: schema,
-        location: location
-      };
-    }
-    let mut = new Schema(arrayTag);
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.decoder = arrayDecoder;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    return {
-      type: instanceTag,
-      decoder: literalDecoder,
-      const: definition,
-      class: cnstr
-    };
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  let items = [];
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location$1 = fieldNames[idx$1];
-    let schema$1 = definitionToSchema(definition[location$1]);
-    let item = {
-      schema: schema$1,
-      location: location$1
-    };
-    definition[location$1] = schema$1;
-    items[idx$1] = item;
-  }
-  let mut$1 = new Schema(objectTag);
-  mut$1.items = items;
-  mut$1.properties = definition;
-  mut$1.additionalItems = globalConfig.a;
-  mut$1.decoder = objectDecoder;
-  return mut$1;
-}
-
 function definitionToRitem(definition, path, ritemsByItemPath) {
   if (typeof definition !== "object" || definition === null) {
     return {
@@ -3105,6 +3078,58 @@ function definitionToRitem(definition, path, ritemsByItemPath) {
     p: path,
     s: (mut$1.items = items$1, mut$1.properties = properties, mut$1.additionalItems = globalConfig.a, mut$1.serializer = neverBuilder, mut$1.decoder = objectDecoder, mut$1)
   };
+}
+
+function definitionToSchema(definition) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse(definition);
+  }
+  if (definition["~standard"]) {
+    return definition;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = definitionToSchema(definition[idx]);
+      let location = idx.toString();
+      definition[idx] = {
+        schema: schema,
+        location: location
+      };
+    }
+    let mut = new Schema(arrayTag);
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.decoder = arrayDecoder;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    return {
+      type: instanceTag,
+      decoder: literalDecoder,
+      const: definition,
+      class: cnstr
+    };
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  let items = [];
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location$1 = fieldNames[idx$1];
+    let schema$1 = definitionToSchema(definition[location$1]);
+    let item = {
+      schema: schema$1,
+      location: location$1
+    };
+    definition[location$1] = schema$1;
+    items[idx$1] = item;
+  }
+  let mut$1 = new Schema(objectTag);
+  mut$1.items = items;
+  mut$1.properties = definition;
+  mut$1.additionalItems = globalConfig.a;
+  mut$1.decoder = objectDecoder;
+  return mut$1;
 }
 
 function nested(fieldName) {
