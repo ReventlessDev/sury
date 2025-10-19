@@ -550,6 +550,8 @@ and val = {
   mutable skipTo?: bool,
   @as("d")
   mutable vals?: dict<val>,
+  @as("fv")
+  mutable flattenedVals?: array<val>,
   @as("c")
   mutable code: string,
   @as("cb")
@@ -1451,6 +1453,17 @@ module Builder = {
         }
       }
 
+      let cleanValFrom = (val: val) => {
+        ...val,
+        from: ?None,
+        code: "",
+        codeBeforeValidation: ?None,
+        isUnion: false,
+        varsAllocation: "",
+        allocate: initialAllocate,
+        validation: None,
+      }
+
       let get = (parent: val, location) => {
         let vals = switch parent.vals {
         | Some(d) => d
@@ -1462,7 +1475,7 @@ module Builder = {
         }
 
         switch vals->X.Dict.getUnsafeOption(location) {
-        | Some(v) => v
+        | Some(v) => v->cleanValFrom
         | None => {
             let locationSchema = if parent.schema.tag === objectTag {
               parent.schema.properties->X.Option.getUnsafe->X.Dict.getUnsafeOption(location)
@@ -2264,11 +2277,25 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
 
       let properties = selfSchema.properties->X.Option.getUnsafe
       let keys = Js.Dict.keys(properties)
+      let keysCount = keys->Js.Array2.length
 
       let objectVal = input->B.Val.Object.make(~schema=selfSchema)
-      let isTransformed = ref(false)
+      let shouldRecreateInput = ref(
+        switch selfSchema.additionalItems->X.Option.getUnsafe {
+        // Since we have a check validating the exact properties existence
+        | Strict => false
+        | Strip =>
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => true
+          | _ =>
+            input.schema.properties->X.Option.getUnsafe->Js.Dict.keys->Js.Array2.length !==
+              keysCount
+          }
+        | _ => true
+        },
+      )
 
-      for idx in 0 to keys->Js.Array2.length - 1 {
+      for idx in 0 to keysCount - 1 {
         let key = keys->Js.Array2.unsafe_get(idx)
         let schema = properties->Js.Dict.unsafeGet(key)
         let itemInput = input->B.Val.get(key)
@@ -2292,8 +2319,8 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
 
         objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
-        if itemOutput !== itemInput {
-          isTransformed := true
+        if !shouldRecreateInput.contents {
+          shouldRecreateInput := itemOutput !== itemInput
         }
       }
 
@@ -2323,23 +2350,12 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
           `){${input->B.failWithArg(exccessFieldName => ExcessField(exccessFieldName), keyVar)}}}`
       }
 
-      if (
-        !isTransformed.contents &&
-        switch selfSchema.additionalItems->X.Option.getUnsafe {
-        | Strict => true
-        | Strip =>
-          switch input.schema.additionalItems->X.Option.getUnsafe {
-          | Schema(_) => false
-          | _ => true // FIXME: Check that input is not wider
-          }
-        | _ => false
-        }
-      ) {
+      if shouldRecreateInput.contents {
+        objectVal->B.Val.Object.complete
+      } else {
         input.code = objectVal.code // FIXME: Delete from and merge?
         input.vals = objectVal.vals
         input
-      } else {
-        objectVal->B.Val.Object.complete
       }
     }
   }
@@ -2970,9 +2986,20 @@ module Array = {
       let isUnion = b.isUnion->X.Option.getUnsafe
 
       let objectVal = b->B.Val.Object.make(~schema=selfSchema)
-      let isTransformed = ref(false)
+      let shouldRecreateInput = ref(
+        switch selfSchema.additionalItems->X.Option.getUnsafe {
+        // Since we have a check validating the exact properties existence
+        | Strict => false
+        | Strip =>
+          switch input.schema.additionalItems->X.Option.getUnsafe {
+          | Schema(_) => true
+          | _ => input.schema.items->X.Option.getUnsafe->Js.Array2.length !== length
+          }
+        | _ => true
+        },
+      )
 
-      for idx in 0 to items->Js.Array2.length - 1 {
+      for idx in 0 to length - 1 {
         let schema = items->Js.Array2.unsafe_get(idx)
         let key = idx->Js.Int.toString
         let itemInput = input->B.Val.get(key)
@@ -2996,28 +3023,17 @@ module Array = {
 
         objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
-        if itemOutput !== itemInput {
-          isTransformed := true
+        if !shouldRecreateInput.contents {
+          shouldRecreateInput := itemOutput !== itemInput
         }
       }
 
-      if (
-        !isTransformed.contents &&
-        switch selfSchema.additionalItems->X.Option.getUnsafe {
-        | Strict => true
-        | Strip =>
-          switch input.schema.additionalItems->X.Option.getUnsafe {
-          | Schema(_) => false
-          | _ => true // FIXME: Check that input is not wider
-          }
-        | _ => false
-        }
-      ) {
+      if shouldRecreateInput.contents {
+        objectVal->B.Val.Object.complete
+      } else {
         input.code = objectVal.code // FIXME: Delete from and merge?
         input.vals = objectVal.vals
         input
-      } else {
-        objectVal->B.Val.Object.complete
       }
     }
   }
@@ -3957,7 +3973,8 @@ let jsonDecoder = Builder.make((b, ~input, ~selfSchema) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
     let mut = base(objectTag)
     let properties = Js.Dict.empty()
-    properties
+    input.schema.properties
+    ->X.Option.getUnsafe
     ->Stdlib.Dict.keysToArray
     ->Stdlib.Array.forEach(key => {
       properties->Stdlib.Dict.set(key, json)
@@ -4002,27 +4019,25 @@ let enableJson = () => {
     json.decoder = Some(jsonDecoder)
     json.encoder = Some(jsonEncoder)
     let defs = Js.Dict.empty()
+    let anyOf = [
+      string,
+      bool,
+      float,
+      nullLiteral,
+      Dict.factory(jsonRef->castToPublic)->castToInternal,
+      Array.factory(jsonRef->castToPublic)->castToInternal,
+    ]
+    let has = Js.Dict.empty()
+    anyOf->Js.Array2.forEach(schema => {
+      has->Js.Dict.set((schema.tag :> string), true)
+    })
     defs->Js.Dict.set(
       jsonName,
       {
         name: jsonName,
         tag: unionTag,
-        anyOf: [
-          string,
-          bool,
-          float,
-          nullLiteral,
-          Dict.factory(jsonRef->castToPublic)->castToInternal,
-          Array.factory(jsonRef->castToPublic)->castToInternal,
-        ],
-        has: dict{
-          "string": true,
-          "boolean": true,
-          "number": true,
-          "null": true,
-          "object": true,
-          "array": true,
-        },
+        anyOf,
+        has,
         decoder: Union.unionDecoder,
       },
     )
@@ -4313,7 +4328,7 @@ module Schema = {
   type rec shapedSerializerAcc = {
     mutable val?: val,
     mutable properties?: dict<shapedSerializerAcc>,
-    mutable flattened?: dict<shapedSerializerAcc>,
+    mutable flattened?: array<shapedSerializerAcc>,
   }
 
   type s = {@as("m") matches: 'value. t<'value> => 'value}
@@ -4622,19 +4637,15 @@ module Schema = {
     | None => input
     }
   }
-  and cleanValFrom = (val: val) => {
-    ...val,
-    from: ?None,
-    code: "",
-    codeBeforeValidation: ?None,
-    isUnion: false,
-    varsAllocation: "",
-    allocate: B.initialAllocate,
-    validation: None,
-  }
   and getShapedParserOutput = (~input, ~targetSchema) => {
     let v = switch targetSchema {
-    | {from} => getValByFrom(~input, ~from, ~idx=0)->cleanValFrom
+    | {fromFlattened} =>
+      getValByFrom(
+        ~input=input.flattenedVals->X.Option.getUnsafe->Js.Array2.unsafe_get(fromFlattened),
+        ~from=targetSchema.from->X.Option.getUnsafe,
+        ~idx=0,
+      )->B.Val.cleanValFrom
+    | {from} => getValByFrom(~input, ~from, ~idx=0)->B.Val.cleanValFrom
     | _ =>
       if targetSchema->isLiteral {
         input->B.newConst(~schema=targetSchema)
@@ -4677,6 +4688,24 @@ module Schema = {
     v
   }
   and shapedParser = (_, ~input, ~selfSchema) => {
+    switch selfSchema.flattened {
+    | Some(flattened) =>
+      let flattenedVals = []
+      for idx in 0 to flattened->Js.Array2.length - 1 {
+        let flattenedSchema = flattened->Js.Array2.unsafe_get(idx)
+        let flattenedInput = input->B.Val.cleanValFrom
+
+        // Just assign the schema, since everything should
+        // be validated by the decoder anyways
+        // flattenedInput.schema = flattenedSchema
+        flattenedVals
+        ->Js.Array2.push(flattenedInput->parse(~schema=flattenedSchema, ~input=flattenedInput))
+        ->ignore
+      }
+      input.flattenedVals = Some(flattenedVals)
+    | None => ()
+    }
+
     let output = getShapedParserOutput(~input, ~targetSchema=selfSchema.to->X.Option.getUnsafe)
     output.from = Some(input)
     output
@@ -4684,8 +4713,25 @@ module Schema = {
 
   and prepareShapedSerializerAcc = (~acc: shapedSerializerAcc, ~input: val) => {
     switch input {
-    | {schema: {from}} =>
-      let accAtFrom = ref(acc)
+    | {schema: {from, ?fromFlattened}} =>
+      let accAtFrom = ref(
+        switch fromFlattened {
+        | Some(idx) => {
+            if acc.flattened === None {
+              acc.flattened = Some([])
+            }
+            switch acc.flattened->X.Option.getUnsafe->X.Array.getUnsafeOption(idx) {
+            | None => {
+                let newAcc: shapedSerializerAcc = {}
+                acc.flattened->X.Option.getUnsafe->Js.Array2.unsafe_set(idx, newAcc)
+                newAcc
+              }
+            | Some(acc) => acc
+            }
+          }
+        | None => acc
+        },
+      )
       for idx in 0 to from->Js.Array2.length - 1 {
         let key = from->Js.Array2.unsafe_get(idx)
         let p = switch accAtFrom.contents.properties {
@@ -4727,9 +4773,10 @@ module Schema = {
   ) => {
     switch acc {
     | Some({val}) => {
-        let v = val->cleanValFrom
+        let v = val->B.Val.cleanValFrom
         v.schema = targetSchema
-        v
+        // Use parse to walk through all possible transformations
+        v->parse(~schema=targetSchema, ~input=v)
       }
     | _ =>
       if targetSchema->isLiteral {
@@ -4752,21 +4799,38 @@ module Schema = {
               ),
             )
           }
-        | {properties} => {
+        | {properties, ?flattened} => {
+            switch (flattened, acc) {
+            | (Some(flattenedSchemas), Some({flattened: flattenedAcc})) =>
+              flattenedAcc->Js.Array2.forEachi((acc, idx) => {
+                let flattenedOutput = getShapedSerializerOutput(
+                  ~cleanRootInput,
+                  ~acc=Some(acc),
+                  ~targetSchema=flattenedSchemas->Js.Array2.unsafe_get(idx)->reverse,
+                )
+                output->B.Val.Object.merge(flattenedOutput.vals->X.Option.getUnsafe)
+              })
+            | _ => ()
+            }
+
             let keys = properties->Js.Dict.keys
             for idx in 0 to keys->Js.Array2.length - 1 {
               let location = keys->Js.Array2.unsafe_get(idx)
-              output->B.Val.Object.add(
-                ~location,
-                getShapedSerializerOutput(
-                  ~cleanRootInput,
-                  ~acc=switch acc {
-                  | Some({properties}) => properties->X.Dict.getUnsafeOption(location)
-                  | _ => None
-                  },
-                  ~targetSchema=properties->Js.Dict.unsafeGet(location),
-                ),
-              )
+
+              // Skip fields added by flattened
+              if !(output.vals->X.Option.getUnsafe->Stdlib.Dict.has(location)) {
+                output->B.Val.Object.add(
+                  ~location,
+                  getShapedSerializerOutput(
+                    ~cleanRootInput,
+                    ~acc=switch acc {
+                    | Some({properties}) => properties->X.Dict.getUnsafeOption(location)
+                    | _ => None
+                    },
+                    ~targetSchema=properties->Js.Dict.unsafeGet(location),
+                  ),
+                )
+              }
             }
           }
         | _ =>
@@ -4791,7 +4855,7 @@ module Schema = {
 
     let targetSchema = selfSchema.to->X.Option.getUnsafe
     let output = getShapedSerializerOutput(
-      ~cleanRootInput=input->cleanValFrom,
+      ~cleanRootInput=input->B.Val.cleanValFrom,
       ~acc=Some(acc),
       ~targetSchema,
     )
