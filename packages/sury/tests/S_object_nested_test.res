@@ -8,7 +8,7 @@ test("Object with a single nested field", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[2](v1)}return v1}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[0](v1)}return v1}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i,},}}`)
 })
@@ -103,7 +103,7 @@ test("Object with a two nested field using the same ctx", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v1,"bar":v2,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[0](v1)}if(typeof v2!=="string"){e[1](v2)}return {"foo":v1,"bar":v2,}}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -120,7 +120,7 @@ test("Object with a single nested nested field", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["deeply"];if(typeof v1!=="object"||!v1){e[2](v1)}let v2=v1["foo"];if(typeof v2!=="string"){e[3](v2)}return v2}`,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["deeply"];if(typeof v1!=="object"||!v1){e[1](v1)}let v2=v1["foo"];if(typeof v2!=="string"){e[0](v2)}return v2}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -142,7 +142,7 @@ test("Object with a two nested field calling s.nested twice", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"foo":v1,"bar":v2,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[0](v1)}if(typeof v2!=="string"){e[1](v2)}return {"foo":v1,"bar":v2,}}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -163,25 +163,12 @@ test("Object with a flattened nested field", t => {
     )
   )
 
-  t->U.unsafeAssertEqualSchemas(
-    schema,
-    S.object(s =>
-      s.field(
-        "nested",
-        S.schema(
-          s =>
-            {
-              "foo": s.matches(S.string),
-            },
-        ),
-      )
-    ),
-  )
+  t->U.assertReverseReversesBack(schema)
 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[2](v1)}return {"foo":v1,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[0](v1)}return {"foo":v1,}}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i["foo"],},}}`)
 })
@@ -198,25 +185,12 @@ test("Object with a strict flattened nested field", t => {
     )
   )
 
-  t->U.unsafeAssertEqualSchemas(
-    schema,
-    S.object(s =>
-      s.field(
-        "nested",
-        S.schema(
-          s =>
-            {
-              "foo": s.matches(S.string),
-            },
-        ),
-      )
-    ),
-  )
+  t->U.assertReverseReversesBack(schema)
 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[2](v1)}return {"foo":v1,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[0](v1)}return {"foo":v1,}}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i["foo"],},}}`)
 })
@@ -235,7 +209,7 @@ test("S.schema object with a deep strict applied to the nested field parent", t 
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[0](i)}let v0=i["nested"],v3;if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[1](v0)}let v1=v0["foo"],v2;if(typeof v1!=="string"){e[2](v1)}for(v2 in v0){if(v2!=="foo"){e[3](v2)}}for(v3 in i){if(v3!=="nested"){e[4](v3)}}return i}`,
+    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[4](i)}let v0=i["nested"],v3;if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[2](v0)}let v1=v0["foo"],v2;if(typeof v1!=="string"){e[0](v1)}for(v2 in v0){if(v2!=="foo"){e[1](v2)}}for(v3 in i){if(v3!=="nested"){e[3](v3)}}return i}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{let v0=i["nested"];return i}`)
 })
@@ -333,7 +307,7 @@ test("Object with a deep strict applied to the nested field parent", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[0](i)}let v0=i["nested"],v3;if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[1](v0)}let v1=v0["foo"],v2;if(typeof v1!=="string"){e[2](v1)}for(v2 in v0){if(v2!=="foo"){e[3](v2)}}for(v3 in i){if(v3!=="nested"){e[4](v3)}}return v1}`,
+    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[4](i)}let v0=i["nested"],v3;if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[2](v0)}let v1=v0["foo"],v2;if(typeof v1!=="string"){e[0](v1)}for(v2 in v0){if(v2!=="foo"){e[1](v2)}}for(v3 in i){if(v3!=="nested"){e[3](v3)}}return v1}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i,},}}`)
 })
@@ -352,7 +326,7 @@ test("Object with a deep strict applied to the nested field parent + reverse", t
     // FIXME: Test for deepStrict applying to flattened nested fields
     // Test deepStrict for reversed schema
     // Test strict & deepStrict for S.shape
-    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[0](i)}let v0,v1=i["foo"];for(v0 in i){if(v0!=="foo"){e[1](v0)}}if(typeof v1!=="string"){e[2](v1)}return {"nested":{"foo":v1,},}}`,
+    `i=>{if(typeof i!=="object"||!i||Array.isArray(i)){e[2](i)}let v0=i["foo"],v1;if(typeof v0!=="string"){e[0](v0)}for(v1 in i){if(v1!=="foo"){e[1](v1)}}return {"nested":{"foo":v0,},}}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -381,7 +355,7 @@ test("Object with nested field together with flatten", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[2](v1)}if(typeof v2!=="string"){e[3](v2)}return {"flattened":{"foo":v1,},"field":v2,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["foo"],v2=v0["bar"];if(typeof v1!=="string"){e[0](v1)}if(typeof v2!=="string"){e[1](v2)}return {"flattened":{"foo":v1,},"field":v2,}}`,
   )
   t->U.assertCompiledCode(
     ~schema,
@@ -480,37 +454,24 @@ test("s.nested.flattened doesn't work with S.string", t => {
   )
 })
 
-test("s.nested.flattened doesn't work with S.schema->S.shape to self", t => {
-  t->Assert.throws(
-    () => {
-      let _schema = S.object(
-        s => {
-          s.nested("nested").flatten(
-            S.schema(
-              s =>
-                {
-                  "foo": s.matches(S.string),
-                },
-            )->S.shape(v => v),
-          )
-        },
-      )
+test("s.nested.flattened does work with S.schema->S.shape to self", t => {
+  let schema = S.object(s => {
+    s.nested("nested").flatten(
+      S.schema(
+        s =>
+          {
+            "foo": s.matches(S.string),
+          },
+      )->S.shape(v => v),
+    )
+  })
 
-      // t->U.assertCompiledCode(
-      //   ~schema,
-      //   ~op=#Parse,
-      //   `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[2](v1)}return {"foo":v1,}}`,
-      // )
-      // t->U.assertCompiledCode(
-      //   ~schema,
-      //   ~op=#ReverseConvert,
-      //   `i=>{return {"nested":{"foo":i["foo"],},}}`,
-      // )
-    },
-    ~expectations={
-      message: `[Sury] Unsupported nested flatten for transformed object schema { foo: string; }`,
-    },
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["nested"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["foo"];if(typeof v1!=="string"){e[0](v1)}return {"foo":v1,}}`,
   )
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i["foo"],},}}`)
 })
 
 test("s.nested.flatten conflicts with s.nested.field", t => {

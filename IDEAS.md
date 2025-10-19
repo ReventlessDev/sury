@@ -5,6 +5,7 @@
 - TS API: Removed `S.transform` in favor of `S.to`
 - Add `S.uint8Array` and `S.enableUint8Array`
 - Updated `InvalidType` error code to include the received schema
+- Updated internal representation of object schema - removed `items` fields. Updated internalt representation of tuple schema - `items` field is now an array of schemas instead of array of items. The `item` type is removed.
 
 ### TS
 
@@ -31,6 +32,7 @@ TODO:
 
 I left on cleaning up validation code and moving everything to their own decoder functions
 
+- Make reverse a property on schema, so it's not shown when logging
 - Keep current operationFn approach. Rename to makeOperation
 - Use define property to be enumerable and simplify copy
 - Add counter and set unique id to each schema

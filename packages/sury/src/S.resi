@@ -158,7 +158,7 @@ type rec t<'value> =
     })
   | @as("array")
   Array({
-      items: array<item>,
+      items: array<t<unknown>>,
       additionalItems: additionalItems,
       unnest?: bool,
       name?: string,
@@ -170,7 +170,6 @@ type rec t<'value> =
     })
   | @as("object")
   Object({
-      items: array<item>,
       properties: dict<t<unknown>>,
       additionalItems: additionalItems,
       name?: string,
@@ -218,7 +217,7 @@ and untagged = private {
   default?: unknown,
   unnest?: bool,
   noValidation?: bool,
-  items?: array<item>,
+  items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
   additionalItems?: additionalItems,
   anyOf?: array<t<unknown>>,
@@ -226,10 +225,6 @@ and untagged = private {
   to?: t<unknown>,
 }
 @unboxed and additionalItems = | ...additionalItemsMode | Schema(t<unknown>)
-and item = {
-  schema: t<unknown>,
-  location: string,
-}
 and has = {
   string?: bool,
   number?: bool,

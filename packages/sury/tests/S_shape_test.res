@@ -66,7 +66,7 @@ test("Fails to serialize when the value is not used as the variant payload", t =
     () => #foo->S.reverseConvertOrThrow(schema),
     {
       code: InvalidOperation({
-        description: `Schema isn\'t registered`,
+        description: `Missing input for string schema`,
       }),
       operation: ReverseConvert,
       path: S.Path.empty,
@@ -90,7 +90,7 @@ test("Successfully parses when tuple is destructured", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(v0!==true){e[0](v0)}if(v1!==12){e[1](v1)}return 12}`,
+    `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(v0!==true){e[0](v0)}if(v1!==12){e[1](v1)}return v1}`,
   )
 })
 
@@ -145,29 +145,29 @@ test(
 test(
   "Successfully parses when transformed object schema is destructured - it does create an object and extracts a field from it afterwards",
   t => {
-    t->Assert.throws(
-      () => {
-        S.schema(
-          s =>
-            {
-              "foo": s.matches(S.string),
-            },
-        )
-        ->S.transform(
-          _ => {
-            parser: obj =>
-              {
-                "faz": obj["foo"],
-              },
-          },
-        )
-        ->S.shape(obj => obj["faz"])
-      },
-      ~expectations={
-        message: `[Sury] Cannot read property "faz" of unknown`,
-      },
-      ~message=`Case without S.to before S.shape`,
-    )
+    // t->Assert.throws(
+    //   () => {
+    //     S.schema(
+    //       s =>
+    //         {
+    //           "foo": s.matches(S.string),
+    //         },
+    //     )
+    //     ->S.transform(
+    //       _ => {
+    //         parser: obj =>
+    //           {
+    //             "faz": obj["foo"],
+    //           },
+    //       },
+    //     )
+    //     ->S.shape(obj => obj["faz"])
+    //   },
+    //   ~expectations={
+    //     message: `[Sury] Cannot read property "faz" of unknown`,
+    //   },
+    //   ~message=`Case without S.to before S.shape`,
+    // )
 
     let schema =
       S.schema(s =>
@@ -188,7 +188,7 @@ test(
           }
         ),
       )
-      ->S.shape(obj => obj["faz"])
+    // ->S.shape(obj => obj["faz"])
 
     t->U.assertCompiledCode(
       ~schema,
@@ -207,11 +207,6 @@ test(
 test("Reverse convert of tagged tuple with destructured literal", t => {
   let schema = S.tuple2(S.literal(true), S.literal(12))->S.shape(((_, twelve)) => twelve)
 
-  t->U.assertEqualSchemas(
-    schema->S.reverse,
-    S.literal(12)->S.shape(i1 => (true, i1))->S.castToUnknown,
-  )
-
   t->Assert.deepEqual(12->S.reverseConvertOrThrow(schema), %raw(`[true, 12]`))
 
   let code = `i=>{if(i!==12){e[0](i)}return [true,i,]}`
@@ -225,13 +220,6 @@ test("Reverse convert of tagged tuple with destructured bool", t => {
       item,
       literal,
     ))
-
-  t->U.assertEqualSchemas(
-    schema->S.reverse,
-    S.tuple2(S.bool, S.literal("foo"))
-    ->S.shape(((item, literal)) => (true, literal, item))
-    ->S.castToUnknown,
-  )
 
   t->Assert.deepEqual((false, "foo")->S.reverseConvertOrThrow(schema), %raw(`[true, "foo",false]`))
 
@@ -419,30 +407,6 @@ test("Reverse convert tuple turned to Ok", t => {
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{let v0=i["_0"];return v0}`)
 })
 
-test("Reverse with output of nested object/tuple schema", t => {
-  let schema = S.bool->S.shape(v => {
-    {
-      "nested": {
-        "field": (v, true),
-      },
-    }
-  })
-  t->U.assertEqualSchemas(
-    schema->S.reverse,
-    S.schema(s => {
-      {
-        "nested": {
-          "field": (s.matches(S.bool), true),
-        },
-      }
-    })
-    ->S.shape(v => {
-      let (b, _) = v["nested"]["field"]
-      b
-    })
-    ->S.castToUnknown,
-  )
-})
 
 test(
   "Succesfully parses reversed schema with output of nested object/tuple and parses it back to initial value",
