@@ -3103,14 +3103,15 @@ module Union = {
 
   let unionDecoder = Builder.make((b, ~input, ~selfSchema) => {
     let schemas = selfSchema.anyOf->X.Option.getUnsafe
+    let initialInputTagFlag = input.schema.tag->TagFlag.get
 
     if (
-      input.schema.tag === unionTag &&
+      initialInputTagFlag->Flag.unsafeHas(TagFlag.union) &&
         isWiderUnionSchema(~schemaAnyOf=schemas, ~inputAnyOf=input.schema.anyOf->X.Option.getUnsafe)
     ) {
       input
     } else {
-      if input.schema.tag === unionTag {
+      if initialInputTagFlag->Flag.unsafeHas(TagFlag.union->Flag.with(TagFlag.ref)) {
         input.schema = unknown
       }
 
@@ -4307,7 +4308,7 @@ let meta = (schema: t<'value>, data: meta<'value>) => {
   | None => ()
   }
   switch data.examples {
-  | Some([]) => mut.examples = None
+  | Some([]) => mut.examples = None // FIXME: Delete instead of None
   | Some(examples) =>
     mut.examples = Some(
       examples->X.Array.map(schema->reverse->castToPublic->makeOperation(Flag.none)),
@@ -4774,7 +4775,7 @@ module Schema = {
     switch acc {
     | Some({val}) => {
         let v = val->B.Val.cleanValFrom
-        v.schema = targetSchema
+        v.schema = targetSchema // FIXME: Is this line needed?
         // Use parse to walk through all possible transformations
         v->parse(~schema=targetSchema, ~input=v)
       }
@@ -4859,6 +4860,7 @@ module Schema = {
       ~acc=Some(acc),
       ~targetSchema,
     )
+    output.skipTo = Some(true) // FIXME: Should still run to, but without decoder
     output.from = Some(input)
     output
   }

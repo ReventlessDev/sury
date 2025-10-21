@@ -2629,10 +2629,10 @@ test("Example of transformed schema", (t) => {
   );
   if (fromJsonSchema.type === "object") {
     t.is(fromJsonSchema.additionalItems, "strip");
-    t.deepEqual(
-      fromJsonSchema.items.map((i) => i.location),
-      ["USER_ID", "USER_NAME"]
-    );
+    t.deepEqual(Object.keys(fromJsonSchema.properties), [
+      "USER_ID",
+      "USER_NAME",
+    ]);
   } else {
     t.fail("fromJsonSchema should be an object");
   }

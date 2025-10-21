@@ -2017,10 +2017,11 @@ function isWiderUnionSchema(schemaAnyOf, inputAnyOf) {
 
 function unionDecoder(b, input, selfSchema) {
   let schemas = selfSchema.anyOf;
-  if (input.s.type === unionTag && isWiderUnionSchema(schemas, input.s.anyOf)) {
+  let initialInputTagFlag = flags[input.s.type];
+  if (initialInputTagFlag & 256 && isWiderUnionSchema(schemas, input.s.anyOf)) {
     return input;
   }
-  if (input.s.type === unionTag) {
+  if (initialInputTagFlag & 768) {
     input.s = unknown;
   }
   let fail = caught => embed(b, function () {
@@ -3162,6 +3163,7 @@ function shapedSerializer(param, input, selfSchema) {
   prepareShapedSerializerAcc(acc, input);
   let targetSchema = selfSchema.to;
   let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema);
+  output.t = true;
   output.from = input;
   return output;
 }

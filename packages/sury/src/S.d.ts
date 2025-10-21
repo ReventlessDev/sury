@@ -199,13 +199,12 @@ export type Schema<Output, Input = unknown> = {
     }
   | {
       readonly type: "array";
-      readonly items: Item[];
+      readonly items: Schema<unknown>;
       readonly additionalItems: "strip" | "strict" | Schema<unknown>;
       readonly unnest?: true;
     }
   | {
       readonly type: "object";
-      readonly items: Item[];
       readonly properties: {
         [key: string]: Schema<unknown>;
       };
@@ -237,11 +236,6 @@ export type Schema<Output, Input = unknown> = {
       readonly $ref: string;
     }
 );
-
-export type Item = {
-  readonly schema: Schema<unknown>;
-  readonly location: string;
-};
 
 export abstract class Path {
   protected opaque: any;
