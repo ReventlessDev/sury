@@ -441,9 +441,6 @@ and internal = {
   // A field on the "to" schema,
   // to turn it into "parser", when reversing
   mutable serializer?: builder,
-  // Builder refine that the value matches the schema
-  // Applies for both parsing and serializing
-  mutable refiner?: refinerBuilder,
   // Logic for built-in decoding to the schema type
   mutable decoder?: builder,
   // Logic for built-in encoding from the schema type
@@ -533,7 +530,6 @@ and has = {
   object?: bool,
 }
 and builder = (val, ~input: val, ~selfSchema: internal) => val
-and refinerBuilder = (val, ~inputVar: string, ~selfSchema: internal) => string
 and val = {
   mutable from?: val,
   @as("p")
@@ -1231,22 +1227,6 @@ module Builder = {
 
         itemCode := itemCode.contents ++ val.code
 
-        if val.skipTo !== Some(true) {
-          switch val.schema.refiner {
-          | Some(refiner) =>
-            // TODO: Uncomment this
-            // We don't want to refine for serialization
-            // switch val.from {
-            // | Some(_) =>
-            itemCode :=
-              itemCode.contents ++ val->refiner(~inputVar=val.var(), ~selfSchema=val.schema)
-          // | None => ()
-          // }
-
-          | None => ()
-          }
-        }
-
         code :=
           switch val.codeBeforeValidation {
           | Some(codeBeforeValidation) => codeBeforeValidation
@@ -1389,6 +1369,7 @@ module Builder = {
         }
 
         let add = (objectVal, ~location, val: val) => {
+          objectVal.code = objectVal.code ++ val->merge
           let inlinedLocation = objectVal.global->inlineLocation(location)
           objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
           if val.flag->Flag.unsafeHas(ValFlag.async) {
@@ -1454,14 +1435,24 @@ module Builder = {
       }
 
       let cleanValFrom = (val: val) => {
-        ...val,
-        from: ?None,
-        code: "",
-        codeBeforeValidation: ?None,
-        isUnion: false,
-        varsAllocation: "",
-        allocate: initialAllocate,
-        validation: None,
+        {
+          ...val,
+          var: val.var === _var
+            ? _var
+            : () => {
+                let v = val.var()
+                val.inline = v
+                val.var = _var
+                v
+              },
+          from: ?None,
+          code: "",
+          codeBeforeValidation: ?None,
+          isUnion: false,
+          varsAllocation: "",
+          allocate: initialAllocate,
+          validation: None,
+        }
       }
 
       let get = (parent: val, location) => {
@@ -2015,9 +2006,7 @@ and internalCompile = (~schema, ~flag, ~defs) => {
   let input = B.operationArg(
     ~flag,
     ~defs,
-    ~schema=if (
-      flag->Flag.unsafeHas(Flag.typeValidation) || schema.tag === unionTag || schema->isLiteral
-    ) {
+    ~schema=if flag->Flag.unsafeHas(Flag.typeValidation) || schema->isLiteral {
       unknown
     } else {
       schema
@@ -2040,7 +2029,7 @@ and internalCompile = (~schema, ~flag, ~defs) => {
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
 
-    // Js.log(inlinedFunction)
+    Js.log(inlinedFunction)
 
     X.Function.make2(
       ~ctxVarName1="e",
@@ -2317,7 +2306,6 @@ let objectDecoder = Builder.make((b, ~input, ~selfSchema) => {
         | _ => ()
         }
 
-        objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
         if !shouldRecreateInput.contents {
           shouldRecreateInput := itemOutput !== itemInput
@@ -2410,24 +2398,20 @@ let recursiveDecoder = Builder.make((b, ~input, ~selfSchema) => {
   output
 })
 
-let instanceDecoder = Builder.make((b, ~input, ~selfSchema) => {
+let instanceDecoder = Builder.make((_, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
 
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input.schema = selfSchema
-    b.validation = Some(
-      (~inputVar, ~negative) => {
-        let c = `${inputVar} instanceof ${b->B.embed(selfSchema.class)}`
-        negative ? `!(${c})` : c
-      },
-    )
-    input
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+      let c = `${inputVar} instanceof ${input->B.embed(selfSchema.class)}`
+      negative ? `!(${c})` : c
+    })
   } else if (
     inputTagFlag->Flag.unsafeHas(TagFlag.instance) && input.schema.class === selfSchema.class
   ) {
     input
   } else {
-    b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema)
+    input->B.unsupportedTransform(~from=input.schema, ~target=selfSchema)
   }
 })
 
@@ -2747,20 +2731,21 @@ let noValidation = (schema, value) => {
   mut->castToPublic
 }
 
-let appendRefiner = (maybeExistingRefiner, refiner) => {
-  switch maybeExistingRefiner {
-  | Some(existingRefiner) =>
-    (b, ~inputVar, ~selfSchema) => {
-      existingRefiner(b, ~inputVar, ~selfSchema) ++ refiner(b, ~inputVar, ~selfSchema)
+let appendRefiner = (~maybeExistingDecoder: option<builder>, refiner) => {
+  (_, ~input, ~selfSchema) => {
+    let output = switch maybeExistingDecoder {
+    | Some(existingDecoder: builder) => input->existingDecoder(~input, ~selfSchema)
+    | None => input
     }
-  | None => refiner
+    output.code = output.code ++ output->refiner(~inputVar=output.var(), ~selfSchema)
+    output
   }
 }
 
 let internalRefine = (schema, refiner) => {
   let schema = schema->castToInternal
   updateOutput(schema, mut => {
-    mut.refiner = Some(appendRefiner(mut.refiner, refiner(mut)))
+    mut.decoder = Some(appendRefiner(~maybeExistingDecoder=mut.decoder, refiner(mut)))
   })
 }
 
@@ -3021,7 +3006,6 @@ module Array = {
         | _ => ()
         }
 
-        objectVal.code = objectVal.code ++ itemOutput->B.merge
         objectVal->B.Val.Object.add(~location=key, itemOutput)
         if !shouldRecreateInput.contents {
           shouldRecreateInput := itemOutput !== itemInput
@@ -3071,7 +3055,7 @@ module Union = {
     }
   }
 
-  let isPriority = (tagFlag, byKey: dict<array<internal>>) => {
+  let isPriority = (tagFlag, byKey: dict<array<unknown>>) => {
     (tagFlag->Flag.unsafeHas(TagFlag.array->Flag.with(TagFlag.instance)) &&
       byKey->Stdlib.Dict.has((objectTag: tag :> string))) ||
       (tagFlag->Flag.unsafeHas(TagFlag.nan) && byKey->Stdlib.Dict.has((numberTag: tag :> string)))
@@ -3115,6 +3099,8 @@ module Union = {
         input.schema = unknown
       }
 
+      let initialInline = input.inline
+
       let fail = caught => {
         `${b->B.embed(
             (
@@ -3138,96 +3124,194 @@ module Union = {
           )}(${input.var()}${caught})`
       }
 
-      let typeValidation = b.global.flag->Flag.unsafeHas(Flag.typeValidation)
+      let getArrItemsCode = (arr: array<unknown>, ~isDeopt) => {
+        let typeValidationOutput = arr->Js.Array2.unsafe_get(1)->(Obj.magic: unknown => val)
 
-      let output = input
-      let initialInline = input.inline
+        let itemStart = ref("")
+        let itemEnd = ref("")
+        let itemNextElse = ref(false)
+        let itemNoop = ref("")
+        let caught = ref("")
 
-      let deoptIdx = ref(-1)
-      let lastIdx = schemas->Js.Array2.length - 1
-      let byKey = ref(Js.Dict.empty())
-      let keys = ref([])
-      let updatedSchemas = []
-      for idx in 0 to lastIdx {
-        let schema = switch selfSchema.to {
-        | Some(target) if !(selfSchema.parser->Obj.magic) && target.tag !== unionTag =>
-          updateOutput(schemas->Js.Array2.unsafe_get(idx), mut => {
-            switch selfSchema.refiner {
-            | Some(refiner) => mut.refiner = Some(appendRefiner(mut.refiner, refiner))
+        // Accumulate schemas code by refinement (discriminant)
+        // so if we have two schemas with the same discriminant
+        // We can generate a single switch statement
+        // with try/catch blocks for each item
+        // If we come across an item without a discriminant
+        // we need to dump all accumulated schemas in try block
+        // and have the item without discriminant as catch all
+        // If we come across an item without a discriminant
+        // and without any code, it means that this item is always valid
+        // and we should exit early
+        let byDiscriminant = ref(Js.Dict.empty())
+
+        let preItems = 2
+        let itemIdx = ref(preItems)
+        let lastIdx = arr->Js.Array2.length - 1
+        while itemIdx.contents <= lastIdx {
+          // Copy it one more time, since every case decoder
+          // might mutate the input
+          let input = typeValidationOutput->B.Val.cleanValFrom
+          input.isUnion = Some(true)
+
+          let schema = arr->Js.Array2.unsafe_get(itemIdx.contents)->(Obj.magic: unknown => internal)
+
+          let isLast = itemIdx.contents === lastIdx
+          let isFirst = itemIdx.contents === preItems
+          let withExhaustiveCheck = ref(!(isLast && isFirst))
+
+          let itemCode = ref("")
+          let itemCond = ref("")
+          try {
+            let itemOutput = input->parse(~schema, ~input)
+            switch input.validation {
+            | Some(validation) => {
+                itemCond := validation(~inputVar=input.var(), ~negative=false)
+                input.validation = None
+              }
             | None => ()
             }
-            mut.to = Some(target)
-          })->castToInternal
-        | _ => schemas->Js.Array2.unsafe_get(idx)
-        }
-        updatedSchemas->Js.Array2.push(schema)->ignore
-        let tag = schema.tag
-        let tagFlag = TagFlag.get(tag)
 
-        if (
-          tagFlag->Flag.unsafeHas(TagFlag.undefined) &&
-            selfSchema->Obj.magic->Stdlib.Dict.has("fromDefault")
-        ) {
-          // skip it
-          ()
-        } // The tags without a determined refinement,
-        // for which we can't apply optimizations.
-        // So we run them and everything before them in a deopt mode.
-        else if (
-          tagFlag->Flag.unsafeHas(
-            TagFlag.union
-            ->Flag.with(TagFlag.ref)
-            ->Flag.with(TagFlag.unknown)
-            ->Flag.with(TagFlag.never),
-          ) ||
-            (!(input.schema.tag->TagFlag.get->Flag.unsafeHas(TagFlag.unknown)) &&
-            input.schema.tag !== tag)
-        ) {
-          deoptIdx := idx
-          byKey := Js.Dict.empty()
-          keys := []
-        } else {
-          let key =
-            tagFlag->Flag.unsafeHas(TagFlag.instance)
-              ? (schema.class->Obj.magic)["name"]
-              : (tag :> string)
-          switch byKey.contents->X.Dict.getUnsafeOption(key) {
-          | Some(arr) =>
-            if (
-              tagFlag->Flag.unsafeHas(TagFlag.object) &&
-                schema.properties->X.Option.getUnsafe->Stdlib.Dict.has(nestedLoc)
-            ) {
-              // This is a special case for https://github.com/DZakh/sury/issues/150
-              // When nested option goes together with an empty object schema
-              // Since we put None case check second, we need to change priority here.
-              arr->Js.Array2.unshift(schema)->ignore
-            } else if (
-              // There can only be one valid. Dedupe
-              !(
-                tagFlag->Flag.unsafeHas(
-                  TagFlag.undefined->Flag.with(TagFlag.null)->Flag.with(TagFlag.nan),
-                )
-              )
-            ) {
-              arr->Js.Array2.push(schema)->ignore
-            }
-          | None => {
-              if isPriority(tagFlag, byKey.contents) {
-                // Not the fastest way, but it's the simplest way
-                // to make sure NaN is checked before number
-                // And instance and array checked before object
-                keys.contents->Js.Array2.unshift(key)->ignore
-              } else {
-                keys.contents->Js.Array2.push(key)->ignore
+            if itemOutput !== input {
+              // itemOutput.b = bb FIXME: What's going on?
+
+              if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
+                input.flag = input.flag->Flag.with(ValFlag.async)
               }
-              byKey.contents->Js.Dict.set(key, [schema])
+              itemOutput.code =
+                itemOutput.code ++
+                // Need to allocate a var here, so we don't mutate the input object field
+                `${input.var()}=${itemOutput.inline}`
+            }
+
+            itemCode := itemOutput->B.merge
+          } catch {
+          | _ => {
+              let errorVar = b->B.embed(%raw(`exn`)->InternalError.getOrRethrow)
+              itemCode := (
+                  isLast && !isDeopt
+                    ? {
+                        withExhaustiveCheck := false
+                        fail(`,${errorVar}`)
+                      }
+                    : "throw " ++ errorVar
+                )
             }
           }
+          let itemCond = itemCond.contents
+          let itemCode = itemCode.contents
+
+          // Accumulate item parser when it has a discriminant
+          if itemCond->X.String.unsafeToBool {
+            if itemCode->X.String.unsafeToBool {
+              switch byDiscriminant.contents->X.Dict.getUnsafeOption(itemCond) {
+              | Some(Multiple(arr)) => arr->Js.Array2.push(itemCode)->ignore
+              | Some(Single(code)) =>
+                byDiscriminant.contents->Js.Dict.set(itemCond, Multiple([code, itemCode]))
+              | None => byDiscriminant.contents->Js.Dict.set(itemCond, Single(itemCode))
+              }
+            } else {
+              // We have a condition but without additional parsing logic
+              // So we accumulate it in case it's needed for a refinement later
+              itemNoop := (
+                  itemNoop.contents->X.String.unsafeToBool
+                    ? `${itemNoop.contents}||${itemCond}`
+                    : itemCond
+                )
+            }
+          }
+
+          // Allocate all accumulated discriminants
+          // If we have an item without a discriminant
+          // and need to deopt. Or we are at the last item
+          if itemCond->X.String.unsafeToBool->not || isLast {
+            let accedDiscriminants = byDiscriminant.contents->Js.Dict.keys
+            for idx in 0 to accedDiscriminants->Js.Array2.length - 1 {
+              let discrim = accedDiscriminants->Js.Array2.unsafe_get(idx)
+              let if_ = itemNextElse.contents ? "else if" : "if"
+              itemStart := itemStart.contents ++ if_ ++ `(${discrim}){`
+              switch byDiscriminant.contents->Js.Dict.unsafeGet(discrim) {
+              | Single(code) => itemStart := itemStart.contents ++ code ++ "}"
+              | Multiple(arr) =>
+                let caught = ref("")
+                for idx in 0 to arr->Js.Array2.length - 1 {
+                  let code = arr->Js.Array2.unsafe_get(idx)
+                  let errorVar = `e` ++ idx->X.Int.unsafeToString
+                  itemStart := itemStart.contents ++ `try{${code}}catch(${errorVar}){`
+                  caught := `${caught.contents},${errorVar}`
+                }
+                itemStart :=
+                  itemStart.contents ++
+                  fail(caught.contents) ++
+                  Js.String2.repeat("}", arr->Js.Array2.length) ++ "}"
+              }
+              itemNextElse := true
+            }
+            byDiscriminant.contents = Js.Dict.empty()
+          }
+
+          if itemCond->X.String.unsafeToBool->not {
+            if itemCode->X.String.unsafeToBool->not {
+              // If we don't have a condition (discriminant)
+              // and additional parsing logic,
+              // it means that this item is always passes
+              // so we can remove preceding accumulated refinements
+              // and exit early even if there are other items
+              itemNoop := ""
+              itemIdx := lastIdx
+              withExhaustiveCheck := false
+            } else {
+              // The item without refinement should switch to deopt mode
+              // Since there might be validation in the body
+              if itemNoop.contents->X.String.unsafeToBool {
+                let if_ = itemNextElse.contents ? "else if" : "if"
+                itemStart := itemStart.contents ++ if_ ++ `(!(${itemNoop.contents})){`
+                itemEnd := "}" ++ itemEnd.contents
+                itemNoop := ""
+                itemNextElse := false
+              }
+              if isLast && (isDeopt || !withExhaustiveCheck.contents) {
+                // For the last item don't add try/catch
+                itemStart :=
+                  itemStart.contents ++ `${itemNextElse.contents ? "else{" : ""}${itemCode}`
+                itemEnd := (itemNextElse.contents ? "}" : "") ++ itemEnd.contents
+              } else {
+                let errorVar = `e` ++ (itemIdx.contents - preItems)->X.Int.unsafeToString
+                itemStart :=
+                  itemStart.contents ++
+                  `${itemNextElse.contents ? "else{" : ""}try{${itemCode}}catch(${errorVar}){`
+                itemEnd := (itemNextElse.contents ? "}" : "") ++ "}" ++ itemEnd.contents
+                caught := `${caught.contents},${errorVar}`
+                itemNextElse := false
+              }
+            }
+          }
+          if isLast {
+            if itemNoop.contents->X.String.unsafeToBool {
+              if itemStart.contents->X.String.unsafeToBool {
+                let if_ = itemNextElse.contents ? "else if" : "if"
+                itemStart :=
+                  itemStart.contents ++ if_ ++ `(!(${itemNoop.contents})){${fail(caught.contents)}}`
+              } else {
+                let _ = typeValidationOutput->B.refineInPlace(
+                  ~schema=typeValidationOutput.schema,
+                  ~validation=(~inputVar as _, ~negative) => {
+                    `${B.exp(~negative)}(${itemNoop.contents})`
+                  },
+                )
+              }
+            } else if withExhaustiveCheck.contents {
+              let errorCode = fail(caught.contents)
+              itemStart :=
+                itemStart.contents ++ (itemNextElse.contents ? `else{${errorCode}}` : errorCode)
+            }
+          }
+
+          itemIdx := itemIdx.contents->X.Int.plus(1)
         }
+
+        itemStart.contents ++ itemEnd.contents
       }
-      let deoptIdx = deoptIdx.contents
-      let byKey = byKey.contents
-      let keys = keys.contents
 
       let start = ref("")
       let end = ref("")
@@ -3237,49 +3321,70 @@ module Union = {
       // we can exit early
       let exit = ref(false)
 
-      if deoptIdx !== -1 {
-        for idx in 0 to deoptIdx {
-          if !exit.contents {
-            let schema = updatedSchemas->Js.Array2.unsafe_get(idx)
-            let itemCode = b->getItemCode(
-              ~schema,
-              // Recreate input val for every union item
-              // since it might be mutated.
-              ~input=input->B.Val.copy,
-              ~output,
-              ~deopt=true,
-            )
-            if itemCode->X.String.unsafeToBool {
-              let errorVar = `e` ++ idx->X.Int.unsafeToString
-              start := start.contents ++ `try{${itemCode}}catch(${errorVar}){`
-              end := "}" ++ end.contents
-              caught := `${caught.contents},${errorVar}`
-            } else {
-              exit := true
-            }
-          }
+      let lastIdx = schemas->Js.Array2.length - 1
+      let byKey: ref<dict<array<unknown>>> = ref(Js.Dict.empty())
+      let keys = ref([])
+      let updatedSchemas = []
+      for idx in 0 to lastIdx {
+        let schema = switch selfSchema.to {
+        | Some(target) if !(selfSchema.parser->Obj.magic) && target.tag !== unionTag =>
+          updateOutput(schemas->Js.Array2.unsafe_get(idx), mut => {
+            // switch selfSchema.refiner {
+            // | Some(refiner) => mut.refiner = Some(appendRefiner(mut.refiner, refiner))
+            // | None => ()
+            // }
+            mut.to = Some(target)
+          })->castToInternal
+        | _ => schemas->Js.Array2.unsafe_get(idx)
         }
-      }
+        updatedSchemas->Js.Array2.push(schema)->ignore
+        let tag = schema.tag
+        let tagFlag = TagFlag.get(tag)
+        let key =
+          tagFlag->Flag.unsafeHas(TagFlag.instance)
+            ? (schema.class->Obj.magic)["name"]
+            : (tag :> string)
 
-      if !exit.contents {
-        let nextElse = ref(false)
-        let noop = ref("")
-
-        for idx in 0 to keys->Js.Array2.length - 1 {
-          let schemas = byKey->Js.Dict.unsafeGet(keys->Js.Array2.unsafe_get(idx))
-          let firstSchema = schemas->Js.Array2.unsafe_get(0)
-
-          // Recreate input val for every tag
-          // since we want to preset validated schema
-          let input = input->B.Val.copy
-
-          // Make cond as a weird callback, to prevent input.var call until it's needed
-          let cond = ref({
-            let tag = firstSchema.tag
-            let tagFlag = TagFlag.get(tag)
-
-            // FIXME: Write it in a sane way 😅
-            let primitiveSchema = if tagFlag->Flag.unsafeHas(TagFlag.null) {
+        if (
+          tagFlag->Flag.unsafeHas(TagFlag.undefined) &&
+            selfSchema->Obj.magic->Stdlib.Dict.has("fromDefault")
+        ) {
+          // skip it
+          ()
+        } else {
+          let initialArr = byKey.contents->X.Dict.getUnsafeOption(key)
+          switch initialArr {
+          | Some(arr) =>
+            if (
+              tagFlag->Flag.unsafeHas(TagFlag.object) &&
+                schema.properties->X.Option.getUnsafe->Stdlib.Dict.has(nestedLoc)
+            ) {
+              // This is a special case for https://github.com/DZakh/sury/issues/150
+              // When nested option goes together with an empty object schema
+              // Since we put None case check second, we need to change priority here.
+              arr
+              ->Stdlib.Array.splice(
+                ~start=arr->Stdlib.Array.length - 1,
+                ~remove=0,
+                ~insert=[schema->(Obj.magic: internal => unknown)],
+              )
+              ->ignore
+            } else if (
+              // TODO: Is this check needed?
+              // There can only be one valid. Dedupe
+              !(
+                tagFlag->Flag.unsafeHas(
+                  TagFlag.undefined->Flag.with(TagFlag.null)->Flag.with(TagFlag.nan),
+                )
+              )
+            ) {
+              arr->Js.Array2.push(schema->(Obj.magic: internal => unknown))->ignore
+            }
+          | None =>
+            // Recreate input val for every schema
+            // since we will mutate it
+            let typeValidationInput = input->B.Val.cleanValFrom
+            let typeValidationSchema = if tagFlag->Flag.unsafeHas(TagFlag.null) {
               nullLiteral
             } else if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
               unit
@@ -3288,7 +3393,7 @@ module Union = {
             } else if tagFlag->Flag.unsafeHas(TagFlag.array) {
               Array.factory(unknown->castToPublic)->castToInternal
             } else if tagFlag->Flag.unsafeHas(TagFlag.instance) {
-              instance(firstSchema.class)->castToInternal
+              instance(schema.class)->castToInternal
             } else if tagFlag->Flag.unsafeHas(TagFlag.nan) {
               nan
             } else if tagFlag->Flag.unsafeHas(TagFlag.string) {
@@ -3302,208 +3407,102 @@ module Union = {
             } else if tagFlag->Flag.unsafeHas(TagFlag.symbol) {
               symbol
             } else {
-              InternalError.panic(`Union of ${(tag :> string)} is not supported`)
+              unknown
             }
+            let typeValidationOutput =
+              input->parse(~schema=typeValidationSchema, ~input=typeValidationInput)
 
-            input.isUnion = Some(true)
-            // Should mutate input with a primitiveSchema
-            let _ = input->parse(~schema=primitiveSchema, ~input)
-            switch input.validation {
+            if isPriority(tagFlag, byKey.contents) {
+              // Not the fastest way, but it's the simplest way
+              // to make sure NaN is checked before number
+              // And instance and array checked before object
+              keys.contents->Js.Array2.unshift(key)->ignore
+            } else {
+              keys.contents->Js.Array2.push(key)->ignore
+            }
+            byKey.contents->Js.Dict.set(
+              key,
+              [
+                typeValidationInput->(Obj.magic: val => unknown),
+                typeValidationOutput->(Obj.magic: val => unknown),
+                schema->(Obj.magic: internal => unknown),
+              ],
+            )
+
+            switch typeValidationInput.validation {
+            | Some(_) => ()
+            | None => {
+                for keyIdx in 0 to keys.contents->Stdlib.Array.length - 1 {
+                  let key = keys.contents->Stdlib.Array.getUnsafe(keyIdx)
+                  if !exit.contents {
+                    let arr = byKey.contents->Stdlib.Dict.getUnsafe(key)
+                    let typeValidationOutput =
+                      arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
+
+                    let itemsCode = getArrItemsCode(arr, ~isDeopt=true)
+                    let blockCode = typeValidationOutput->B.merge ++ itemsCode
+
+                    if blockCode->X.String.unsafeToBool {
+                      let errorVar = `e` ++ (idx + keyIdx)->X.Int.unsafeToString
+                      start := start.contents ++ `try{${blockCode}}catch(${errorVar}){`
+                      end := "}" ++ end.contents
+                      caught := `${caught.contents},${errorVar}`
+                    } else {
+                      exit := true
+                    }
+                  }
+                }
+
+                byKey := Js.Dict.empty()
+                keys := []
+              }
+            }
+          }
+        }
+      }
+
+      let byKey = byKey.contents
+      let keys = keys.contents
+
+      let typeValidation = true
+
+      if !exit.contents {
+        let nextElse = ref(false)
+        let noop = ref("")
+
+        for idx in 0 to keys->Js.Array2.length - 1 {
+          let arr = byKey->Js.Dict.unsafeGet(keys->Js.Array2.unsafe_get(idx))
+          let typeValidationInput = arr->Stdlib.Array.getUnsafe(0)->(Obj.magic: unknown => val)
+          let typeValidationOutput = arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
+          let firstSchema = arr->Stdlib.Array.getUnsafe(2)->(Obj.magic: unknown => internal)
+
+          let itemsCode = getArrItemsCode(arr, ~isDeopt=false)
+
+          // Make cond as a weird callback, to prevent input.var call until it's needed
+          let cond = ref(
+            switch typeValidationInput.validation {
             | None => InternalError.panic("No validation") // This shouldn't happen, but I didn't test it 100%
             | Some(validation) =>
               (~input as _) => {
-                validation(~inputVar=output.var(), ~negative=false)
+                validation(~inputVar=input.var(), ~negative=false)
               }
-            }
-          })
-          input.validation = None
+            },
+          )
+          typeValidationInput.validation = None
 
-          let body = {
-            let itemStart = ref("")
-            let itemEnd = ref("")
-            let itemNextElse = ref(false)
-            let itemNoop = ref("")
-            let caught = ref("")
+          let blockCode = typeValidationOutput->B.merge ++ itemsCode
 
-            // Accumulate schemas code by refinement (discriminant)
-            // so if we have two schemas with the same discriminant
-            // We can generate a single switch statement
-            // with try/catch blocks for each item
-            // If we come across an item without a discriminant
-            // we need to dump all accumulated schemas in try block
-            // and have the item without discriminant as catch all
-            // If we come across an item without a discriminant
-            // and without any code, it means that this item is always valid
-            // and we should exit early
-            let byDiscriminant = ref(Js.Dict.empty())
-
-            let itemIdx = ref(0)
-            let lastIdx = schemas->Js.Array2.length - 1
-            while itemIdx.contents <= lastIdx {
-              // Copy it one more time, since every case decoder
-              // might mutate the input
-              let input = input->B.Val.copy
-
-              let schema = schemas->Js.Array2.unsafe_get(itemIdx.contents)
-
-              let isLast = itemIdx.contents === lastIdx
-
-              let itemCode = ref("")
-              let itemCond = ref("")
-              try {
-                let itemOutput = input->parse(~schema, ~input)
-                switch input.validation {
-                | Some(validation) => {
-                    itemCond := validation(~inputVar=input.var(), ~negative=false)
-                    input.validation = None
-                  }
-                | None => ()
-                }
-
-                if itemOutput !== input {
-                  // itemOutput.b = bb FIXME: What's going on?
-
-                  if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-                    output.flag = output.flag->Flag.with(ValFlag.async)
-                  }
-                  itemOutput.code =
-                    itemOutput.code ++
-                    // Need to allocate a var here, so we don't mutate the input object field
-                    `${output.var()}=${itemOutput.inline}`
-                }
-
-                itemCode := itemOutput->B.merge
-              } catch {
-              | _ => {
-                  let errorVar = b->B.embed(%raw(`exn`)->InternalError.getOrRethrow)
-                  itemCode := (isLast ? fail(`,${errorVar}`) : "throw " ++ errorVar)
-                }
-              }
-              let itemCond = itemCond.contents
-              let itemCode = itemCode.contents
-
-              // Accumulate item parser when it has a discriminant
-              if itemCond->X.String.unsafeToBool {
-                if itemCode->X.String.unsafeToBool {
-                  switch byDiscriminant.contents->X.Dict.getUnsafeOption(itemCond) {
-                  | Some(Multiple(arr)) => arr->Js.Array2.push(itemCode)->ignore
-                  | Some(Single(code)) =>
-                    byDiscriminant.contents->Js.Dict.set(itemCond, Multiple([code, itemCode]))
-                  | None => byDiscriminant.contents->Js.Dict.set(itemCond, Single(itemCode))
-                  }
-                } else {
-                  // We have a condition but without additional parsing logic
-                  // So we accumulate it in case it's needed for a refinement later
-                  itemNoop := (
-                      itemNoop.contents->X.String.unsafeToBool
-                        ? `${itemNoop.contents}||${itemCond}`
-                        : itemCond
-                    )
-                }
-              }
-
-              // Allocate all accumulated discriminants
-              // If we have an item without a discriminant
-              // and need to deopt. Or we are at the last item
-              if itemCond->X.String.unsafeToBool->not || isLast {
-                let accedDiscriminants = byDiscriminant.contents->Js.Dict.keys
-                for idx in 0 to accedDiscriminants->Js.Array2.length - 1 {
-                  let discrim = accedDiscriminants->Js.Array2.unsafe_get(idx)
-                  let if_ = itemNextElse.contents ? "else if" : "if"
-                  itemStart := itemStart.contents ++ if_ ++ `(${discrim}){`
-                  switch byDiscriminant.contents->Js.Dict.unsafeGet(discrim) {
-                  | Single(code) => itemStart := itemStart.contents ++ code ++ "}"
-                  | Multiple(arr) =>
-                    let caught = ref("")
-                    for idx in 0 to arr->Js.Array2.length - 1 {
-                      let code = arr->Js.Array2.unsafe_get(idx)
-                      let errorVar = `e` ++ idx->X.Int.unsafeToString
-                      itemStart := itemStart.contents ++ `try{${code}}catch(${errorVar}){`
-                      caught := `${caught.contents},${errorVar}`
-                    }
-                    itemStart :=
-                      itemStart.contents ++
-                      fail(caught.contents) ++
-                      Js.String2.repeat("}", arr->Js.Array2.length) ++ "}"
-                  }
-                  itemNextElse := true
-                }
-                byDiscriminant.contents = Js.Dict.empty()
-              }
-
-              if itemCond->X.String.unsafeToBool->not {
-                // If we don't have a condition (discriminant)
-                // and additional parsing logic,
-                // it means that this item is always passes
-                // so we can remove preceding accumulated refinements
-                // and exit early even if there are other items
-                if itemCode->X.String.unsafeToBool->not {
-                  itemNoop := ""
-                  itemIdx := lastIdx
-                } else {
-                  // The item without refinement should switch to deopt mode
-                  // Since there might be validation in the body
-                  if itemNoop.contents->X.String.unsafeToBool {
-                    let if_ = itemNextElse.contents ? "else if" : "if"
-                    itemStart := itemStart.contents ++ if_ ++ `(!(${itemNoop.contents})){`
-                    itemEnd := "}" ++ itemEnd.contents
-                    itemNoop := ""
-                    itemNextElse := false
-                  }
-                  if isLast {
-                    // For the last item don't add try/catch
-                    itemStart :=
-                      itemStart.contents ++ `${itemNextElse.contents ? "else{" : ""}${itemCode}`
-                    itemEnd := (itemNextElse.contents ? "}" : "") ++ itemEnd.contents
-                  } else {
-                    let errorVar = `e` ++ itemIdx.contents->X.Int.unsafeToString
-                    itemStart :=
-                      itemStart.contents ++
-                      `${itemNextElse.contents ? "else{" : ""}try{${itemCode}}catch(${errorVar}){`
-                    itemEnd := (itemNextElse.contents ? "}" : "") ++ "}" ++ itemEnd.contents
-                    caught := `${caught.contents},${errorVar}`
-                    itemNextElse := false
-                  }
-                }
-              }
-
-              itemIdx := itemIdx.contents->X.Int.plus(1)
-            }
-
-            if itemNoop.contents->X.String.unsafeToBool {
-              if itemStart.contents->X.String.unsafeToBool {
-                if typeValidation {
-                  let if_ = itemNextElse.contents ? "else if" : "if"
-                  itemStart :=
-                    itemStart.contents ++
-                    if_ ++
-                    `(!(${itemNoop.contents})){${fail(caught.contents)}}`
-                }
-              } else {
-                let condBefore = cond.contents
-                cond := ((~input) => condBefore(~input) ++ `&&(${itemNoop.contents})`)
-              }
-            }
-            // else if typeValidation && itemStart.contents->X.String.unsafeToBool {
-            //   let errorCode = fail(caught.contents)
-            //   itemStart :=
-            //     itemStart.contents ++ (itemNextElse.contents ? `else{${errorCode}}` : errorCode)
-            // }
-
-            itemStart.contents ++ itemEnd.contents
-          }
-
-          if body->X.String.unsafeToBool || isPriority(firstSchema.tag->TagFlag.get, byKey) {
+          if blockCode->X.String.unsafeToBool || isPriority(firstSchema.tag->TagFlag.get, byKey) {
             let if_ = nextElse.contents ? "else if" : "if"
-            start := start.contents ++ if_ ++ `(${cond.contents(~input)}){${body}}`
+            start := start.contents ++ if_ ++ `(${cond.contents(~input)}){${blockCode}}`
             nextElse := true
           } else if typeValidation {
-            let cond = cond.contents(~input=output)
+            let cond = cond.contents(~input)
             noop := (noop.contents->X.String.unsafeToBool ? `${noop.contents}||${cond}` : cond)
           }
         }
 
-        if typeValidation || deoptIdx === lastIdx {
+        if typeValidation || keys->Stdlib.Array.length === 0 {
           let errorCode = fail(caught.contents)
           start :=
             start.contents ++ if noop.contents->X.String.unsafeToBool {
@@ -3517,7 +3516,9 @@ module Union = {
         }
       }
 
-      b.code = b.code ++ start.contents ++ end.contents
+      let output = input->B.Val.cleanValFrom
+      output.from = Some(input)
+      output.code = output.code ++ start.contents ++ end.contents
 
       let o = if output.flag->Flag.unsafeHas(ValFlag.async) {
         b->B.asyncVal(`Promise.resolve(${output.inline})`)
@@ -3991,11 +3992,13 @@ let jsonDecoder = Builder.make((b, ~input, ~selfSchema) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     let to = selfSchema.to->X.Option.getUnsafe
     // Whether we can optimize encoding during decoding
-    let preEncode: bool =
-      to->Obj.magic && !(selfSchema.parser->Obj.magic) && !(selfSchema.refiner->Obj.magic)
+    let preEncode: bool = to->Obj.magic && !(selfSchema.parser->Obj.magic) // && !(selfSchema.refiner->Obj.magic) FIXME:
     if preEncode {
       input.schema = json
       jsonEncoder(b, ~input, ~selfSchema)
+    } else if selfSchema.noValidation->X.Option.getUnsafe {
+      input.schema = json
+      input
     } else {
       recursiveDecoder(b, ~input, ~selfSchema)
     }
@@ -4118,8 +4121,7 @@ let enableJsonString = {
           if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
             let to = selfSchema.to->X.Option.getUnsafe
             // Whether we can optimize encoding during decoding
-            let preEncode: bool =
-              to->Obj.magic && !(selfSchema.parser->Obj.magic) && !(selfSchema.refiner->Obj.magic)
+            let preEncode: bool = to->Obj.magic && !(selfSchema.parser->Obj.magic) // && !(selfSchema.refiner->Obj.magic) FIXME:
 
             makeJsonStringEncoder(~validateOnly=!preEncode)(
               b,
@@ -4709,6 +4711,7 @@ module Schema = {
 
     let output = getShapedParserOutput(~input, ~targetSchema=selfSchema.to->X.Option.getUnsafe)
     output.from = Some(input)
+    output.skipTo = Some(true) // FIXME: Should still run to?
     output
   }
 
@@ -4781,7 +4784,8 @@ module Schema = {
       }
     | _ =>
       if targetSchema->isLiteral {
-        cleanRootInput->B.newConst(~schema=targetSchema)
+        let v = cleanRootInput->B.newConst(~schema=targetSchema)
+        v->parse(~schema=targetSchema, ~input=v)
       } else {
         let output = B.Val.Object.make(cleanRootInput, ~schema=targetSchema)
         switch targetSchema {
@@ -5837,13 +5841,13 @@ let js_union = values =>
 
 let js_to = {
   // FIXME: Test how it'll work if we have async var as input
-  // FIXME: Might not good well with object targets
+  // FIXME: Might not work well with object targets
   let customBuilder = (~from, ~target, ~fn) => {
-    Builder.make((b, ~input, ~selfSchema as _) => {
-      let output = b->B.allocateVal(~schema=target)
-      b.code = `try{${output.inline}=${b->B.embed(
+    Builder.make((_, ~input, ~selfSchema as _) => {
+      let output = input->B.allocateVal(~schema=target)
+      output.code = `try{${output.inline}=${input->B.embed(
           fn,
-        )}(${input.inline})}catch(x){${b->B.failWithArg(e => FailedTransformation({
+        )}(${input.inline})}catch(x){${output->B.failWithArg(e => FailedTransformation({
           from: from->castToPublic,
           to: target->castToPublic,
           error: e,

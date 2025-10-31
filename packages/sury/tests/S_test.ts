@@ -259,17 +259,17 @@ test("Successfully parses json", (t) => {
 test("Successfully parses invalid json without validation", (t) => {
   const schema = S.json.with(S.noValidation, true);
 
-  const value = S.parser(schema)(undefined);
-  t.deepEqual(
-    S.parser(schema)(undefined),
-    undefined,
-    "This is wrong but it's intentional"
-  );
+  let fn = S.parser(schema);
+
+  const value = fn(undefined);
+  t.deepEqual(value, undefined, "This is wrong but it's intentional");
+
+  t.deepEqual(fn.name, `noopOperation`);
 
   t.deepEqual(
-    S.parser(schema)([undefined]),
+    fn([undefined]),
     [undefined],
-    "Nested should theoretically fail, but currently it doesn't"
+    "Nested fields shouldn't be validated as well"
   );
 
   expectType<SchemaEqual<typeof schema, S.JSON, S.JSON>>(true);
