@@ -548,11 +548,17 @@ test("Successfully parses nullable of array with default", (t) => {
 
 test("Successfully parses nullable string with default", (t) => {
   const schema = S.nullable(S.string, "bar");
+
   const value1 = S.parser(schema)("foo");
   const value2 = S.parser(schema)(null);
 
   t.deepEqual(value1, "foo");
   t.deepEqual(value2, "bar");
+
+  t.throws(() => S.parser(schema)(undefined), {
+    name: "SuryError",
+    message: "Failed parsing: Expected string | null, received undefined",
+  });
 
   expectType<TypeEqual<S.Schema<string, string | null>, typeof schema>>(true);
   expectType<TypeEqual<typeof value1, string>>(true);
@@ -2415,23 +2421,31 @@ test("Port schema", (t) => {
   const portCoercedFromString = S.string.with(S.to, S.number).with(S.port);
   expectType<SchemaEqual<typeof portCoercedFromString, number, string>>(true);
 
-  t.deepEqual(
-    portCoercedFromString.type,
-    "string",
-    "Schema metadata should be of the input type"
-  );
-  // FIXME:
-  // t.deepEqual(
-  //   (portCoercedFromString as any).format,
-  //   "port",
-  //   "Shouldn't add port format to the string input type"
-  // );
+  if (portCoercedFromString.type === "string") {
+    t.deepEqual(
+      portCoercedFromString.format,
+      undefined,
+      "Shouldn't add port format to the string input type"
+    );
+  } else {
+    t.fail("portCoercedFromString should be a string");
+  }
 
   if (S.reverse(portCoercedFromString).type === "number") {
     t.deepEqual(S.parser(portCoercedFromString)("10"), 10);
     t.throws(
       () => {
         S.parser(portCoercedFromString)(10.2);
+      },
+      {
+        name: "SuryError",
+        message: "Failed parsing: Expected string, received 10.2",
+      },
+      "Should prevent non-string values"
+    );
+    t.throws(
+      () => {
+        S.parser(portCoercedFromString)("10.2");
       },
       {
         name: "SuryError",
@@ -2757,7 +2771,14 @@ test("Preprocess nested fields", (t) => {
     },
   }).with(S.shape, (_) => undefined);
 
-  const value = S.encoder(schema)(undefined);
+  const fn = S.encoder(schema);
+
+  t.deepEqual(
+    fn.toString(),
+    `i=>{if(i!==void 0){e[4](i)}let v0;try{v0=e[0]("foo")}catch(x){e[1](x)}let v1;try{v1=e[2]("1")}catch(x){e[3](x)}return {"nested":{"tag":v0,"numberTag":v1,},}}`
+  );
+
+  const value = fn(undefined);
   t.deepEqual(value, {
     nested: {
       numberTag: "~1",
