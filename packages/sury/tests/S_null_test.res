@@ -1,5 +1,7 @@
 open Ava
 
+S.enableJson()
+
 module Common = {
   let value = None
   let any = %raw(`null`)
@@ -39,7 +41,11 @@ module Common = {
       ~op=#Parse,
       `i=>{if(i===null){i=void 0}else if(!(typeof i==="string")){e[0](i)}return i}`,
     )
-    t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i===void 0){i=null}return i}`)
+    t->U.assertCompiledCode(
+      ~schema,
+      ~op=#ReverseConvert,
+      `i=>{if(i===void 0){i=null}else if(!(typeof i==="string")){e[0](i)}return i}`,
+    )
   })
 
   test("Compiled async parse code snapshot", t => {
@@ -145,7 +151,7 @@ test("Serializes Some(None) to null for null nested in option", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=null}return i}`,
+    `i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=null}}else if(!(typeof i==="boolean"||i===void 0)){e[0](i)}return i}`,
   )
 })
 
@@ -165,7 +171,7 @@ test("Serializes Some(None) to null for null nested in null", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(i===void 0){i=null}else if(typeof i==="object"&&i&&i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=null}return i}`,
+    `i=>{if(i===void 0){i=null}else if(typeof i==="object"&&i&&!Array.isArray(i)){if(i["BS_PRIVATE_NESTED_SOME_NONE"]===0){i=null}}else if(!(typeof i==="boolean")){e[0](i)}return i}`,
   )
 })
 
@@ -192,7 +198,6 @@ module OuterRecord = {
     t->Assert.deepEqual(record->S.reverseConvertOrThrow(schema), %raw(`{ record: null }`))
     t->Assert.deepEqual(record->S.reverseConvertToJsonStringOrThrow(schema), `{"record":null}`)
 
-    Js.log(schema->S.reverse)
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ReverseConvert,

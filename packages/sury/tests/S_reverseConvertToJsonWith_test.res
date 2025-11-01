@@ -67,7 +67,11 @@ test("Encodes option schema to JSON", t => {
   let schema = S.option(S.bool)
   t->Assert.deepEqual(None->S.reverseConvertToJsonOrThrow(schema), JSON.Encode.null)
   t->Assert.deepEqual(Some(true)->S.reverseConvertToJsonOrThrow(schema), JSON.Encode.bool(true))
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvertToJson, `i=>{if(i===void 0){i=null}return i}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvertToJson,
+    `i=>{if(i===void 0){i=null}else if(!(typeof i==="string")){e[0](i)}return i}`,
+  )
 })
 
 test("Allows to convert to JSON with option as an object field", t => {
@@ -238,7 +242,7 @@ test("Encodes a union of NaN and unknown to JSON", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvertToJson,
-    `i=>{try{if(!Number.isNaN(i)){e[0](i)}i=null}catch(e0){try{let v0=e[1](i);i=v0}catch(e1){e[2](i,e0,e1)}}return i}`,
+    `i=>{try{if(!Number.isNaN(i)){e[0](i)}i=null}catch(e1){try{let v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
   )
 
   t->Assert.deepEqual(%raw(`NaN`)->S.reverseConvertToJsonOrThrow(schema), JSON.Null)
