@@ -6,7 +6,7 @@ open Ava
 //     var $_$c = $_$wf(3);␊ 
 //     return $_$w(3, 444, $_$c), i;␊ 
 // }
-let noopOpCode = (
+let noopOpCode: string = (
   S.unknown->S.compile(~input=Any, ~output=Unknown, ~mode=Sync, ~typeValidation=false)->Obj.magic
 )["toString"]()
 
@@ -42,9 +42,9 @@ let error = ({operation, code, path}: errorPayload): S.error => {
     ~code,
     ~flag=switch operation {
     | Parse => S.Flag.typeValidation
-    | ReverseParse => S.Flag.reverse->S.Flag.with(S.Flag.typeValidation)
-    | ReverseConvertToJson => S.Flag.reverse->S.Flag.with(S.Flag.jsonableOutput)
-    | ReverseConvert => S.Flag.reverse
+    | ReverseParse => S.Flag.typeValidation
+    | ReverseConvertToJson => S.Flag.jsonableOutput
+    | ReverseConvert => S.Flag.none
     | ParseAsync => S.Flag.typeValidation->S.Flag.with(S.Flag.async)
     | Assert => S.Flag.typeValidation->S.Flag.with(S.Flag.assertOutput)
     },
@@ -71,13 +71,14 @@ let assertThrows = (t, cb, errorPayload) => {
   }
 }
 
-let assertThrowsMessage = (t, cb, errorMessage) => {
+let assertThrowsMessage = (t, cb, errorMessage, ~message=?) => {
   switch cb() {
   | any =>
     t->Assert.fail(
       `Asserted result is not S.Error "${errorMessage}". Instead got: ${any->unsafeStringify}`,
     )
-  | exception S.Error({message}) => t->Assert.is(message, errorMessage)
+  | exception S.Error({message: actualErrorMessage}) =>
+    t->Assert.is(actualErrorMessage, errorMessage, ~message?)
   }
 }
 
@@ -92,6 +93,7 @@ let getCompiledCodeString = (
   schema,
   ~op: [
     | #Parse
+    | #Parse
     | #ParseAsync
     | #Convert
     | #ConvertAsync
@@ -105,15 +107,12 @@ let getCompiledCodeString = (
   let toCode = schema =>
     (
       switch op {
-      | #Parse
+      | #Parse =>
+        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=true)
+        fn->magic
       | #ParseAsync =>
-        if op === #ParseAsync || schema->S.isAsync {
-          let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Async, ~typeValidation=true)
-          fn->magic
-        } else {
-          let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=true)
-          fn->magic
-        }
+        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Async, ~typeValidation=true)
+        fn->magic
       | #Convert =>
         let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=false)
         fn->magic
@@ -148,15 +147,17 @@ let getCompiledCodeString = (
   let code = ref(schema->toCode)
 
   switch (schema->S.untag).defs {
-  | Some(defs) =>
+  | Some(defs) if code.contents !== noopOpCode =>
     defs->Dict.forEachWithKey((schema, key) =>
       try {
         code := code.contents ++ "\n" ++ `${key}: ${schema->toCode}`
       } catch {
-      | exn => Js.Console.error(exn)
+      | _ => // Console.error("An error caught in U.getCompiledCodeString")
+        // throw(exn)
+        ()
       }
     )
-  | None => ()
+  | _ => ()
   }
 
   code.contents

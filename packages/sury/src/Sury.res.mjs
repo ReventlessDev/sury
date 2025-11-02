@@ -50,7 +50,7 @@ function fromArray(array) {
   let len = array.length;
   if (len !== 1) {
     if (len !== 0) {
-      return "[" + array.map(fromString).join("][") + "]";
+      return array.map(fromLocation).join("");
     } else {
       return "";
     }
@@ -822,11 +822,11 @@ function effectCtx(b, selfSchema) {
   };
 }
 
-function invalidOperation(b, description) {
-  return $$throw(b, {
+function invalidOperation(val, description) {
+  return $$throw(val, {
     TAG: "InvalidOperation",
     description: description
-  }, b.path);
+  }, val.path);
 }
 
 function mergeWithPathPrepend(val, locationVar, appendSafe) {
@@ -2966,7 +2966,7 @@ function proxifyShapedSchema(schema, from, fromFlattened) {
   });
 }
 
-function getShapedSerializerOutput(cleanRootInput, acc, targetSchema) {
+function getShapedSerializerOutput(cleanRootInput, acc, targetSchema, path) {
   if (acc !== undefined) {
     let val = acc.val;
     if (val !== undefined) {
@@ -2995,7 +2995,8 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema) {
       } else {
         tmp = undefined;
       }
-      add(output, location, getShapedSerializerOutput(cleanRootInput, tmp, items[idx]));
+      let inlinedLocation = inlineLocation(cleanRootInput.g, location);
+      add(output, location, getShapedSerializerOutput(cleanRootInput, tmp, items[idx], path + ("[" + inlinedLocation + "]")));
     }
   } else {
     let properties$1 = targetSchema.properties;
@@ -3004,7 +3005,7 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema) {
         let flattenedAcc = acc.flattened;
         if (flattenedAcc !== undefined) {
           flattenedAcc.forEach((acc, idx) => {
-            let flattenedOutput = getShapedSerializerOutput(cleanRootInput, acc, reverse(flattened[idx]));
+            let flattenedOutput = getShapedSerializerOutput(cleanRootInput, acc, reverse(flattened[idx]), path);
             let vals = flattenedOutput.d;
             let locations = Object.keys(vals);
             for (let idx$1 = 0, idx_finish = locations.length; idx$1 < idx_finish; ++idx$1) {
@@ -3026,12 +3027,16 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema) {
           } else {
             tmp$1 = undefined;
           }
-          add(output, location$1, getShapedSerializerOutput(cleanRootInput, tmp$1, properties$1[location$1]));
+          let inlinedLocation$1 = inlineLocation(cleanRootInput.g, location$1);
+          add(output, location$1, getShapedSerializerOutput(cleanRootInput, tmp$1, properties$1[location$1], path + ("[" + inlinedLocation$1 + "]")));
         }
         
       }
     } else {
-      invalidOperation(cleanRootInput, "Missing input for " + toExpression(targetSchema) + " schema");
+      let from = targetSchema.from;
+      let path$1 = from !== undefined ? path + from.map(item => "[\"" + item + "\"]").join("") : path;
+      let tmp$2 = path$1 === "" ? "" : " at " + path$1;
+      invalidOperation(cleanRootInput, "Missing input for " + toExpression(targetSchema) + tmp$2);
     }
   }
   return complete(output);
@@ -3138,7 +3143,7 @@ function shapedSerializer(param, input, selfSchema) {
   let acc = {};
   prepareShapedSerializerAcc(acc, input);
   let targetSchema = selfSchema.to;
-  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema);
+  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
   output.from = input;
   output.t = targetSchema.to === undefined;
   return output;

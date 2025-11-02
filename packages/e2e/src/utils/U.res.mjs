@@ -27,20 +27,18 @@ function throwTestException() {
 function error(param) {
   let tmp;
   switch (param.operation) {
-    case "Parse" :
-      tmp = S.Flag.typeValidation;
-      break;
     case "ParseAsync" :
       tmp = S.Flag.typeValidation | S.Flag.async;
       break;
     case "ReverseConvertToJson" :
-      tmp = S.Flag.reverse | S.Flag.jsonableOutput;
+      tmp = S.Flag.jsonableOutput;
       break;
+    case "Parse" :
     case "ReverseParse" :
-      tmp = S.Flag.reverse | S.Flag.typeValidation;
+      tmp = S.Flag.typeValidation;
       break;
     case "ReverseConvert" :
-      tmp = S.Flag.reverse;
+      tmp = S.Flag.none;
       break;
     case "Assert" :
       tmp = S.Flag.typeValidation | S.Flag.assertOutput;
@@ -79,14 +77,14 @@ function assertThrows(t, cb, errorPayload) {
   t.fail("Asserted result is not Error. Recieved: " + JSON.stringify(any));
 }
 
-function assertThrowsMessage(t, cb, errorMessage) {
+function assertThrowsMessage(t, cb, errorMessage, message) {
   let any;
   try {
     any = cb();
   } catch (raw_exn) {
     let exn = Primitive_exceptions.internalToException(raw_exn);
     if (exn.RE_EXN_ID === S.$$Error) {
-      t.is(exn._1.message, errorMessage);
+      t.is(exn._1.message, errorMessage, message !== undefined ? Primitive_option.valFromOption(message) : undefined);
       return;
     }
     throw exn;
@@ -111,15 +109,15 @@ async function assertThrowsAsync(t, cb, errorPayload) {
 
 function getCompiledCodeString(schema, op) {
   let toCode = schema => (
-    op === "Parse" || op === "ParseAsync" ? (
-        op === "ParseAsync" || S.isAsync(schema) ? S.compile(schema, "Any", "Output", "Async", true) : S.compile(schema, "Any", "Output", "Sync", true)
-      ) : (
-        op === "ReverseConvertToJson" ? S.compile(schema, "Output", "Json", "Sync", false) : (
-            op === "ReverseConvert" ? S.compile(schema, "Output", "Input", "Sync", false) : (
-                op === "Convert" ? S.compile(schema, "Any", "Output", "Sync", false) : (
-                    op === "Assert" ? S.compile(schema, "Any", "Assert", "Sync", true) : (
-                        op === "ReverseParse" ? S.compile(schema, "Output", "Input", "Sync", true) : (
-                            op === "ConvertAsync" ? S.compile(schema, "Any", "Output", "Async", false) : S.compile(schema, "Output", "Input", "Async", false)
+    op === "ParseAsync" ? S.compile(schema, "Any", "Output", "Async", true) : (
+        op === "Parse" ? S.compile(schema, "Any", "Output", "Sync", true) : (
+            op === "ReverseConvertToJson" ? S.compile(schema, "Output", "Json", "Sync", false) : (
+                op === "ReverseConvert" ? S.compile(schema, "Output", "Input", "Sync", false) : (
+                    op === "Convert" ? S.compile(schema, "Any", "Output", "Sync", false) : (
+                        op === "Assert" ? S.compile(schema, "Any", "Assert", "Sync", true) : (
+                            op === "ReverseParse" ? S.compile(schema, "Output", "Input", "Sync", true) : (
+                                op === "ConvertAsync" ? S.compile(schema, "Any", "Output", "Async", false) : S.compile(schema, "Output", "Input", "Async", false)
+                              )
                           )
                       )
                   )
@@ -131,14 +129,12 @@ function getCompiledCodeString(schema, op) {
     contents: toCode(schema)
   };
   let defs = schema.$defs;
-  if (defs !== undefined) {
+  if (defs !== undefined && code.contents !== noopOpCode) {
     Stdlib_Dict.forEachWithKey(defs, (schema, key) => {
       try {
         code.contents = code.contents + "\n" + (key + ": " + toCode(schema));
         return;
-      } catch (raw_exn) {
-        let exn = Primitive_exceptions.internalToException(raw_exn);
-        console.error(exn);
+      } catch (exn) {
         return;
       }
     });

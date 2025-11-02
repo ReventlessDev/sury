@@ -215,7 +215,7 @@ module Path = {
     switch array {
     | [] => ""
     | [location] => fromLocation(location)
-    | _ => "[" ++ array->Js.Array2.map(X.Inlined.Value.fromString)->Js.Array2.joinWith("][") ++ "]"
+    | _ => array->Js.Array2.map(fromLocation)->Js.Array2.joinWith("")
     }
   }
 
@@ -1555,8 +1555,8 @@ module Builder = {
       },
     }
 
-    let invalidOperation = (b: val, ~description) => {
-      b->throw(~path=b.path, ~code=InvalidOperation({description: description}))
+    let invalidOperation = (val: val, ~description) => {
+      val->throw(~path=val.path, ~code=InvalidOperation({description: description}))
     }
 
     let mergeWithCatch = (val: val, ~catch, ~appendSafe=?) => {
@@ -2156,7 +2156,9 @@ and reverse = (schema: internal) => {
       current := next
     }
 
-    // FIXME: Validate that it's not enumerable (I see it in wallaby logs for some reason)
+    // Use defineProperty even though it's slower
+    // but it improves logging experience a lot
+    // for some reason Wallaby still shows the property
     let r = reversedHead.contents->X.Option.getUnsafe
     valueOptions->Js.Dict.set(valKey, r->Obj.magic)
     let _ = X.Object.defineProperty(schema, reverseKey, valueOptions->Obj.magic)
@@ -4804,6 +4806,7 @@ module Schema = {
     ~cleanRootInput,
     ~acc: option<shapedSerializerAcc>,
     ~targetSchema: internal,
+    ~path,
   ) => {
     switch acc {
     | Some({val}) => {
@@ -4833,6 +4836,9 @@ module Schema = {
                 | _ => None
                 },
                 ~targetSchema=items->Js.Array2.unsafe_get(idx),
+                ~path=path->Path.concat(
+                  Path.fromInlinedLocation(cleanRootInput.global->B.inlineLocation(location)),
+                ),
               ),
             )
           }
@@ -4844,6 +4850,7 @@ module Schema = {
                   ~cleanRootInput,
                   ~acc=Some(acc),
                   ~targetSchema=flattenedSchemas->Js.Array2.unsafe_get(idx)->reverse,
+                  ~path,
                 )
                 output->B.Val.Object.merge(flattenedOutput.vals->X.Option.getUnsafe)
               })
@@ -4865,21 +4872,27 @@ module Schema = {
                     | _ => None
                     },
                     ~targetSchema=properties->Js.Dict.unsafeGet(location),
+                    ~path=path->Path.concat(
+                      Path.fromInlinedLocation(cleanRootInput.global->B.inlineLocation(location)),
+                    ),
                   ),
                 )
               }
             }
           }
         | _ =>
+          let path = switch targetSchema.from {
+          | Some(from) => path ++ from->Js.Array2.map(item => `["${item}"]`)->Js.Array2.joinWith("")
+          | None => path
+          }
           cleanRootInput->B.invalidOperation(
             ~description={
-              `Missing input for ${targetSchema->castToPublic->toExpression} schema`
+              `Missing input for ${targetSchema->castToPublic->toExpression}` ++
+              switch path {
+              | "" => ""
+              | _ => ` at ${path}`
+              }
             },
-
-            // switch originalPath {
-            // | "" => `Schema isn't registered`
-            // | _ => `Schema for ${originalPath} isn't registered`
-            // }
           )
         }
 
@@ -4896,6 +4909,7 @@ module Schema = {
       ~cleanRootInput=input->B.Val.cleanValFrom,
       ~acc=Some(acc),
       ~targetSchema,
+      ~path=Path.empty,
     )
 
     output.from = Some(input)

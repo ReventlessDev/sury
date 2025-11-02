@@ -286,15 +286,9 @@ module NestedNegative = {
         }
       })
 
-      t->U.assertThrows(
+      t->U.assertThrowsMessage(
         () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-        {
-          code: InvalidOperation({
-            description: `Schema for ["discriminant"]["nestedField"] isn\'t registered`,
-          }),
-          operation: ReverseConvert,
-          path: S.Path.empty,
-        },
+        `Failed converting: Missing input for boolean at ["discriminant"]["nestedField"]`,
       )
     },
   )
@@ -352,19 +346,13 @@ test(`Fails to serialize object with discriminant "Never"`, t => {
     }
   })
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidOperation({
-        description: `Schema for ["discriminant"] isn\'t registered`,
-      }),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `Failed converting: Missing input for never at ["discriminant"]`,
   )
 })
 
-test(`Reverse parse validates literal fields before coming to other object fields`, t => {
+test(`Reverse parse doesn't validates literal fields before coming to other object fields`, t => {
   let schema = S.object(s => {
     {
       "normal": s.field("field", S.string),
@@ -374,6 +362,6 @@ test(`Reverse parse validates literal fields before coming to other object field
 
   t->U.assertThrowsMessage(
     () => {"constant": false, "normal": false}->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing: Expected { normal: string; constant: true; }, received { constant: false; normal: false; }`,
+    `Failed parsing at ["normal"]: Expected string, received false`,
   )
 })
