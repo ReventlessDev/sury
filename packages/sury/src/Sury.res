@@ -540,8 +540,12 @@ and val = {
   mutable inline: string,
   @as("f")
   mutable flag: flag,
+  // The schema of the value that is being parsed
   @as("s")
   mutable schema: internal,
+  // The schema of the value that we expect to parse into
+  @as("e")
+  mutable expected: internal,
   @as("t")
   mutable skipTo?: bool,
   @as("d")
@@ -1119,7 +1123,7 @@ module Builder = {
     @inline
     let operationArgVar = "i"
 
-    let operationArg = (~schema, ~flag, ~defs): val => {
+    let operationArg = (~schema, ~expected, ~flag, ~defs): val => {
       {
         code: "",
         var: _var,
@@ -1127,6 +1131,7 @@ module Builder = {
         allocate: initialAllocate,
         flag: ValFlag.none,
         schema,
+        expected,
         varsAllocation: "",
         // TODO: Add global varsAllocation here
         // Set all the vars to the varsAllocation
@@ -1144,22 +1149,6 @@ module Builder = {
       }
     }
 
-    let scope = (b: val, ~path): val => {
-      {
-        allocate: initialAllocate,
-        global: b.global,
-        validation: None,
-        code: "",
-        path,
-        varsAllocation: "",
-        // FIXME: Below are dummy values
-        var: _var,
-        inline: "",
-        flag: ValFlag.none,
-        schema: unknown,
-      }
-    }
-
     let throw = (b: val, ~code, ~path) => {
       X.Exn.throwAny(InternalError.make(~code, ~flag=b.global.flag, ~path))
     }
@@ -1170,9 +1159,9 @@ module Builder = {
         })}(${arg})`
     }
 
-    let embedInvalidType = (b, ~input: val, ~expected) => {
+    let embedInvalidType = (~input: val, ~expected) => {
       let received = input.schema->castToPublic
-      b->failWithArg(value => InvalidType({
+      input->failWithArg(value => InvalidType({
         expected: expected->castToPublic,
         received,
         value,
@@ -1198,20 +1187,12 @@ module Builder = {
 
         let itemCode = ref("")
 
-        let input = switch val.from {
-        | Some(from) => from
-        | None => val
-        }
-
         switch val.validation {
         | Some(validation) => {
-            let inputVar = input.var()
+            let inputVar = val.var()
+            let validationCode = validation(~inputVar, ~negative=true)
             itemCode :=
-              `if(${validation(~inputVar, ~negative=true)}){${embedInvalidType(
-                  input,
-                  ~input,
-                  ~expected=val.schema,
-                )}}`
+              `if(${validationCode}){${embedInvalidType(~input=val, ~expected=val.expected)}}`
           }
         | None => ()
         }
@@ -1240,44 +1221,46 @@ module Builder = {
     }
 
     let refineInPlace = (val: val, ~schema, ~validation) => {
-      if val.from !== None {
-        let inputVar = val.var()
-        if val.varsAllocation !== "" {
-          val.code = val.code ++ `let ${val.varsAllocation};`
-          val.varsAllocation = ""
-          val.allocate = initialAllocate
-        }
-        val.code =
-          val.code ++
-          `if(${validation(~inputVar, ~negative=true)}){${embedInvalidType(
-              val,
-              ~input=val,
-              ~expected=schema,
-            )}}`
-      } else {
-        let prevValidation = val.validation
-        val.validation = Some(
-          (~inputVar, ~negative) => {
-            {
-              switch prevValidation {
-              | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
-              | None => ""
-              }
-            } ++
-            validation(~inputVar, ~negative)
-          },
-        )
-      }
+      // if val.from !== None {
+      //   let inputVar = val.var()
+      //   if val.varsAllocation !== "" {
+      //     val.code = val.code ++ `let ${val.varsAllocation};`
+      //     val.varsAllocation = ""
+      //     val.allocate = initialAllocate
+      //   }
+      //   val.code =
+      //     val.code ++
+      //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidType(
+      //         ~input=val,
+      //         ~expected=val.expected,
+      //       )}}`
+      // } else {
+
+      let prevValidation = val.validation
+      val.validation = Some(
+        (~inputVar, ~negative) => {
+          {
+            switch prevValidation {
+            | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
+            | None => ""
+            }
+          } ++
+          validation(~inputVar, ~negative)
+        },
+      )
+
+      // }
       val.schema = schema
     }
 
-    let val = (from: val, initial: string, ~schema): val => {
+    let val = (from: val, initial: string, ~schema, ~expected=from.expected): val => {
       {
         from,
         var: _notVar,
         inline: initial,
         flag: ValFlag.none,
         schema,
+        expected,
         code: "",
         varsAllocation: "",
         allocate: initialAllocate,
@@ -1287,8 +1270,13 @@ module Builder = {
       }
     }
 
-    let dynamicScope = (from: val, ~locationVar, ~schema): val => {
-      let v = from->val(`${from.var()}[${locationVar}]`, ~schema)
+    let dynamicScope = (from: val, ~locationVar): val => {
+      let v =
+        from->val(
+          `${from.var()}[${locationVar}]`,
+          ~schema=from.schema.additionalItems->(Obj.magic: option<additionalItems> => internal),
+          ~expected=from.expected.additionalItems->(Obj.magic: option<additionalItems> => internal),
+        )
       v.from = None
       v.parent = Some(from)
       v.path = Path.empty
@@ -1296,10 +1284,10 @@ module Builder = {
       v
     }
 
-    let allocateVal = (from: val, ~schema): val => {
+    let allocateVal = (from: val, ~schema, ~expected=from.expected): val => {
       let var = from.global->varWithoutAllocation
       from.code = from.code ++ `let ${var};`
-      let v = from->val(var, ~schema)
+      let v = from->val(var, ~schema, ~expected)
       v.var = _var
       v
     }
@@ -1503,7 +1491,8 @@ module Builder = {
 
     let transform = (b: val, ~input: val, operation) => {
       if input.flag->Flag.unsafeHas(ValFlag.async) {
-        let bb = b->scope(~path=b.path)
+        // let bb = b->scope(~path=b.path)
+        let bb = b
         let operationInput: val = {
           // FIXME: This is probably wrong
           ...b,
@@ -1690,15 +1679,18 @@ let numberDecoder = Builder.make((b, ~input, ~selfSchema) => {
     })
     input
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-    let outputVar = input.global->B.varWithoutAllocation
     // This weird solution is needed only to make sure that
     // received value in error message is input string instead of NaN
+    let tmpInput = input->B.Val.cleanValFrom
+    tmpInput.from = Some(input)
+
+    let outputVar = input.global->B.varWithoutAllocation
     input.allocate(`${outputVar}=+${input.var()}`)
-    let output = input->B.val(outputVar, ~schema=selfSchema)
+    let output = tmpInput->B.val(outputVar, ~schema=selfSchema)
     output.var = B._var
 
     // TODO: Reuse logic for unknown case
-    output.validation = Some(
+    tmpInput.validation = Some(
       (~inputVar as _, ~negative) => {
         switch selfSchema.format {
         | Some(Int32) =>
@@ -1724,7 +1716,7 @@ int.decoder = numberDecoder
 let stringDecoder = Builder.make((b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refineInPlace(~schema=string, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(stringTag :> string)}"`
     })
     input
@@ -1768,7 +1760,7 @@ let booleanDecoder = Builder.make((b, ~input, ~selfSchema) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
     let output = input->B.allocateVal(~schema=selfSchema)
     let inputVar = input.var()
-    output.code = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${b->B.embedInvalidType(
+    output.code = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${B.embedInvalidType(
         ~input,
         ~expected=selfSchema,
       )};`
@@ -1794,7 +1786,7 @@ let bigintDecoder = Builder.make((b, ~input, ~selfSchema) => {
   else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
     let output = input->B.allocateVal(~schema=selfSchema)
     let inputVar = input.var()
-    output.code = `try{${output.inline}=BigInt(${inputVar})}catch(_){${b->B.embedInvalidType(
+    output.code = `try{${output.inline}=BigInt(${inputVar})}catch(_){${B.embedInvalidType(
         ~input,
         ~expected=selfSchema,
       )}}`
@@ -1825,7 +1817,7 @@ let jsonString = shaken("jsonString")
 let json = shaken("json")
 
 module Literal = {
-  let literalDecoder = Builder.make((b, ~input, ~selfSchema) => {
+  let literalDecoder = Builder.make((_, ~input, ~selfSchema) => {
     if selfSchema.noValidation->X.Option.getUnsafe {
       input->B.newConst(~schema=selfSchema)
     } else if input.schema->isLiteral {
@@ -1850,13 +1842,17 @@ module Literal = {
             ),
           )
       ) {
-        let output = input->B.newConst(~schema=selfSchema)
-        output.validation = Some(
+        // FIXME: Test, that when from item has a refinement
+        // and we need to keep existing validation
+        // S.string->S.check->S.to(S.literal(false))
+        input.validation = Some(
           (~inputVar, ~negative) => {
-            `${inputVar}${B.eq(~negative)}"${selfSchema.const->Obj.magic}"`
+            let inlinedConst = `"${selfSchema.const->Obj.magic}"`
+            input.expected.name = Some(inlinedConst)
+            `${inputVar}${B.eq(~negative)}${inlinedConst}`
           },
         )
-        output
+        input->B.newConst(~schema=selfSchema)
       } else if schemaTagFlag->Flag.unsafeHas(TagFlag.nan) {
         input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
           `${B.exp(~negative)}Number.isNaN(${inputVar})`
@@ -1864,9 +1860,13 @@ module Literal = {
         input
       } else {
         // TODO: Determine impossible cases during compilation
-        input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
-          `${inputVar}${B.eq(~negative)}${b->B.inlineConst(selfSchema)}`
-        })
+        input.validation = Some(
+          (~inputVar, ~negative) => {
+            input.expected = selfSchema
+            `${inputVar}${B.eq(~negative)}${input->B.inlineConst(selfSchema)}`
+          },
+        )
+        input.schema = selfSchema
         input
       }
     }
@@ -1902,38 +1902,47 @@ module Literal = {
   }
 }
 
-let rec parse = (b: val, ~schema, ~input as inputArg: val) => {
-  if schema.defs->Obj.magic {
-    b.global.defs = schema.defs
+let rec parse = (input: val) => {
+  let expected = input.expected
+
+  if input.expected.defs->Obj.magic {
+    input.global.defs = input.expected.defs
   }
 
-  let input = ref(inputArg)
+  let output = ref(
+    switch input.schema.encoder {
+    | Some(encoder) => encoder(input, ~input, ~selfSchema=expected)
+    | None => input
+    },
+  )
 
-  switch input.contents.schema.encoder {
-  | Some(encoder) => input := encoder(b, ~input=input.contents, ~selfSchema=schema)
-  | None => ()
-  }
+  if output.contents.skipTo !== Some(true) {
+    output := expected.decoder(output.contents, ~input=output.contents, ~selfSchema=expected)
 
-  input := schema.decoder(b, ~input=input.contents, ~selfSchema=schema)
+    switch output.contents.expected.to {
+    | Some(to) =>
+      switch output.contents.expected {
+      | {parser} =>
+        output :=
+          parser(output.contents, ~input=output.contents, ~selfSchema=output.contents.expected)
+      | _ => ()
+      }
 
-  switch schema.to {
-  | Some(to) =>
-    switch schema {
-    | {parser} => input := parser(b, ~input=input.contents, ~selfSchema=schema)
-    | _ => ()
+      if output.contents.skipTo !== Some(true) {
+        let next = output.contents->B.Val.cleanValFrom
+        next.from = Some(output.contents)
+        next.expected = to
+        output := parse(next)
+      }
+
+    | None => ()
     }
-
-    if input.contents.skipTo !== Some(true) {
-      input := b->parse(~schema=to, ~input=input.contents)
-    }
-
-  | None => ()
   }
 
-  input.contents
+  output.contents
 }
 and parseDynamic = (input, ~schema) => {
-  try input->parse(~schema, ~input) catch {
+  try input->parse catch {
   | _ =>
     let error = %raw(`exn`)->InternalError.getOrRethrow
     X.Exn.throwAny(
@@ -1953,8 +1962,8 @@ and parseDynamic = (input, ~schema) => {
 }
 and isAsyncInternal = (schema, ~defs) => {
   try {
-    let input = B.operationArg(~flag=Flag.async, ~defs, ~schema=unknown)
-    let output = parse(input, ~schema, ~input)
+    let input = B.operationArg(~flag=Flag.async, ~defs, ~schema=unknown, ~expected=schema)
+    let output = input->parse
     let isAsync = output.flag->Flag.has(ValFlag.async)
     schema.isAsync = Some(isAsync)
     isAsync
@@ -1998,9 +2007,10 @@ and internalCompile = (~schema, ~flag, ~defs) => {
     } else {
       schema
     },
+    ~expected=schema,
   )
 
-  let output = parse(input, ~schema, ~input)
+  let output = input->parse
   let code = output->B.merge
 
   let isAsync = output.flag->Flag.has(ValFlag.async)
@@ -2191,6 +2201,7 @@ let rec makeObjectVal = (from: val, ~schema): B.Val.Object.t => {
             decoder: objectDecoder,
           }
         },
+    expected: from.expected,
     vals: Js.Dict.empty(),
     code: "",
     varsAllocation: "",
@@ -2259,13 +2270,12 @@ and arrayDecoder: builder = (b, ~input, ~selfSchema) => {
   | Schema(itemSchema) => {
       let itemSchema = itemSchema->castToInternal
       if itemSchema === unknown {
-        input.schema = selfSchema
         input
       } else {
         let inputVar = input->B.Val.var
         let iteratorVar = input.global->B.varWithoutAllocation
 
-        let itemInput = input->B.dynamicScope(~locationVar=iteratorVar, ~schema=itemInputSchema)
+        let itemInput = input->B.dynamicScope(~locationVar=iteratorVar)
         let itemOutput = itemInput->parseDynamic(~schema=itemSchema)
         let isTransformed = itemInput !== itemOutput
         let output = isTransformed
@@ -2315,8 +2325,9 @@ and arrayDecoder: builder = (b, ~input, ~selfSchema) => {
       let schema = items->Js.Array2.unsafe_get(idx)
       let key = idx->Js.Int.toString
       let itemInput = input->B.Val.get(key)
+      itemInput.expected = schema
       itemInput.isUnion = Some(isUnion) // We want to controll validation on the decoder side
-      let itemOutput = itemInput->parse(~schema, ~input=itemInput)
+      let itemOutput = itemInput->parse
 
       switch itemOutput.validation {
       | Some(validation) if isUnion && schema->isLiteral =>
@@ -2338,7 +2349,6 @@ and arrayDecoder: builder = (b, ~input, ~selfSchema) => {
 
     // After input.schema was used, set it to selfSchema
     // so it has a more accurate name in error messages
-    input.schema = selfSchema
 
     if shouldRecreateInput.contents {
       objectVal->B.Val.Object.complete
@@ -2352,7 +2362,7 @@ and arrayDecoder: builder = (b, ~input, ~selfSchema) => {
 and objectDecoder: Builder.t = (b, ~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
 
-  let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     let isObjectInput = inputTagFlag->Flag.unsafeHas(TagFlag.object)
     if !isObjectInput {
       // TODO: Use dictFactory here
@@ -2375,19 +2385,7 @@ and objectDecoder: Builder.t = (b, ~input, ~selfSchema) => {
           `${B.exp(~negative=!negative)}Array.isArray(${inputVar})`
         )
     }
-
-    unknown
-  } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
-    // FIXME: Won't work for Strict and Strip modes
-    let s = input.schema.additionalItems->(Obj.magic: option<additionalItems> => internal)
-
-    // TODO: Remove it when unionDecoder is improved
-    if s.tag !== unionTag {
-      s
-    } else {
-      unknown
-    }
-  } else {
+  } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.object)) {
     b->B.unsupportedTransform(~from=input.schema, ~target=selfSchema)
   }
 
@@ -2395,13 +2393,11 @@ and objectDecoder: Builder.t = (b, ~input, ~selfSchema) => {
   | Schema(itemSchema) => {
       let itemSchema = itemSchema->castToInternal
       if itemSchema === unknown {
-        input.schema = selfSchema
         input
       } else {
         let inputVar = input.var()
         let keyVar = b.global->B.varWithoutAllocation
-
-        let itemInput = input->B.dynamicScope(~locationVar=keyVar, ~schema=itemInputSchema)
+        let itemInput = input->B.dynamicScope(~locationVar=keyVar)
         let itemOutput = itemInput->parseDynamic(~schema=itemSchema)
 
         let isTransformed = itemInput !== itemOutput
@@ -2461,8 +2457,9 @@ and objectDecoder: Builder.t = (b, ~input, ~selfSchema) => {
         let key = keys->Js.Array2.unsafe_get(idx)
         let schema = properties->Js.Dict.unsafeGet(key)
         let itemInput = input->B.Val.get(key)
+        itemInput.expected = schema
         itemInput.isUnion = Some(isUnion) // We want to controll validation on the decoder side
-        let itemOutput = itemInput->parse(~schema, ~input=itemInput)
+        let itemOutput = itemInput->parse
 
         switch itemOutput.validation {
         | Some(validation) if isUnion && schema->isLiteral =>
@@ -2513,7 +2510,6 @@ and objectDecoder: Builder.t = (b, ~input, ~selfSchema) => {
 
       // After input.schema was used, set it to selfSchema
       // so it has a more accurate name in error messages
-      input.schema = selfSchema
 
       if shouldRecreateInput.contents {
         objectVal->B.Val.Object.complete
@@ -2643,8 +2639,7 @@ X.Object.defineProperty(
   {
     writable: true,
     value: (
-      (_b, ~input, ~selfSchema) => {
-        input.schema = selfSchema
+      (_b, ~input, ~selfSchema as _) => {
         input
       }: Builder.t
     ),
@@ -3015,7 +3010,7 @@ nullAsUnit.decoder = Literal.literalDecoder
 let nullAsUnit = nullAsUnit->castToPublic
 
 let neverBuilder = Builder.make((b, ~input, ~selfSchema) => {
-  b.code = b.code ++ b->B.embedInvalidType(~input, ~expected=selfSchema) ++ ";"
+  b.code = b.code ++ B.embedInvalidType(~input, ~expected=selfSchema) ++ ";"
   input.skipTo = Some(true)
   input
 })
@@ -3063,34 +3058,6 @@ module Union = {
   @unboxed
   type itemCode = Single(string) | Multiple(array<string>)
 
-  let getItemCode = (b, ~schema, ~input: val, ~output: val, ~deopt) => {
-    try {
-      let globalFlag = b.global.flag
-      if deopt {
-        b.global.flag = globalFlag->Flag.with(Flag.typeValidation)
-      }
-      let bb = b->B.scope(~path=b.path)
-      let itemOutput = bb->parse(~schema, ~input)
-
-      if itemOutput !== input {
-        // itemOutput.b = bb FIXME: What's going on?
-
-        if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-          output.flag = output.flag->Flag.with(ValFlag.async)
-        }
-        bb.code =
-          bb.code ++
-          // Need to allocate a var here, so we don't mutate the input object field
-          `${output.var()}=${itemOutput.inline}`
-      }
-
-      b.global.flag = globalFlag
-      bb->B.merge
-    } catch {
-    | _ => "throw " ++ b->B.embed(%raw(`exn`)->InternalError.getOrRethrow)
-    }
-  }
-
   let isPriority = (tagFlag, byKey: dict<array<unknown>>) => {
     (tagFlag->Flag.unsafeHas(TagFlag.array->Flag.with(TagFlag.instance)) &&
       byKey->Stdlib.Dict.has((objectTag: tag :> string))) ||
@@ -3125,13 +3092,25 @@ module Union = {
     let schemas = selfSchema.anyOf->X.Option.getUnsafe
     let initialInputTagFlag = input.schema.tag->TagFlag.get
 
+    let toPerCase = switch selfSchema {
+    | {parser: ?None, to} => Some(to)
+    | _ => None
+    }
+
     if (
       initialInputTagFlag->Flag.unsafeHas(TagFlag.union) &&
-        isWiderUnionSchema(~schemaAnyOf=schemas, ~inputAnyOf=input.schema.anyOf->X.Option.getUnsafe)
+      isWiderUnionSchema(
+        ~schemaAnyOf=schemas,
+        ~inputAnyOf=input.schema.anyOf->X.Option.getUnsafe,
+      ) &&
+      toPerCase === None
     ) {
       input
     } else {
-      if initialInputTagFlag->Flag.unsafeHas(TagFlag.union->Flag.with(TagFlag.ref)) {
+      if (
+        input.schema.encoder === None &&
+          initialInputTagFlag->Flag.unsafeHas(TagFlag.union->Flag.with(TagFlag.ref))
+      ) {
         input.schema = unknown
       }
 
@@ -3161,6 +3140,7 @@ module Union = {
       }
 
       let getArrItemsCode = (arr: array<unknown>, ~isDeopt) => {
+        let typeValidationInput = arr->Js.Array2.unsafe_get(0)->(Obj.magic: unknown => val)
         let typeValidationOutput = arr->Js.Array2.unsafe_get(1)->(Obj.magic: unknown => val)
 
         let itemStart = ref("")
@@ -3190,16 +3170,14 @@ module Union = {
           let input = typeValidationOutput->B.Val.cleanValFrom
           input.isUnion = Some(true)
 
-          let schema = arr->Js.Array2.unsafe_get(itemIdx.contents)->(Obj.magic: unknown => internal)
-
           let isLast = itemIdx.contents === lastIdx
           let isFirst = itemIdx.contents === preItems
-          let withExhaustiveCheck = ref(!(isLast && isFirst))
+          let withExhaustiveCheck = ref(!(isFirst && isLast))
 
           let itemCode = ref("")
           let itemCond = ref("")
           try {
-            let itemOutput = input->parse(~schema, ~input)
+            let itemOutput = input->parse
             switch input.validation {
             | Some(validation) => {
                 itemCond := validation(~inputVar=input.var(), ~negative=false)
@@ -3208,20 +3186,24 @@ module Union = {
             | None => ()
             }
 
-            if itemOutput !== input {
+            if itemOutput !== input ? true : itemOutput.inline !== typeValidationInput.inline {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-                input.flag = input.flag->Flag.with(ValFlag.async)
+                typeValidationInput.flag = input.flag->Flag.with(ValFlag.async)
               }
               itemOutput.code =
                 itemOutput.code ++
                 // Need to allocate a var here, so we don't mutate the input object field
-                `${input.var()}=${itemOutput.inline}`
+                `${typeValidationInput.var()}=${itemOutput.inline}`
             }
 
             itemCode := itemOutput->B.merge
           } catch {
           | _ => {
               let errorVar = b->B.embed(%raw(`exn`)->InternalError.getOrRethrow)
+              if isLast {
+                // FIXME:
+                withExhaustiveCheck := false
+              }
               itemCode := (
                   isLast && !isDeopt
                     ? {
@@ -3304,7 +3286,7 @@ module Union = {
                 itemNoop := ""
                 itemNextElse := false
               }
-              if isLast && (isDeopt || !withExhaustiveCheck.contents) {
+              if isLast && (isDeopt || !withExhaustiveCheck.contents || isFirst) {
                 // For the last item don't add try/catch
                 itemStart :=
                   itemStart.contents ++ `${itemNextElse.contents ? "else{" : ""}${itemCode}`
@@ -3350,7 +3332,6 @@ module Union = {
       let start = ref("")
       let end = ref("")
       let caught = ref("")
-
       // If we got a case which always passes,
       // we can exit early
       let exit = ref(false)
@@ -3360,8 +3341,8 @@ module Union = {
       let keys = ref([])
       let updatedSchemas = []
       for idx in 0 to lastIdx {
-        let schema = switch selfSchema.to {
-        | Some(target) if !(selfSchema.parser->Obj.magic) =>
+        let schema = switch toPerCase {
+        | Some(target) =>
           updateOutput(schemas->Js.Array2.unsafe_get(idx), mut => {
             // switch selfSchema.refiner {
             // | Some(refiner) => mut.refiner = Some(appendRefiner(mut.refiner, refiner))
@@ -3418,7 +3399,7 @@ module Union = {
             // Recreate input val for every schema
             // since we will mutate it
             let typeValidationInput = input->B.Val.cleanValFrom
-            let typeValidationSchema = if tagFlag->Flag.unsafeHas(TagFlag.null) {
+            typeValidationInput.expected = if tagFlag->Flag.unsafeHas(TagFlag.null) {
               nullLiteral
             } else if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
               unit
@@ -3443,8 +3424,8 @@ module Union = {
             } else {
               unknown
             }
-            let typeValidationOutput =
-              input->parse(~schema=typeValidationSchema, ~input=typeValidationInput)
+            let typeValidationOutput = typeValidationInput->parse
+            typeValidationInput.expected = schema
 
             if isPriority(tagFlag, byKey.contents) {
               // Not the fastest way, but it's the simplest way
@@ -3472,7 +3453,6 @@ module Union = {
                     let arr = byKey.contents->Stdlib.Dict.getUnsafe(key)
                     let typeValidationOutput =
                       arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
-
                     let itemsCode = getArrItemsCode(arr, ~isDeopt=true)
                     let blockCode = typeValidationOutput->B.merge ++ itemsCode
 
@@ -3582,8 +3562,8 @@ module Union = {
         output
       }
 
-      o.schema = switch selfSchema.to {
-      | Some(to) if !(selfSchema.parser->Obj.magic) => {
+      o.schema = switch toPerCase {
+      | Some(to) => {
           o.skipTo = Some(true)
           to->getOutputSchema
         }
@@ -3948,7 +3928,10 @@ let jsonEncoder = Builder.make((_, ~input, ~selfSchema as to) => {
     input
   } else if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
     input.schema = unknown
-    stringDecoder(input, ~input, ~selfSchema=string)
+    input.expected = string
+    let output = stringDecoder(input, ~input, ~selfSchema=input.expected)
+    output.expected = to
+    output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
     input.schema = unknown
     Literal.literalDecoder(input, ~input, ~selfSchema=nullLiteral)
@@ -3956,17 +3939,19 @@ let jsonEncoder = Builder.make((_, ~input, ~selfSchema as to) => {
     // Validate that the input is an array
     // and then update the schema to be an array of json instead of array of unknown
     input.schema = unknown
-    let encoderSchema = array(unknown->castToPublic)->castToInternal
-    let output = arrayDecoder(input, ~input, ~selfSchema=encoderSchema)
-    encoderSchema.additionalItems = Some(Schema(json->castToPublic))
+    input.expected = array(unknown->castToPublic)->castToInternal
+    let output = arrayDecoder(input, ~input, ~selfSchema=input.expected)
+    output.schema.additionalItems = Some(Schema(json->castToPublic))
+    output.expected = to
     output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.object) {
     // Validate that the input is an object
     // and then update the schema to be an object of json instead of object of unknown
     input.schema = unknown
-    let encoderSchema = Dict.factory(unknown->castToPublic)->castToInternal
-    let output = objectDecoder(input, ~input, ~selfSchema=encoderSchema)
-    encoderSchema.additionalItems = Some(Schema(json->castToPublic))
+    input.expected = Dict.factory(unknown->castToPublic)->castToInternal
+    let output = objectDecoder(input, ~input, ~selfSchema=input.expected)
+    output.schema.additionalItems = Some(Schema(json->castToPublic))
+    output.expected = to
     output
   } else {
     input
@@ -4081,7 +4066,7 @@ let enableJson = () => {
 }
 
 let enableJsonString = {
-  let inlineJsonString = (b, ~schema, ~selfSchema) => {
+  let inlineJsonString = (input, ~schema) => {
     let tagFlag = schema.tag->TagFlag.get
     let const = schema.const
     if tagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.null)) {
@@ -4093,48 +4078,40 @@ let enableJsonString = {
     } else if tagFlag->Flag.unsafeHas(TagFlag.number->Flag.with(TagFlag.boolean)) {
       `"${const->Obj.magic}"`
     } else {
-      b->B.unsupportedTransform(~from=schema, ~target=selfSchema)
+      input->B.unsupportedTransform(~from=schema, ~target=input.expected)
     }
   }
 
-  let makeJsonStringEncoder = (~validateOnly) =>
-    Builder.make((b, ~input, ~selfSchema as to) => {
-      let selfSchema = input.schema
-      if validateOnly || to.format !== Some(JSON) {
-        if to->isLiteral {
-          b.validation = Some(
-            (~inputVar, ~negative) => {
-              `${inputVar}${B.eq(~negative)}${b->inlineJsonString(~selfSchema, ~schema=to)}`
-            },
-          )
+  let jsonStringEncoder = Builder.make((_, ~input, ~selfSchema as to) => {
+    if to.format !== Some(JSON) {
+      if to->isLiteral {
+        input.validation = Some(
+          (~inputVar, ~negative) => {
+            let inlinedJsonStringConst = input->inlineJsonString(~schema=to)
 
-          input->B.newConst(~schema=to)
-        } else {
-          let inputVar = input.var()
-          let output = ref(input)
-          input.code =
-            input.code ++
-            `try{` ++
-            if validateOnly {
-              ""
-            } else {
-              let targetVal = input->B.allocateVal(~schema=json)
-              output := targetVal
-              targetVal.inline ++ "="
-            } ++
-            `JSON.parse(${inputVar})}catch(t){${b->B.embedInvalidType(
-                ~input,
-                ~expected=selfSchema,
-              )}}`
-          if !validateOnly {
-            output := jsonEncoder(output.contents, ~input=output.contents, ~selfSchema=to)
-          }
-          output.contents
-        }
+            input.expected.name = Some(inlinedJsonStringConst)
+            `${inputVar}${B.eq(~negative)}${inlinedJsonStringConst}`
+          },
+        )
+
+        input->B.newConst(~schema=to)
       } else {
-        input
+        let inputVar = input.var()
+        let output = input->B.allocateVal(~schema=json, ~expected=to)
+        input.code =
+          input.code ++
+          `try{${output.inline}=JSON.parse(${inputVar})}catch(t){${B.embedInvalidType(
+              ~input,
+              ~expected=input.expected,
+            )}}`
+        let v = output->parse
+        v.skipTo = Some(true)
+        v
       }
-    })
+    } else {
+      input
+    }
+  })
 
   () => {
     if jsonString->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
@@ -4144,7 +4121,7 @@ let enableJsonString = {
       jsonString.tag = stringTag
       jsonString.format = Some(JSON)
       jsonString.name = Some(`${jsonName} string`)
-      jsonString.encoder = Some(makeJsonStringEncoder(~validateOnly=false))
+      jsonString.encoder = Some(jsonStringEncoder)
       jsonString.decoder = Builder.make((b, ~input, ~selfSchema) => {
         let inputTagFlag = input.schema.tag->TagFlag.get
 
@@ -4153,15 +4130,23 @@ let enableJsonString = {
           // Whether we can optimize encoding during decoding
           let preEncode: bool = to->Obj.magic && !(selfSchema.parser->Obj.magic) // && !(selfSchema.refiner->Obj.magic) FIXME:
 
-          makeJsonStringEncoder(~validateOnly=!preEncode)(
-            b,
-            ~input=stringDecoder(b, ~input, ~selfSchema),
-            ~selfSchema,
-          )
+          let input = stringDecoder(b, ~input, ~selfSchema)
+
+          if preEncode {
+            jsonStringEncoder(b, ~input, ~selfSchema=to)
+          } else {
+            input.code =
+              input.code ++
+              `try{JSON.parse(${input.var()})}catch(t){${B.embedInvalidType(
+                  ~input,
+                  ~expected=input.expected,
+                )}}`
+            input
+          }
         } else if input.schema.format === Some(JSON) {
           input
         } else if input.schema->isLiteral {
-          b->B.val(b->inlineJsonString(~selfSchema, ~schema=input.schema), ~schema=selfSchema)
+          b->B.val(input->inlineJsonString(~schema=input.schema), ~schema=selfSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
           b->B.val(`JSON.stringify(${input.inline})`, ~schema=selfSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.number->Flag.with(TagFlag.boolean)) {
@@ -4171,9 +4156,10 @@ let enableJsonString = {
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
           b->B.val(`"\\""+${input.inline}+"\\""`, ~schema=selfSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
-          let jsonVal = b->jsonDecoder(~input, ~selfSchema=json)
-
-          b->B.val(
+          input.expected = json
+          let jsonVal = input->jsonDecoder(~input, ~selfSchema=input.expected)
+          jsonVal.expected = selfSchema
+          jsonVal->B.val(
             `JSON.stringify(${jsonVal.inline}${switch selfSchema.space {
               | Some(0)
               | None => ""
@@ -4728,13 +4714,8 @@ module Schema = {
       for idx in 0 to flattened->Js.Array2.length - 1 {
         let flattenedSchema = flattened->Js.Array2.unsafe_get(idx)
         let flattenedInput = input->B.Val.cleanValFrom
-
-        // Just assign the schema, since everything should
-        // be validated by the decoder anyways
-        // flattenedInput.schema = flattenedSchema
-        flattenedVals
-        ->Js.Array2.push(flattenedInput->parse(~schema=flattenedSchema, ~input=flattenedInput))
-        ->ignore
+        flattenedInput.expected = flattenedSchema
+        flattenedVals->Js.Array2.push(flattenedInput->parse)->ignore
       }
       input.flattenedVals = Some(flattenedVals)
     | None => ()
@@ -4749,7 +4730,7 @@ module Schema = {
 
   and prepareShapedSerializerAcc = (~acc: shapedSerializerAcc, ~input: val) => {
     switch input {
-    | {schema: {from, ?fromFlattened}} =>
+    | {expected: {from, ?fromFlattened}} =>
       let accAtFrom = ref(
         switch fromFlattened {
         | Some(idx) => {
@@ -4811,15 +4792,16 @@ module Schema = {
     switch acc {
     | Some({val}) => {
         let v = val->B.Val.cleanValFrom
-        v.schema = targetSchema // FIXME: Is this line needed?
+        v.expected = targetSchema // FIXME: Is this line needed?
         // Use parse to walk through all possible transformations
-        v->parse(~schema=targetSchema, ~input=v)
+        v->parse
       }
     | _ =>
       if targetSchema->isLiteral {
         let v = cleanRootInput->B.newConst(~schema=targetSchema)
         v.from = None
-        v->parse(~schema=targetSchema, ~input=v)
+        v.expected = targetSchema // FIXME: Is this line needed?
+        v->parse
       } else {
         let output = makeObjectVal(cleanRootInput, ~schema=targetSchema)
         output.from = None
@@ -5021,7 +5003,8 @@ let unnestSerializer = Builder.make((b, ~input, ~selfSchema) => {
   let iteratorVar = b.global->B.varWithoutAllocation
   let outputVar = b.global->B.varWithoutAllocation
 
-  let bb = b->B.scope(~path=b.path)
+  // let bb = b->B.scope(~path=b.path)
+  let bb = b
   let itemInput = {
     ...bb,
     // FIXME: This is probably wrong
@@ -5048,7 +5031,10 @@ let unnestSerializer = Builder.make((b, ~input, ~selfSchema) => {
       b.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
       bb.code = bb.code ++ settingCode.contents
     },
-    (b, ~input) => b->parse(~schema, ~input),
+    (b, ~input) => {
+      // b->parse(~schema, ~input)
+      b->parse
+    },
   )
   let itemCode = bb->B.merge
 
@@ -5141,7 +5127,8 @@ let unnest = schema => {
         let inputVar = input.var()
         let iteratorVar = b.global->B.varWithoutAllocation
 
-        let bb = b->B.scope(~path=b.path) // FIXME: The path looks wrong here
+        // let bb = b->B.scope(~path=b.path) // FIXME: The path looks wrong here
+        let bb = b
         let itemInput = bb->makeObjectVal(~schema)
         let lengthCode = ref("")
         for idx in 0 to keys->Js.Array2.length - 1 {
@@ -5173,7 +5160,8 @@ let unnest = schema => {
             bb.code = bb.code ++ output->B.Val.addKey(iteratorVar, itemOutput) ++ ";"
           },
           (b, ~input) => {
-            b->parse(~schema, ~input)
+            // b->parse(~schema, ~input)
+            b->parse
           },
         )
         let itemCode = bb->B.merge

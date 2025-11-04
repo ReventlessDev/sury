@@ -30,6 +30,14 @@
 
 TODO:
 
+```
+// Test that refinement works correctly with reverse
+
+S.reverse(S.schema({
+  foo: S.string->S.to(S.number)
+})->S.refine(value => value.foo > 0))
+```
+
 I left on cleaning up validation code and moving everything to their own decoder functions
 
 - Make reverse a property on schema, so it's not shown when logging
