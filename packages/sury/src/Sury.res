@@ -2013,20 +2013,6 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
 and valueOptions = Js.Dict.empty()
 and valKey = "value"
 and reverseKey = "r"
-and initOperation = (s, flag) => {
-  let f = compileDecoder(~schema=s, ~expected=s, ~flag, ~defs=%raw(`0`))
-  // Reusing the same object makes it a little bit faster
-  valueOptions->Js.Dict.set(valKey, f)
-  // Use defineProperty, so the cache keys are not enumerable
-  let _ = X.Object.defineProperty(s, flag->X.Int.unsafeToString, valueOptions->Obj.magic)
-  f
-}
-@inline
-and makeOperation = (s, o) => {
-  let s = s->castToInternal
-  (s->Obj.magic->Stdlib.Dict.getUnsafe(o->X.Int.unsafeToString)->Obj.magic ||
-    initOperation(s, o)->Obj.magic)->Obj.magic
-}
 and getOutputSchema = (schema: internal) => {
   switch schema.to {
   | Some(to) => getOutputSchema(to)
@@ -3723,7 +3709,7 @@ module Option = {
           switch default {
           | Value(v) =>
             try mut.default =
-              makeOperation(item->reverse->castToPublic, Flag.none)(v)->(
+              getDecoder(~s1=item->reverse)(v)->(
                 Obj.magic: unknown => option<internalDefault>
               ) catch {
             | _ => ()
@@ -4270,10 +4256,7 @@ let meta = (schema: t<'value>, data: meta<'value>) => {
   }
   switch data.examples {
   | Some([]) => mut.examples = None // FIXME: Delete instead of None
-  | Some(examples) =>
-    mut.examples = Some(
-      examples->X.Array.map(schema->reverse->castToPublic->makeOperation(Flag.none)),
-    )
+  | Some(examples) => mut.examples = Some(examples->X.Array.map(getDecoder(~s1=schema->reverse)))
   | None => ()
   }
   mut->castToPublic
