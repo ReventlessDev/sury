@@ -532,6 +532,10 @@ and has = {
 and builder = (~input: val, ~selfSchema: internal) => val
 and val = {
   mutable from?: val,
+  // We might have the same value, but different instances of the val object
+  // Use the bond field, to connect the var call
+  @as("b")
+  mutable bond?: val,
   @as("p")
   mutable parent?: val,
   @as("v")
@@ -1080,6 +1084,15 @@ module Builder = {
 
     let _var = () => (%raw(`this`)).inline
 
+    let _bondVar = () => {
+      let val = %raw(`this`)
+      let bond = val.bond->X.Option.getUnsafe
+      let v = bond.var()
+      val.inline = v
+      val.var = _var
+      v
+    }
+
     let varWithoutAllocation = (global: bGlobal) => {
       let newCounter = global.varCounter->X.Int.plus(1)
       global.varCounter = newCounter
@@ -1409,14 +1422,8 @@ module Builder = {
       let cleanValFrom = (val: val) => {
         {
           ...val,
-          var: val.var === _var
-            ? _var
-            : () => {
-                let v = val.var()
-                val.inline = v
-                val.var = _var
-                v
-              },
+          var: val.var === _var ? _var : _bondVar,
+          bond: val,
           from: ?None,
           code: "",
           codeBeforeValidation: ?None,
@@ -1927,6 +1934,7 @@ let rec parse = (input: val) => {
       }
 
       if output.contents.skipTo !== Some(true) {
+        Js.log(output.contents)
         let next = output.contents->B.Val.cleanValFrom
         next.from = Some(output.contents)
         next.expected = to

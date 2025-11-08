@@ -321,6 +321,27 @@ test("Compiled serialize code snapshot", t => {
   )
 })
 
+test("Compiled serialize code snapshot with two transforms", t => {
+  let schema =
+    S.string
+    ->S.transform(_ => {
+      parser: string => string->Int.fromString->Option.getOrThrow,
+      serializer: int => int->Int.toString,
+    })
+    ->S.to(
+      S.int->S.transform(_ => {
+        parser: int => int->Int.toFloat,
+        serializer: float => float->Float.toInt,
+      }),
+    )
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v1=e[0](i);if(typeof v1!=="number"||v1>2147483647||v1<-2147483648||v1%1!==0){e[3](v1)}let v0=e[1](e[0](i));if(typeof v0!=="string"){e[2](v0)}return v0}`,
+  )
+})
+
 test("Reverse schema to the original schema", t => {
   let schema = S.int->S.transform(_ => {
     parser: int => int->Int.toFloat,
