@@ -18,7 +18,7 @@ test("Fails to parse JSON", t => {
   switch "123,"->S.parseJsonStringOrThrow(schema) {
   | _ => t->Assert.fail("Must return Error")
   | exception S.Error({code, flag, path}) => {
-      t->Assert.deepEqual(flag, S.Flag.typeValidation)
+      t->Assert.deepEqual(flag, S.Flag.none)
       t->Assert.deepEqual(path, S.Path.empty)
       switch code {
       // Different errors for different Node.js versions

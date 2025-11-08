@@ -49,7 +49,7 @@ test("Fails to serialize when can't unwrap the value from variant", t => {
 
   t->U.assertThrowsMessage(
     () => Error("Hello world!")->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing at ["TAG"]: Expected "Ok", received "Error"`,
+    `Failed at ["TAG"]: Expected "Ok", received "Error"`,
   )
 })
 
@@ -407,7 +407,6 @@ test("Reverse convert tuple turned to Ok", t => {
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{let v0=i["_0"];return v0}`)
 })
 
-
 test(
   "Succesfully parses reversed schema with output of nested object/tuple and parses it back to initial value",
   t => {
@@ -435,7 +434,7 @@ JSON: i=>{if(Array.isArray(i)){let v4=new Array(i.length);for(let v0=0;v0<i.leng
   t->Assert.deepEqual("foo"->S.parseOrThrow(schema), "foo")
   t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
-    "Failed parsing: Expected JSON, received undefined",
+    "Expected JSON, received undefined",
   )
   t->Assert.deepEqual("bar"->S.parseOrThrow(schema), "foo")
 })

@@ -183,7 +183,7 @@ let filesMapping = [
   ],
   [
     "decoder",
-    "S.decoder"
+    "S.getDecoder"
   ],
   [
     "asyncDecoder",

@@ -144,7 +144,7 @@ let filesMapping = [
   ("reverse", "S.reverse"),
   ("parser", "S.parser"),
   ("asyncParser", "S.asyncParser"),
-  ("decoder", "S.decoder"),
+  ("decoder", "S.getDecoder"),
   ("asyncDecoder", "S.asyncDecoder"),
   ("encoder", "S.encoder"),
   ("asyncEncoder", "S.asyncEncoder"),

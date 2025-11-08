@@ -48,7 +48,7 @@ test("Fails to parses recursive object when provided invalid type", t => {
     | _ => "Shouldn't pass"
     | exception S.Error({message}) => message
     },
-    `Failed parsing at ["Children"]["0"]: Expected Node, received "invalid"`,
+    `Failed at ["Children"]["0"]: Expected Node, received "invalid"`,
   )
 })
 

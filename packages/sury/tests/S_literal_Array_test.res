@@ -44,7 +44,7 @@ module Common = {
 
     t->U.assertThrowsMessage(
       () => invalid->S.parseOrThrow(schema->S.reverse),
-      `Failed parsing: Expected ["bar", true], received 123`,
+      `Expected ["bar", true], received 123`,
     )
   })
 

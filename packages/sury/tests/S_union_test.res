@@ -35,8 +35,7 @@ test("Parses when both schemas misses parser and have the same type", t => {
     let _ = %raw(`null`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) =>
-    t->Assert.is(error.message, `Failed parsing: Expected string | string, received null`)
+  | S.Error(error) => t->Assert.is(error.message, `Expected string | string, received null`)
   }
 
   try {
@@ -46,7 +45,7 @@ test("Parses when both schemas misses parser and have the same type", t => {
   | S.Error(error) =>
     t->Assert.is(
       error.message,
-      `Failed parsing: Expected string | string, received "foo"
+      `Expected string | string, received "foo"
 - The S.transform parser is missing`,
     )
   }
@@ -68,8 +67,7 @@ test("Parses when both schemas misses parser and have different types", t => {
     let _ = %raw(`null`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) =>
-    t->Assert.is(error.message, `Failed parsing: Expected "apple" | string, received null`)
+  | S.Error(error) => t->Assert.is(error.message, `Expected "apple" | string, received null`)
   }
 
   try {
@@ -79,7 +77,7 @@ test("Parses when both schemas misses parser and have different types", t => {
   | S.Error(error) =>
     t->Assert.is(
       error.message,
-      `Failed parsing: Expected "apple" | string, received "abc"
+      `Expected "apple" | string, received "abc"
 - The S.transform parser is missing`,
     )
   }
@@ -104,7 +102,7 @@ test("Serializes when both schemas misses serializer", t => {
   | S.Error(error) =>
     t->Assert.is(
       error.message,
-      `Failed converting: Expected unknown | unknown, received null
+      `Expected unknown | unknown, received null
 - The S.transform serializer is missing`,
     )
   }
@@ -122,7 +120,7 @@ test("When union of json and string schemas, should parse the first one", t => {
   t->Assert.deepEqual(%raw(`"string"`)->S.parseOrThrow(schema), #json)
   t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected JSON | string, received undefined
+    `Expected JSON | string, received undefined
 - Expected JSON, received undefined`,
   )
 
@@ -159,7 +157,7 @@ test("Parses when second schema misses parser", t => {
   t->Assert.deepEqual("apple"->S.parseOrThrow(schema), #apple)
   t->U.assertThrowsMessage(
     () => "foo"->S.parseOrThrow(schema),
-    `Failed parsing: Expected "apple" | string, received "foo"
+    `Expected "apple" | string, received "foo"
 - The S.transform parser is missing`,
   )
 
@@ -185,7 +183,7 @@ test("Serializes when second struct misses serializer", t => {
   t->Assert.deepEqual(#apple->S.reverseConvertOrThrow(schema), %raw(`"apple"`))
   t->U.assertThrowsMessage(
     () => #orange->S.reverseConvertOrThrow(schema),
-    `Failed converting: Expected "apple" | unknown, received "orange"
+    `Expected "apple" | unknown, received "orange"
 - Expected string, received "orange"
 - The S.transform serializer is missing`,
   )
@@ -308,14 +306,14 @@ module Advanced = {
     t->U.assertThrows(() => data->S.parseOrThrow(schema), error)
     t->Assert.is(
       (error->U.error).message,
-      `Failed parsing at ["field"]: Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received { kind: "oval"; x: 2; y: 3; }`,
+      `Failed at ["field"]: Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received { kind: "oval"; x: 2; y: 3; }`,
     )
   })
 
   test("Fails to parse with invalid data type", t => {
     t->U.assertThrowsMessage(
       () => %raw(`"Hello world!"`)->S.parseOrThrow(shapeSchema),
-      `Failed parsing: Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received "Hello world!"`,
+      `Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received "Hello world!"`,
     )
   })
 
@@ -339,7 +337,7 @@ module Advanced = {
 
     t->U.assertThrowsMessage(
       () => v->S.reverseConvertOrThrow(incompleteSchema),
-      `Failed converting: Expected { TAG: "Circle"; radius: number; } | { TAG: "Square"; x: number; }, received { TAG: "Triangle"; x: 2; y: 3; }`,
+      `Expected { TAG: "Circle"; radius: number; } | { TAG: "Square"; x: number; }, received { TAG: "Triangle"; x: 2; y: 3; }`,
     )
   })
 
@@ -544,7 +542,7 @@ asyncTest("Compiled async parse code snapshot", async t => {
   t->Assert.throws(
     () => 2->S.parseAsyncOrThrow(schema),
     ~expectations={
-      message: "Failed async parsing: Expected 0 | 1, received 2",
+      message: "Expected 0 | 1, received 2",
     },
   )
 })
@@ -841,7 +839,7 @@ test("Union of strings with different refinements", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`"123"`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected string | string, received "123"
+    `Expected string | string, received "123"
 - Invalid email address
 - Invalid url`,
   )
@@ -869,7 +867,7 @@ test("Objects with the same discriminant", t => {
   t->Assert.deepEqual(%raw(`{"type":"A","value":"baz"}`)->S.parseOrThrow(schema), Error("baz"))
   t->U.assertThrowsMessage(
     () => %raw(`{"type":"A","value":1}`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected { type: "A"; value: "foo" | "bar"; } | { type: "A"; value: string; }, received { type: "A"; value: 1; }
+    `Expected { type: "A"; value: "foo" | "bar"; } | { type: "A"; value: string; }, received { type: "A"; value: 1; }
 - At ["value"]: Expected "foo" | "bar", received 1
 - At ["value"]: Expected string, received 1`,
   )

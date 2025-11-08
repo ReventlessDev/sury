@@ -76,7 +76,9 @@ let shape = Sury.shape;
 
 let to = Sury.to;
 
-let compile = Sury.compile;
+let makeConvertOrThrow = Sury.makeConvertOrThrow;
+
+let makeAsyncConvertOrThrow = Sury.makeAsyncConvertOrThrow;
 
 let parseOrThrow = Sury.parseOrThrow;
 
@@ -224,7 +226,8 @@ export {
   refine,
   shape,
   to,
-  compile,
+  makeConvertOrThrow,
+  makeAsyncConvertOrThrow,
   parseOrThrow,
   parseJsonOrThrow,
   parseJsonStringOrThrow,

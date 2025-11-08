@@ -482,7 +482,7 @@ module Union = {
 
     t->U.assertThrowsMessage(() => {
       2->S.parseOrThrow(schema)
-    }, "Failed parsing: Encountered unexpected async transform or refine. Use parseAsyncOrThrow operation instead")
+    }, "Encountered unexpected async transform or refine. Use parseAsyncOrThrow operation instead")
   })
 
   // Failing.asyncTest(

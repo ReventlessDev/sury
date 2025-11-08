@@ -6,6 +6,8 @@
 - Add `S.uint8Array` and `S.enableUint8Array`
 - Updated `InvalidType` error code to include the received schema
 - Updated internal representation of object schema - removed `items` fields. Updated internalt representation of tuple schema - `items` field is now an array of schemas instead of array of items. The `item` type is removed.
+- Removed `Failed parsing/converting/asserting` when the error is at root
+- Renamed `Failed parsing/converting/asserting at path` to `Failed at path`
 
 ### TS
 

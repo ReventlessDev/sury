@@ -7,47 +7,38 @@ let assertCode = (t, fn: 'a => 'b, code) => {
 }
 
 test("Schema with empty code optimised to use precompiled noop function", t => {
-  let schema = S.string
-  let fn = schema->S.compile(~input=Any, ~output=Unknown, ~mode=Sync, ~typeValidation=false)
+  let fn = S.makeConvertOrThrow(S.string, S.unknown)
   t->assertCode(fn, U.noopOpCode)
 })
 
 test("Doesn't compile primitive unknown with assert output to noop", t => {
-  let schema = S.unknown
-  let fn = schema->S.compile(~input=Any, ~output=Assert, ~mode=Sync, ~typeValidation=true)
+  let fn = S.makeConvertOrThrow(S.unknown, S.unknown->S.to(S.literal()->S.noValidation(true)))
   t->assertCode(fn, `i=>{return void 0}`)
 })
 
 test("Doesn't compile to noop when primitive converted to json string", t => {
-  let schema = S.bool
-  let fn = schema->S.compile(~input=Any, ~output=JsonString, ~mode=Sync, ~typeValidation=false)
+  let fn = S.makeConvertOrThrow(S.bool, S.jsonString)
   t->assertCode(fn, `i=>{return ""+i}`)
 })
 
 test("JsonString output with Async mode", t => {
-  let schema = S.string
-  let fn = schema->S.compile(~input=Any, ~output=JsonString, ~mode=Async, ~typeValidation=false)
+  let fn = S.makeAsyncConvertOrThrow(S.string, S.jsonString)
   t->assertCode(fn, `i=>{return Promise.resolve(JSON.stringify(i))}`)
 })
 
 test("TypeValidation=false works with assert output", t => {
-  let schema = S.string
-  let fn = schema->S.compile(~input=Any, ~output=Assert, ~mode=Sync, ~typeValidation=true)
+  let fn = S.makeConvertOrThrow(S.unknown, S.string->S.to(S.literal()->S.noValidation(true)))
   t->assertCode(fn, `i=>{if(typeof i!=="string"){e[0](i)}return void 0}`)
-  let fn = schema->S.compile(~input=Any, ~output=Assert, ~mode=Sync, ~typeValidation=false)
+  let fn = S.makeConvertOrThrow(S.string, S.string->S.to(S.literal()->S.noValidation(true)))
   t->assertCode(fn, `i=>{return void 0}`)
 })
 
 test("Assert output with Async mode", t => {
-  let schema = S.string
-  let fn = schema->S.compile(~input=Any, ~output=Assert, ~mode=Async, ~typeValidation=true)
+  let fn = S.makeAsyncConvertOrThrow(S.unknown, S.string->S.to(S.literal()->S.noValidation(true)))
   t->assertCode(fn, `i=>{if(typeof i!=="string"){e[0](i)}return Promise.resolve(void 0)}`)
 })
 
-test("Immitate assert output with S.to and literal", t => {
-  let fn =
-    S.string
-    ->S.to(S.literal(true)->S.noValidation(true))
-    ->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=true)
+test("Immitate assert returning true with S.to and literal", t => {
+  let fn = S.makeConvertOrThrow(S.unknown, S.string->S.to(S.literal(true)->S.noValidation(true)))
   t->assertCode(fn, `i=>{if(typeof i!=="string"){e[0](i)}return true}`)
 })

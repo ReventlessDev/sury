@@ -676,7 +676,7 @@ let schema = S.object(_ => ())->S.strict
 {
   "someField": "value",
 }->S.parseOrThrow(schema)
-// throws S.error with the message: `Failed parsing: Unrecognized key  "unknownKey"`
+// throws S.error with the message: `Unrecognized key  "unknownKey"`
 ```
 
 By default **Sury** silently strips unrecognized keys when parsing objects. You can change the behaviour to disallow unrecognized keys with the `S.strict` function.
@@ -1037,7 +1037,7 @@ The `S.unknown` schema represents any data.
 let schema = S.never
 
 %raw(`undefined`)->S.parseOrThrow(schema)
-// throws S.error with the message: `Failed parsing: Expected never, received undefined`
+// throws S.error with the message: `Expected never, received undefined`
 ```
 
 The `never` schema will fail parsing for every value.
@@ -1192,8 +1192,8 @@ let mySet = itemSchema => {
 let intSetSchema = mySet(S.int)
 
 S.parseOrThrow(%raw(`new Set([1, 2, 3])`), intSetSchema) // passes
-S.parseOrThrow(%raw(`new Set([1, 2, "3"])`), intSetSchema) // throws S.Error: Failed parsing: Expected int32, received "3"
-S.parseOrThrow(%raw(`[1, 2, 3]`), intSetSchema) // throws S.Error: Failed parsing: Expected Set.t<int32>, received [1, 2, 3]
+S.parseOrThrow(%raw(`new Set([1, 2, "3"])`), intSetSchema) // throws S.Error: Expected int32, received "3"
+S.parseOrThrow(%raw(`[1, 2, 3]`), intSetSchema) // throws S.Error: Expected Set.t<int32>, received [1, 2, 3]
 ```
 
 ## Refinements
@@ -1382,7 +1382,7 @@ let reversed = schema->S.reverse
 // {"foo": "bar"}
 
 123->S.parseOrThrow(reversed)
-// throws S.error with the message: `Failed parsing: Expected string, received 123`
+// throws S.error with the message: `Expected string, received 123`
 ```
 
 Reverses the schema. This gets especially magical for schemas with transformations 🪄
@@ -1397,7 +1397,7 @@ This very powerful API allows you to coerce another data type in a declarative w
 let schema = S.string->S.to(S.float)
 
 "123"->S.parseOrThrow(schema) //? 123.
-"abc"->S.parseOrThrow(schema) //? throws: Failed parsing: Expected number, received "abc"
+"abc"->S.parseOrThrow(schema) //? throws: Expected number, received "abc"
 
 // Reverse works correctly as well 🔥
 123.->S.reverseConvertOrThrow(schema) //? "123"
@@ -1467,7 +1467,7 @@ This can be useful to optimise `S.object` parsing when you construct the input d
 let schema = S.literal(false)
 
 true->S.parseOrThrow(schema)
-// throws S.error with the message: `Failed parsing: Expected false, received true`
+// throws S.error with the message: `Expected false, received true`
 ```
 
 If you want to handle the error, the best way to use `try/catch` block:

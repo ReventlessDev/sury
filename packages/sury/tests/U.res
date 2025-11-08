@@ -6,9 +6,7 @@ open Ava
 //     var $_$c = $_$wf(3);␊ 
 //     return $_$w(3, 444, $_$c), i;␊ 
 // }
-let noopOpCode: string = (
-  S.unknown->S.compile(~input=Any, ~output=Unknown, ~mode=Sync, ~typeValidation=false)->Obj.magic
-)["toString"]()
+let noopOpCode: string = (S.makeConvertOrThrow(S.unknown, S.unknown)->Obj.magic)["toString"]()
 
 external magic: 'a => 'b = "%identity"
 external castAnyToUnknown: 'any => unknown = "%identity"
@@ -32,7 +30,6 @@ type taggedFlag =
   | ReverseConvertToJson
   | ReverseParse
   | ReverseConvert
-  | Assert
 
 type errorPayload = {operation: taggedFlag, code: S.errorCode, path: S.Path.t}
 
@@ -41,12 +38,11 @@ let error = ({operation, code, path}: errorPayload): S.error => {
   S.ErrorClass.constructor(
     ~code,
     ~flag=switch operation {
-    | Parse => S.Flag.typeValidation
-    | ReverseParse => S.Flag.typeValidation
-    | ReverseConvertToJson => S.Flag.jsonableOutput
+    | Parse
+    | ReverseParse
+    | ReverseConvertToJson
     | ReverseConvert => S.Flag.none
-    | ParseAsync => S.Flag.typeValidation->S.Flag.with(S.Flag.async)
-    | Assert => S.Flag.typeValidation->S.Flag.with(S.Flag.assertOutput)
+    | ParseAsync => S.Flag.async
     },
     ~path,
   )
@@ -108,37 +104,34 @@ let getCompiledCodeString = (
     (
       switch op {
       | #Parse =>
-        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=true)
+        let fn = S.makeConvertOrThrow(S.unknown, schema)
         fn->magic
       | #ParseAsync =>
-        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Async, ~typeValidation=true)
+        let fn = S.makeAsyncConvertOrThrow(S.unknown, schema)
         fn->magic
       | #Convert =>
-        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Sync, ~typeValidation=false)
+        let fn = S.makeConvertOrThrow(schema->S.reverse, S.unknown)
         fn->magic
       | #ConvertAsync =>
-        let fn = schema->S.compile(~input=Any, ~output=Value, ~mode=Async, ~typeValidation=false)
+        let fn = S.makeAsyncConvertOrThrow(schema->S.reverse, S.unknown)
         fn->magic
       | #Assert =>
-        let fn = schema->S.compile(~input=Any, ~output=Assert, ~mode=Sync, ~typeValidation=true)
+        let fn = S.makeConvertOrThrow(S.unknown, schema->S.to(S.literal()->S.noValidation(true)))
         fn->magic
       | #ReverseParse => {
-          let fn =
-            schema->S.compile(~input=Value, ~output=Unknown, ~mode=Sync, ~typeValidation=true)
+          let fn = S.makeConvertOrThrow(S.unknown, schema->S.reverse)
           fn->magic
         }
       | #ReverseConvert => {
-          let fn =
-            schema->S.compile(~input=Value, ~output=Unknown, ~mode=Sync, ~typeValidation=false)
+          let fn = S.makeConvertOrThrow(schema, S.unknown)
           fn->magic
         }
       | #ReverseConvertAsync => {
-          let fn =
-            schema->S.compile(~input=Value, ~output=Unknown, ~mode=Async, ~typeValidation=false)
+          let fn = S.makeAsyncConvertOrThrow(schema, S.unknown)
           fn->magic
         }
       | #ReverseConvertToJson => {
-          let fn = schema->S.compile(~input=Value, ~output=Json, ~mode=Sync, ~typeValidation=false)
+          let fn = S.makeConvertOrThrow(schema, S.json)
           fn->magic
         }
       }
@@ -171,7 +164,8 @@ let rec cleanUpSchema = schema => {
   ->Array.forEach(((key, value)) => {
     switch key {
     | "output"
-    | "isAsync" => ()
+    | "isAsync"
+    | "seq" => ()
     // ditemToItem leftovers FIXME:
     | "k" | "p" | "of" | "r" => ()
     | _ =>

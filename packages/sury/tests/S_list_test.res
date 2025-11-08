@@ -19,7 +19,7 @@ module CommonWithNested = {
     switch invalidAny->S.parseOrThrow(schema) {
     | _ => t->Assert.fail("Unexpected result.")
     | exception S.Error(e) => {
-        t->Assert.deepEqual(e.flag, S.Flag.typeValidation)
+        t->Assert.deepEqual(e.flag, S.Flag.none)
         t->Assert.deepEqual(e.path, S.Path.empty)
         switch e.code {
         | InvalidType({expected, received}) => {

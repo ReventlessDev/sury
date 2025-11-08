@@ -265,11 +265,11 @@ test("Nested preprocessed tags on reverse convert", t => {
   )
   t->U.assertThrowsMessage(
     () => %raw(`{"nested":{"tag":"_foo", "intTag":"_1"}}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["nested"]["tag"]: Expected "value", received "foo"`,
+    `Failed at ["nested"]["tag"]: Expected "value", received "foo"`,
   )
   t->U.assertThrowsMessage(
     () => %raw(`{"nested":{"tag":"_value", "intTag":"_2"}}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["nested"]["intTag"]: Expected 1, received "2"`,
+    `Failed at ["nested"]["intTag"]: Expected 1, received "2"`,
   )
 })
 

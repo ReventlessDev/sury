@@ -273,11 +273,7 @@ type s<'value> = {
 
 module Flag: {
   @inline let none: flag
-  @inline let typeValidation: flag
   @inline let async: flag
-  @inline let assertOutput: flag
-  @inline let jsonableOutput: flag
-  @inline let jsonStringOutput: flag
 
   external with: (flag, flag) => flag = "%orint"
   let has: (flag, flag) => bool
@@ -335,29 +331,8 @@ let shape: (t<'value>, 'value => 'shape) => t<'shape>
 
 let to: (t<'from>, t<'to>) => t<'to>
 
-type rec input<'value, 'computed> =
-  | @as("Output") Value: input<'value, 'value>
-  | @as("Input") Unknown: input<'value, unknown>
-  | Any: input<'value, 'any>
-  | Json: input<'value, Js.Json.t>
-  | JsonString: input<'value, string>
-type rec output<'value, 'computed> =
-  | @as("Output") Value: output<'value, 'value>
-  | @as("Input") Unknown: output<'value, unknown>
-  | Assert: output<'value, unit>
-  | Json: output<'value, Js.Json.t>
-  | JsonString: output<'value, string>
-type rec mode<'output, 'computed> =
-  | Sync: mode<'output, 'output>
-  | Async: mode<'output, promise<'output>>
-
-let compile: (
-  t<'value>,
-  ~input: input<'value, 'input>,
-  ~output: output<'value, 'transformedOutput>,
-  ~mode: mode<'transformedOutput, 'output>,
-  ~typeValidation: bool=?,
-) => 'input => 'output
+let makeConvertOrThrow: (t<'from>, t<'to>, ~flag: flag=?) => 'from => 'to
+let makeAsyncConvertOrThrow: (t<'from>, t<'to>, ~flag: flag=?) => 'from => promise<'to>
 
 let parseOrThrow: ('any, t<'value>) => 'value
 let parseJsonOrThrow: (Js.Json.t, t<'value>) => 'value
@@ -555,7 +530,7 @@ let brand: (t<'value>, string) => t<'value>
 
 let parser: t<unknown> => unknown => unknown
 let asyncParser: t<unknown> => unknown => unknown
-let decoder: t<unknown> => unknown => unknown
+let getDecoder: (~s1: t<unknown>, ~flag: flag=?) => 'from => 'to
 let asyncDecoder: t<unknown> => unknown => unknown
 let encoder: t<unknown> => unknown => unknown
 let asyncEncoder: t<unknown> => unknown => unknown

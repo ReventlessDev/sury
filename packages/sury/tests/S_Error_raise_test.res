@@ -7,12 +7,12 @@ test(
       () => {
         S.ErrorClass.constructor(
           ~code=OperationFailed("Should be positive"),
-          ~flag=S.Flag.typeValidation,
+          ~flag=S.Flag.none,
           ~path=S.Path.empty,
         )->U.throwError
       },
       ~expectations={
-        message: "Failed parsing: Should be positive",
+        message: "Should be positive",
         instanceOf: S.ErrorClass.value->(U.magic: S.ErrorClass.t => 'instanceOf),
       },
     )
@@ -22,7 +22,7 @@ test(
 test("Raised error is also the S.Error exeption and can be caught with catch", t => {
   let error = S.ErrorClass.constructor(
     ~code=OperationFailed("Should be positive"),
-    ~flag=S.Flag.typeValidation,
+    ~flag=S.Flag.none,
     ~path=S.Path.empty,
   )
   t->ExecutionContext.plan(1)

@@ -5,7 +5,7 @@ import * as Stdlib_Dict from "rescript/lib/es6/Stdlib_Dict.js";
 import * as Primitive_option from "rescript/lib/es6/Primitive_option.js";
 import * as Primitive_exceptions from "rescript/lib/es6/Primitive_exceptions.js";
 
-let noopOpCode = S.compile(S.unknown, "Any", "Input", "Sync", false).toString();
+let noopOpCode = S.makeConvertOrThrow(S.unknown, S.unknown, undefined).toString();
 
 function throwError(error) {
   throw error;
@@ -26,24 +26,7 @@ function throwTestException() {
 
 function error(param) {
   let tmp;
-  switch (param.operation) {
-    case "ParseAsync" :
-      tmp = S.Flag.typeValidation | S.Flag.async;
-      break;
-    case "ReverseConvertToJson" :
-      tmp = S.Flag.jsonableOutput;
-      break;
-    case "Parse" :
-    case "ReverseParse" :
-      tmp = S.Flag.typeValidation;
-      break;
-    case "ReverseConvert" :
-      tmp = S.Flag.none;
-      break;
-    case "Assert" :
-      tmp = S.Flag.typeValidation | S.Flag.assertOutput;
-      break;
-  }
+  tmp = param.operation === "ParseAsync" ? S.Flag.async : S.Flag.none;
   return S.ErrorClass.constructor(param.code, tmp, param.path);
 }
 
@@ -109,14 +92,14 @@ async function assertThrowsAsync(t, cb, errorPayload) {
 
 function getCompiledCodeString(schema, op) {
   let toCode = schema => (
-    op === "ParseAsync" ? S.compile(schema, "Any", "Output", "Async", true) : (
-        op === "Parse" ? S.compile(schema, "Any", "Output", "Sync", true) : (
-            op === "ReverseConvertToJson" ? S.compile(schema, "Output", "Json", "Sync", false) : (
-                op === "ReverseConvert" ? S.compile(schema, "Output", "Input", "Sync", false) : (
-                    op === "Convert" ? S.compile(schema, "Any", "Output", "Sync", false) : (
-                        op === "Assert" ? S.compile(schema, "Any", "Assert", "Sync", true) : (
-                            op === "ReverseParse" ? S.compile(schema, "Output", "Input", "Sync", true) : (
-                                op === "ConvertAsync" ? S.compile(schema, "Any", "Output", "Async", false) : S.compile(schema, "Output", "Input", "Async", false)
+    op === "ParseAsync" ? S.makeAsyncConvertOrThrow(S.unknown, schema, undefined) : (
+        op === "Parse" ? S.makeConvertOrThrow(S.unknown, schema, undefined) : (
+            op === "ReverseConvertToJson" ? S.makeConvertOrThrow(schema, S.json, undefined) : (
+                op === "ReverseConvert" ? S.makeConvertOrThrow(schema, S.unknown, undefined) : (
+                    op === "Convert" ? S.makeConvertOrThrow(S.reverse(schema), S.unknown, undefined) : (
+                        op === "Assert" ? S.makeConvertOrThrow(S.unknown, S.to(schema, S.noValidation(S.literal(), true)), undefined) : (
+                            op === "ReverseParse" ? S.makeConvertOrThrow(S.unknown, S.reverse(schema), undefined) : (
+                                op === "ConvertAsync" ? S.makeAsyncConvertOrThrow(S.reverse(schema), S.unknown, undefined) : S.makeAsyncConvertOrThrow(schema, S.unknown, undefined)
                               )
                           )
                       )
@@ -154,6 +137,7 @@ function cleanUpSchema(schema) {
       case "output" :
       case "p" :
       case "r" :
+      case "seq" :
         return;
       default:
         if (typeof value === "function") {

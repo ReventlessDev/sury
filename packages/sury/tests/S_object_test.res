@@ -196,7 +196,7 @@ test("Fails to parse object with not inlinable empty object field", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["field"]: Expected {}, received true`,
+    `Failed at ["field"]: Expected {}, received true`,
   )
 })
 
@@ -1030,7 +1030,7 @@ test("Object schema parsing checks order", t => {
   // Type check should be the first
   t->U.assertThrowsMessage(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected { tag: "value"; key: string; }, received "foo"`,
+    `Expected { tag: "value"; key: string; }, received "foo"`,
   )
   // Tag check should be the second
   t->U.assertThrowsMessage(
@@ -1038,7 +1038,7 @@ test("Object schema parsing checks order", t => {
       %raw(`{tag: "wrong", key: 123, unknownKey: "value", unknownKey2: "value"}`)->S.parseOrThrow(
         schema,
       ),
-    `Failed parsing at ["tag"]: Expected "value", received "wrong"`,
+    `Failed at ["tag"]: Expected "value", received "wrong"`,
   )
   // Field check should be the third
   t->U.assertThrowsMessage(
@@ -1046,7 +1046,7 @@ test("Object schema parsing checks order", t => {
       %raw(`{tag: "value", key: 123, unknownKey: "value", unknownKey2: "value"}`)->S.parseOrThrow(
         schema,
       ),
-    `Failed parsing at ["key"]: Expected string, received 123`,
+    `Failed at ["key"]: Expected string, received 123`,
   )
   // Unknown keys check should be the last
   t->U.assertThrowsMessage(
@@ -1054,7 +1054,7 @@ test("Object schema parsing checks order", t => {
       %raw(`{tag: "value", key: "value", unknownKey: "value2", unknownKey2: "value2"}`)->S.parseOrThrow(
         schema,
       ),
-    `Failed parsing: Unrecognized key "unknownKey"`,
+    `Unrecognized key "unknownKey"`,
   )
   // Parses valid
   t->Assert.deepEqual(

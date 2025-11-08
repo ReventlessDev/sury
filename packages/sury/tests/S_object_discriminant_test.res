@@ -288,7 +288,7 @@ module NestedNegative = {
 
       t->U.assertThrowsMessage(
         () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-        `Failed converting: Missing input for boolean at ["discriminant"]["nestedField"]`,
+        `Missing input for boolean at ["discriminant"]["nestedField"]`,
       )
     },
   )
@@ -348,7 +348,7 @@ test(`Fails to serialize object with discriminant "Never"`, t => {
 
   t->U.assertThrowsMessage(
     () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-    `Failed converting: Missing input for never at ["discriminant"]`,
+    `Missing input for never at ["discriminant"]`,
   )
 })
 
@@ -362,6 +362,6 @@ test(`Reverse parse doesn't validates literal fields before coming to other obje
 
   t->U.assertThrowsMessage(
     () => {"constant": false, "normal": false}->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing at ["normal"]: Expected string, received false`,
+    `Failed at ["normal"]: Expected string, received false`,
   )
 })

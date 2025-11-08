@@ -435,6 +435,9 @@ and schema<'a> = t<'a>
 and internal = {
   @as("type")
   mutable tag: tag,
+  // A serial number for the schema
+  // to use for caching operations
+  mutable seq?: float,
   // Builder for transforming to the "to" schema
   // If missing, should apply coercion logic
   mutable parser?: builder,
@@ -631,17 +634,13 @@ let isOptional = schema => {
 
 module ValFlag = {
   @inline let none = 0
-  @inline let async = 2
+  @inline let async = 1
 }
 
 module Flag = {
   @inline let none = 0
-  @inline let typeValidation = 1
-  @inline let async = 2
-  @inline let assertOutput = 4
-  @inline let jsonableOutput = 8
-  @inline let jsonStringOutput = 16
-  @inline let flatten = 64
+  @inline let async = 1
+  // @inline let flatten = 64
 
   external with: (flag, flag) => flag = "%orint"
   @inline
@@ -822,7 +821,8 @@ d(p, 'RE_EXN_ID', {
   value: $$Error,
 });
 
-var Schema = function(type) {this.type=type}, sp = Object.create(null);
+var seq = 1;
+var Schema = function() {}, sp = Object.create(null);
 d(sp, 'with', {
   get() {
     return (fn, ...args) => fn(this, ...args)
@@ -893,33 +893,10 @@ Schema.prototype = sp;
   let reason = error => reason(error)
 
   let message = (error: error) => {
-    let op = error.flag
-
-    let text = ref("Failed ")
-    if op->Flag.unsafeHas(Flag.async) {
-      text := text.contents ++ "async "
-    }
-
-    text :=
-      text.contents ++ if op->Flag.unsafeHas(Flag.typeValidation) {
-        if op->Flag.unsafeHas(Flag.assertOutput) {
-          "asserting"
-        } else {
-          "parsing"
-        }
-      } else {
-        "converting"
-      }
-
-    if op->Flag.unsafeHas(Flag.jsonableOutput) {
-      text :=
-        text.contents ++ " to JSON" ++ (op->Flag.unsafeHas(Flag.jsonStringOutput) ? " string" : "")
-    }
-
-    `${text.contents}${switch error.path {
+    `${switch error.path {
       | "" => ""
-      | nonEmptyPath => ` at ${nonEmptyPath}`
-      }}: ${error->reason}`
+      | nonEmptyPath => `Failed at ${nonEmptyPath}: `
+      }}${error->reason}`
   }
 }
 
@@ -949,7 +926,14 @@ let globalConfig: globalConfig = {
 }
 
 @new
-external base: tag => internal = "Schema"
+external base: unit => internal = "Schema"
+
+let base = tag => {
+  let s = base()
+  s.tag = tag
+  s.seq = %raw(`seq++`)
+  s
+}
 
 let shakenRef = "as"
 
@@ -992,10 +976,11 @@ type s<'value> = {
 }
 
 let copySchema: internal => internal = %raw(`(schema) => {
-  let c = new Schema(schema.type)
+  let c = new Schema()
   for (let k in schema) {
     c[k] = schema[k]
   }
+  c.seq = seq++
   return c
 }`)
 let updateOutput = (schema: internal, fn): t<'value> => {
@@ -1821,6 +1806,13 @@ let setHas = (has, tag: tag) => {
 let jsonName = `JSON`
 
 let jsonString = shaken("jsonString")
+
+let jsonStringWithSpace = (space: int) => {
+  let mut = jsonString->copySchema
+  mut.space = Some(space)
+  mut->castToPublic
+}
+
 let json = shaken("json")
 
 module Literal = {
@@ -1934,7 +1926,6 @@ let rec parse = (input: val) => {
       }
 
       if output.contents.skipTo !== Some(true) {
-        Js.log(output.contents)
         let next = output.contents->B.Val.cleanValFrom
         next.from = Some(output.contents)
         next.expected = to
@@ -1947,7 +1938,7 @@ let rec parse = (input: val) => {
 
   output.contents
 }
-and parseDynamic = (input, ~schema) => {
+and parseDynamic = input => {
   try input->parse catch {
   | _ =>
     let error = %raw(`exn`)->InternalError.getOrRethrow
@@ -1980,40 +1971,16 @@ and isAsyncInternal = (schema, ~defs) => {
     }
   }
 }
-and internalCompile = (~schema, ~flag, ~defs) => {
-  let schema = if flag->Flag.unsafeHas(Flag.assertOutput) {
-    schema
-    ->updateOutput(mut => {
-      let t = unit->copySchema
-      t.noValidation = Some(true)
-      mut.to = Some(t)
-    })
-    ->castToInternal
-  } else if flag->Flag.unsafeHas(Flag.jsonStringOutput) {
-    schema
-    ->updateOutput(mut => {
-      mut.to = Some(jsonString)
-    })
-    ->castToInternal
-  } else if flag->Flag.unsafeHas(Flag.jsonableOutput) {
-    schema
-    ->updateOutput(mut => {
-      mut.to = Some(json)
-    })
-    ->castToInternal
-  } else {
-    schema
-  }
-
+and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
   let input = B.operationArg(
     ~flag,
     ~defs,
-    ~schema=if flag->Flag.unsafeHas(Flag.typeValidation) || schema->isLiteral {
+    ~schema=if schema->isLiteral {
       unknown
     } else {
       schema
     },
-    ~expected=schema,
+    ~expected,
   )
 
   let output = input->parse
@@ -2032,7 +1999,7 @@ and internalCompile = (~schema, ~flag, ~defs) => {
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
 
-    Js.log(inlinedFunction)
+    // Js.log(inlinedFunction)
 
     X.Function.make2(
       ~ctxVarName1="e",
@@ -2047,23 +2014,12 @@ and valueOptions = Js.Dict.empty()
 and valKey = "value"
 and reverseKey = "r"
 and initOperation = (s, flag) => {
-  let f = internalCompile(~schema=s, ~flag, ~defs=%raw(`0`))
+  let f = compileDecoder(~schema=s, ~expected=s, ~flag, ~defs=%raw(`0`))
   // Reusing the same object makes it a little bit faster
   valueOptions->Js.Dict.set(valKey, f)
   // Use defineProperty, so the cache keys are not enumerable
   let _ = X.Object.defineProperty(s, flag->X.Int.unsafeToString, valueOptions->Obj.magic)
   f
-}
-// This removes v8 optimization
-// TODO: Need to fix ReScript compiler and replace it with makeOperation
-@inline
-and makeMakeOperation = (s, o) => {
-  if s->Obj.magic->Stdlib.Dict.has(o->X.Int.unsafeToString) {
-    s->Obj.magic->Stdlib.Dict.getUnsafe(o->X.Int.unsafeToString)->Obj.magic
-  } else {
-    let s = s->castToInternal
-    initOperation(s, o)->Obj.magic
-  }
 }
 @inline
 and makeOperation = (s, o) => {
@@ -2184,6 +2140,76 @@ and reverse = (schema: internal) => {
   }
 }
 
+let getDecoder = (~s1 as _, ~flag as _=?) => {
+  let args = %raw(`arguments`)
+  let idx = ref(0)
+  let flag = ref(None)
+  let keyRef = ref("")
+  let maxSeq = ref(0.)
+  let cacheTarget = ref(None)
+
+  while flag.contents === None {
+    let arg = args->Js.Array2.unsafe_get(idx.contents)
+    if !(arg->Obj.magic) {
+      flag := Some(0)
+      keyRef := keyRef.contents ++ "-0"
+    } else if Js.typeof(arg->Obj.magic) === "number" {
+      flag := Some(arg->Obj.magic)
+      keyRef := keyRef.contents ++ "-" ++ arg->Obj.magic
+    } else {
+      let schema: internal = arg->Obj.magic
+      let seq: float = schema.seq->Obj.magic
+      if seq > maxSeq.contents {
+        maxSeq := seq
+        cacheTarget := Some(schema)
+      }
+      keyRef := keyRef.contents ++ seq->Obj.magic ++ "-"
+      idx := idx.contents + 1
+    }
+  }
+
+  switch cacheTarget.contents {
+  | None => InternalError.panic("No schema provided for decoder.")
+  | Some(cacheTarget) => {
+      let key = keyRef.contents
+      if cacheTarget->Obj.magic->Stdlib.Dict.has(key) {
+        Js.log(key)
+        cacheTarget->Obj.magic->Stdlib.Dict.getUnsafe(key)->Obj.magic
+      } else {
+        let schema = ref(args->Js.Array2.unsafe_get(idx.contents - 1))
+        for i in idx.contents - 2 downto 0 {
+          let to = schema.contents
+          schema :=
+            args
+            ->Js.Array2.unsafe_get(i)
+            ->updateOutput(mut => {
+              mut.to = Some(to)
+            })
+            ->castToInternal
+        }
+        let f = compileDecoder(
+          ~schema=schema.contents,
+          ~expected=schema.contents,
+          ~flag=flag.contents->X.Option.getUnsafe,
+          ~defs=%raw(`0`),
+        )
+        // Reusing the same object makes it a little bit faster
+        valueOptions->Js.Dict.set(valKey, f)
+        // Use defineProperty, so the cache keys are not enumerable
+        let _ = X.Object.defineProperty(cacheTarget, key, valueOptions->Obj.magic)
+        f->(Obj.magic: (unknown => unknown) => 'from => 'to)
+      }
+    }
+  }
+}
+
+@val
+external getDecoder2: (~s1: internal, ~s2: internal, ~flag: flag=?) => 'a => 'b = "getDecoder"
+
+@val
+external getDecoder3: (~s1: internal, ~s2: internal, ~s3: internal, ~flag: flag=?) => 'a => 'b =
+  "getDecoder"
+
 let rec makeObjectVal = (from: val, ~schema): B.Val.Object.t => {
   {
     from,
@@ -2232,7 +2258,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
 
   let input = ref(input)
 
-  let itemInputSchema = if inputTagFlag->Flag.unsafeHas(TagFlag.unknown->Flag.with(TagFlag.array)) {
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown->Flag.with(TagFlag.array)) {
     let isArrayInput = inputTagFlag->Flag.unsafeHas(TagFlag.array)
     if !isArrayInput {
       input.contents->B.refineInPlace(
@@ -2261,11 +2287,6 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
       | _ => ()
       }
     }
-
-    switch input.contents.schema.additionalItems {
-    | Some(Schema(s)) if (s->castToInternal).tag !== unionTag => s->castToInternal
-    | _ => unknown
-    }
   } else {
     input.contents->B.unsupportedTransform(~from=input.contents.schema, ~target=selfSchema)
   }
@@ -2282,7 +2303,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
         let iteratorVar = input.global->B.varWithoutAllocation
 
         let itemInput = input->B.dynamicScope(~locationVar=iteratorVar)
-        let itemOutput = itemInput->parseDynamic(~schema=itemSchema)
+        let itemOutput = itemInput->parseDynamic
         let isTransformed = itemInput !== itemOutput
         let output = isTransformed
           ? input->B.val(`new Array(${inputVar}.length)`, ~schema=selfSchema)
@@ -2404,7 +2425,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
         let inputVar = input.var()
         let keyVar = input.global->B.varWithoutAllocation
         let itemInput = input->B.dynamicScope(~locationVar=keyVar)
-        let itemOutput = itemInput->parseDynamic(~schema=itemSchema)
+        let itemOutput = itemInput->parseDynamic
 
         let isTransformed = itemInput !== itemOutput
         let output = isTransformed ? input->B.val("{}", ~schema=selfSchema) : input
@@ -2534,11 +2555,12 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
   // Ignore #/$defs/
   let identifier = ref->Js.String2.sliceToEnd(~from=8)
   let def = defs->Js.Dict.unsafeGet(identifier)
-  let flag = if selfSchema.noValidation->X.Option.getUnsafe {
-    input.global.flag->Flag.without(Flag.typeValidation)
-  } else {
-    input.global.flag->Flag.with(Flag.typeValidation)
-  }
+  // let flag = if selfSchema.noValidation->X.Option.getUnsafe {
+  //   input.global.flag->Flag.without(Flag.typeValidation)
+  // } else {
+  //   input.global.flag->Flag.with(Flag.typeValidation)
+  // }
+  let flag = input.global.flag
   // FIXME: Instead of flags it should accept from and to schemas
   let recOperation = switch def->Obj.magic->X.Dict.getUnsafeOptionByInt(flag) {
   | Some(fn) =>
@@ -2552,7 +2574,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
       def
       ->Obj.magic
       ->X.Dict.setByInt(flag, 0)
-      let fn = internalCompile(~schema=def, ~flag, ~defs=Some(defs))
+      let fn = compileDecoder(~schema=input.schema, ~expected=def, ~flag, ~defs=Some(defs))
       def
       ->Obj.magic
       ->X.Dict.setByInt(flag, fn)
@@ -2615,9 +2637,7 @@ X.Object.defineProperty(
           validate: input => {
             try {
               {
-                "value": (schema->castToPublic->makeOperation(Flag.typeValidation))(
-                  input->Obj.magic,
-                )->Obj.magic,
+                "value": getDecoder2(~s1=unknown, ~s2=schema)(input->Obj.magic)->Obj.magic,
               }
             } catch {
             | _ => {
@@ -2652,95 +2672,17 @@ X.Object.defineProperty(
   },
 )
 
-type rec input<'value, 'computed> =
-  | @as("Output") Value: input<'value, 'value>
-  | @as("Input") Unknown: input<'value, unknown>
-  | Any: input<'value, 'any>
-  | Json: input<'value, Js.Json.t>
-  | JsonString: input<'value, string>
-type rec output<'value, 'computed> =
-  | @as("Output") Value: output<'value, 'value>
-  | @as("Input") Unknown: output<'value, unknown>
-  | Assert: output<'value, unit>
-  | Json: output<'value, Js.Json.t>
-  | JsonString: output<'value, string>
-type rec mode<'output, 'computed> =
-  | Sync: mode<'output, 'output>
-  | Async: mode<'output, promise<'output>>
-
-@@warning("-37")
-type internalInput =
-  | Output
-  | Input
-  | Any
-  | Json
-  | JsonString
-type internalOutput =
-  | Output
-  | Input
-  | Assert
-  | Json
-  | JsonString
-type internalMode =
-  | Sync
-  | Async
-@@warning("+37")
-
-let compile = (
-  schema: t<'value>,
-  ~input: input<'value, 'input>,
-  ~output: output<'value, 'transformedOutput>,
-  ~mode: mode<'transformedOutput, 'output>,
-  ~typeValidation=true,
-): ('input => 'output) => {
-  let output = output->(Obj.magic: output<'value, 'transformedOutput> => internalOutput)
-  let input = input->(Obj.magic: input<'schemaInput, 'input> => internalInput)
-  let mode = mode->(Obj.magic: mode<'transformedOutput, 'output> => internalMode)
-
-  let schema = schema->castToUnknown
-
-  let flag = ref(Flag.none)
-  switch output {
-  | Output
-  | Input => {
-      if output === input->Obj.magic {
-        InternalError.panic(`Can't compile operation to converting value to self`)
-      }
-      ()
-    }
-  | Assert => flag := flag.contents->Flag.with(Flag.assertOutput)
-  | Json => flag := flag.contents->Flag.with(Flag.jsonableOutput)
-  | JsonString =>
-    flag := flag.contents->Flag.with(Flag.jsonableOutput->Flag.with(Flag.jsonStringOutput))
-  }
-  switch mode {
-  | Sync => ()
-  | Async => flag := flag.contents->Flag.with(Flag.async)
-  }
-  if typeValidation {
-    flag := flag.contents->Flag.with(Flag.typeValidation)
-  }
-  let schema = if input === Output {
-    schema->castToInternal->reverse->castToPublic
-  } else {
-    schema
-  }
-  let fn = schema->makeOperation(flag.contents)->Obj.magic
-
-  switch input {
-  | JsonString =>
-    let flag = flag.contents
-    jsonString => {
-      try jsonString->Obj.magic->Js.Json.parseExn->fn catch {
-      | _ =>
-        X.Exn.throwAny(
-          InternalError.make(~code=OperationFailed(%raw(`exn.message`)), ~flag, ~path=Path.empty),
-        )
-      }
-    }
-  | _ => fn
-  }
+let makeConvertOrThrow = (type from to, from: t<from>, to: t<to>, ~flag=?): (from => to) => {
+  getDecoder2(~s1=from->castToInternal->reverse, ~s2=to->castToInternal, ~flag?)
 }
+let makeAsyncConvertOrThrow = (type from to, from: t<from>, to: t<to>, ~flag=Flag.none): (
+  from => promise<to>
+) =>
+  getDecoder2(
+    ~s1=from->castToInternal->reverse,
+    ~s2=to->castToInternal,
+    ~flag=flag->Flag.with(Flag.async),
+  )
 
 // =============
 // Operations
@@ -2748,61 +2690,61 @@ let compile = (
 
 @inline
 let parseOrThrow = (any, schema) => {
-  (schema->makeOperation(Flag.typeValidation))(any)
+  getDecoder2(~s1=unknown, ~s2=schema->castToInternal)(any)
 }
 
-let parseJsonOrThrow = parseOrThrow->Obj.magic
+let parseJsonOrThrow = (any, schema) => {
+  getDecoder2(~s1=json, ~s2=schema->castToInternal)(any)
+}
 
-let parseJsonStringOrThrow = (jsonString: string, schema: t<'value>): 'value => {
-  try {
-    jsonString->Js.Json.parseExn
-  } catch {
-  | _ =>
-    X.Exn.throwAny(
-      InternalError.make(
-        ~code=OperationFailed(%raw(`exn.message`)),
-        ~flag=Flag.typeValidation,
-        ~path=Path.empty,
-      ),
-    )
-  }->parseOrThrow(schema)
+let parseJsonStringOrThrow = (any, schema) => {
+  getDecoder2(~s1=jsonString, ~s2=schema->castToInternal)(any)
 }
 
 let parseAsyncOrThrow = (any, schema) => {
-  (schema->makeOperation(Flag.async->Flag.with(Flag.typeValidation)))(any)
+  getDecoder2(~s1=unknown, ~s2=schema->castToInternal, ~flag=Flag.async)(any)
 }
 
 let convertOrThrow = (input, schema) => {
-  (schema->makeOperation(Flag.none))(input)
+  getDecoder(~s1=schema->castToInternal)(input)
 }
 
-let convertToJsonOrThrow = (any, schema) => {
-  (schema->makeOperation(Flag.jsonableOutput))(any)
+let convertToJsonOrThrow = (input, schema) => {
+  getDecoder2(~s1=schema->castToInternal, ~s2=json)(input)
 }
 
 let convertToJsonStringOrThrow = (input, schema) => {
-  (schema->makeOperation(Flag.jsonableOutput->Flag.with(Flag.jsonStringOutput)))(input)
+  getDecoder2(~s1=schema->castToInternal, ~s2=jsonString)(input)
 }
 
-let convertAsyncOrThrow = (any, schema) => {
-  (schema->makeOperation(Flag.async))(any)
+let convertAsyncOrThrow = (input, schema) => {
+  getDecoder(~s1=schema->castToInternal, ~flag=Flag.async)(input)
 }
 
 let reverseConvertOrThrow = (value, schema) => {
-  (schema->castToInternal->reverse->castToPublic->makeOperation(Flag.none))(value)
+  getDecoder(~s1=schema->castToInternal->reverse)(value)
 }
 
-@inline
 let reverseConvertToJsonOrThrow = (value, schema) => {
-  (schema->castToInternal->reverse->castToPublic->makeOperation(Flag.jsonableOutput))(value)
+  getDecoder2(~s1=schema->castToInternal->reverse, ~s2=json)(value)
 }
 
-let reverseConvertToJsonStringOrThrow = (value: 'value, schema: t<'value>, ~space=0): string => {
-  value->reverseConvertToJsonOrThrow(schema)->Js.Json.stringifyWithSpace(space)
+let reverseConvertToJsonStringOrThrow = (value: 'value, schema: t<'value>, ~space=?): string => {
+  getDecoder2(
+    ~s1=schema->castToInternal->reverse,
+    ~s2=switch space {
+    | None
+    | Some(0) => jsonString
+    | Some(v) => jsonStringWithSpace(v)->castToInternal
+    },
+  )(value)
 }
+
+let assertResult = unit->copySchema
+assertResult.noValidation = Some(true)
 
 let assertOrThrow = (any, schema) => {
-  (schema->makeOperation(Flag.typeValidation->Flag.with(Flag.assertOutput)))(any)
+  getDecoder3(~s1=unknown, ~s2=schema->castToInternal, ~s3=assertResult)(any)
 }
 
 let isAsync = schema => {
@@ -3192,7 +3134,7 @@ module Union = {
             | None => ()
             }
 
-            if itemOutput !== input ? true : itemOutput.inline !== typeValidationInput.inline {
+            if itemOutput !== input ? itemOutput.inline !== typeValidationInput.inline : false {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
                 typeValidationInput.flag = input.flag->Flag.with(ValFlag.async)
               }
@@ -4179,12 +4121,6 @@ let enableJsonString = {
       })
     }
   }
-}
-
-let jsonStringWithSpace = (space: int) => {
-  let mut = jsonString->copySchema
-  mut.space = Some(space)
-  mut->castToPublic
 }
 
 let uint8Array = shaken("uint8Array")
@@ -5623,6 +5559,7 @@ let stringLength = (schema, length, ~message as maybeMessage=?) => {
 }
 
 let email = (schema, ~message=`Invalid email address`) => {
+  Js.log("foo")
   schema->addRefinement(
     ~metadataId=String.Refinement.metadataId,
     ~refiner=(b, ~inputVar, ~selfSchema as _) => {
@@ -5736,148 +5673,18 @@ let nullableAsOption = schema => {
 // JS/TS API
 // =============
 
-let parser = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->castToPublic->makeMakeOperation(Flag.typeValidation)
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(~schema=schema.contents, ~flag=Flag.typeValidation, ~defs=%raw(`0`))
-    }
-  }
-}
+let parser = %raw(`(...args) => getDecoder(unknown, ...args)`)
 
-let asyncParser = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->castToPublic->makeMakeOperation(Flag.typeValidation->Flag.with(Flag.async))
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(
-        ~schema=schema.contents,
-        ~flag=Flag.typeValidation->Flag.with(Flag.async),
-        ~defs=%raw(`0`),
-      )
-    }
-  }
-}
+let asyncParser = %raw(`(...args) => getDecoder(unknown, ...args, 1)`)
 
-let decoder = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->castToPublic->makeMakeOperation(Flag.none)
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
-    }
-  }
-}
+let asyncDecoder = %raw(`(...args) => getDecoder(...args, 1)`)
 
-let asyncDecoder = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->castToPublic->makeMakeOperation(Flag.none->Flag.with(Flag.async))
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1))
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(
-        ~schema=schema.contents,
-        ~flag=Flag.none->Flag.with(Flag.async),
-        ~defs=%raw(`0`),
-      )
-    }
-  }
-}
+let encoder = %raw(`(...args) => getDecoder(...args.map(reverse))`)
 
-let encoder = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->reverse->castToPublic->makeMakeOperation(Flag.none)
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1)->reverse)
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->reverse
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(~schema=schema.contents, ~flag=Flag.none, ~defs=%raw(`0`))
-    }
-  }
-}
-
-let asyncEncoder = _ => {
-  let args = %raw(`arguments`)
-  switch args {
-  | [s] => s->reverse->castToPublic->makeMakeOperation(Flag.none->Flag.with(Flag.async))
-  | _ => {
-      // FIXME: Add cache
-      let schema = ref(args->Js.Array2.unsafe_get(args->Js.Array2.length - 1)->reverse)
-      for i in args->Js.Array2.length - 2 downto 0 {
-        schema :=
-          args
-          ->Js.Array2.unsafe_get(i)
-          ->reverse
-          ->updateOutput(mut => {
-            mut.to = Some(schema.contents)
-          })
-          ->castToInternal
-      }
-      internalCompile(
-        ~schema=schema.contents,
-        ~flag=Flag.none->Flag.with(Flag.async),
-        ~defs=%raw(`0`),
-      )
-    }
-  }
-}
+let asyncEncoder = %raw(`(...args) => getDecoder(...args.map(reverse), 1)`)
 
 let js_assert = (schema, data) => {
-  (schema->makeOperation(Flag.typeValidation->Flag.with(Flag.assertOutput)))(data)
+  getDecoder3(~s1=unknown, ~s2=schema->castToInternal, ~s3=assertResult)(data)
 }
 
 let js_union = values =>
@@ -6240,7 +6047,7 @@ module RescriptJSONSchema = {
               schema
             },
           ),
-          ~flag=Flag.jsonableOutput,
+          ~flag=Flag.none,
           ~path,
         ),
       )

@@ -8,7 +8,7 @@ test("Parses JSON string without transformation", t => {
   t->Assert.deepEqual(`"Foo"`->S.parseOrThrow(schema), `"Foo"`)
   t->U.assertThrowsMessage(
     () => `Foo`->S.parseOrThrow(schema),
-    `Failed parsing: Expected JSON string, received "Foo"`,
+    `Expected JSON string, received "Foo"`,
   )
 
   t->U.assertCompiledCode(
@@ -26,12 +26,9 @@ test("Parses JSON string to string", t => {
   t->Assert.deepEqual(`"Foo"`->S.parseOrThrow(schema), "Foo")
   t->U.assertThrowsMessage(
     () => `Foo`->S.parseOrThrow(schema),
-    `Failed parsing: Expected JSON string, received "Foo"`,
+    `Expected JSON string, received "Foo"`,
   )
-  t->U.assertThrowsMessage(
-    () => `123`->S.parseOrThrow(schema),
-    `Failed parsing: Expected string, received 123`,
-  )
+  t->U.assertThrowsMessage(() => `123`->S.parseOrThrow(schema), `Expected string, received 123`)
 
   t->U.assertCompiledCode(
     ~schema,
@@ -55,7 +52,7 @@ test("Parses JSON string to string literal", t => {
   t->Assert.deepEqual(`"Foo"`->S.parseOrThrow(schema), "Foo")
   t->U.assertThrowsMessage(
     () => `123`->S.parseOrThrow(schema),
-    `Failed parsing: Expected "\\"Foo\\"", received "123"`,
+    `Expected "\\"Foo\\"", received "123"`,
   )
 
   t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="\\"Foo\\""){e[0](i)}return "Foo"}`)
@@ -81,10 +78,7 @@ test("Parses JSON string to float", t => {
   let schema = S.jsonString->S.to(S.float)
 
   t->Assert.deepEqual(`1.23`->S.parseOrThrow(schema), 1.23)
-  t->U.assertThrowsMessage(
-    () => `null`->S.parseOrThrow(schema),
-    `Failed parsing: Expected number, received null`,
-  )
+  t->U.assertThrowsMessage(() => `null`->S.parseOrThrow(schema), `Expected number, received null`)
 
   t->U.assertCompiledCode(
     ~schema,
@@ -106,10 +100,7 @@ test("Parses JSON string to float literal", t => {
   let schema = S.jsonString->S.to(S.literal(1.23))
 
   t->Assert.deepEqual(`1.23`->S.parseOrThrow(schema), 1.23)
-  t->U.assertThrowsMessage(
-    () => `null`->S.parseOrThrow(schema),
-    `Failed parsing: Expected "1.23", received "null"`,
-  )
+  t->U.assertThrowsMessage(() => `null`->S.parseOrThrow(schema), `Expected "1.23", received "null"`)
 
   t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="1.23"){e[0](i)}return 1.23}`)
 
@@ -122,10 +113,7 @@ test("Parses JSON string to bool", t => {
   let schema = S.jsonString->S.to(S.bool)
 
   t->Assert.deepEqual(`true`->S.parseOrThrow(schema), true)
-  t->U.assertThrowsMessage(
-    () => `"t"`->S.parseOrThrow(schema),
-    `Failed parsing: Expected boolean, received "t"`,
-  )
+  t->U.assertThrowsMessage(() => `"t"`->S.parseOrThrow(schema), `Expected boolean, received "t"`)
 
   t->U.assertCompiledCode(
     ~schema,
@@ -147,10 +135,7 @@ test("Parses JSON string to bool literal", t => {
   let schema = S.jsonString->S.to(S.literal(true))
 
   t->Assert.deepEqual(`true`->S.parseOrThrow(schema), true)
-  t->U.assertThrowsMessage(
-    () => `null`->S.parseOrThrow(schema),
-    `Failed parsing: Expected "true", received "null"`,
-  )
+  t->U.assertThrowsMessage(() => `null`->S.parseOrThrow(schema), `Expected "true", received "null"`)
 
   t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="true"){e[0](i)}return true}`)
 
@@ -162,10 +147,7 @@ test("Parses JSON string to bool literal", t => {
 test("Parses JSON string to bigint", t => {
   let schema = S.jsonString->S.to(S.bigint)
 
-  t->U.assertThrowsMessage(
-    () => `123`->S.parseOrThrow(schema),
-    `Failed parsing: Expected bigint, received 123`,
-  )
+  t->U.assertThrowsMessage(() => `123`->S.parseOrThrow(schema), `Expected bigint, received 123`)
 
   t->Assert.deepEqual(`"123"`->S.parseOrThrow(schema), 123n)
 
@@ -191,7 +173,7 @@ test("Parses JSON string to bigint literal", t => {
   t->Assert.deepEqual(`"123"`->S.parseOrThrow(schema), 123n)
   t->U.assertThrowsMessage(
     () => `123`->S.parseOrThrow(schema),
-    `Failed parsing: Expected "\\"123\\"", received "123"`,
+    `Expected "\\"123\\"", received "123"`,
   )
 
   t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="\\"123\\""){e[0](i)}return 123n}`)
@@ -212,12 +194,12 @@ test("Parses JSON string to symbol literal", t => {
 
   t->U.assertThrowsMessage(
     () => `true`->S.parseOrThrow(schema),
-    `Failed parsing: Unsupported transformation from Symbol(foo) to JSON string`,
+    `Unsupported transformation from Symbol(foo) to JSON string`,
   )
 
   t->U.assertThrowsMessage(
     () => symbol->S.reverseConvertOrThrow(schema),
-    `Failed converting: Unsupported transformation from Symbol(foo) to JSON string`,
+    `Unsupported transformation from Symbol(foo) to JSON string`,
   )
 })
 
@@ -368,7 +350,7 @@ test("Parses JSON string to option", t => {
 
   t->U.assertThrowsMessage(
     () => `"foo"`->S.parseOrThrow(schema),
-    `Failed parsing: Expected boolean | undefined, received "foo"`,
+    `Expected boolean | undefined, received "foo"`,
   )
 
   t->Assert.deepEqual(`null`->S.parseOrThrow(schema), None)
@@ -424,7 +406,7 @@ test("Converts JSON string to object with unknown field", t => {
   t->Assert.deepEqual(%raw(`"foo"`)->S.reverseConvertOrThrow(schema), %raw(`'{"foo":"foo"}'`))
   t->U.assertThrowsMessage(() => {
     %raw(`123n`)->S.reverseConvertOrThrow(schema)
-  }, `Failed parsing at ["foo"]: Expected JSON, received 123n`)
+  }, `Failed at ["foo"]: Expected JSON, received 123n`)
 })
 
 test("Compiled async parse code snapshot", t => {
@@ -445,7 +427,7 @@ test("Can apply refinement to JSON string", t => {
       }
   )
 
-  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Expected 123`)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
@@ -464,7 +446,7 @@ test("Can apply refinement to JSON string with S.to after", t => {
     )
     ->S.to(S.int)
 
-  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertThrowsMessage(() => `124`->S.parseOrThrow(schema), `Expected 123`)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
@@ -483,7 +465,7 @@ test("Can apply refinement to JSON string with S.to before", t => {
     ),
   )
 
-  t->U.assertThrowsMessage(() => 124->S.parseOrThrow(schema), `Failed parsing: Expected 123`)
+  t->U.assertThrowsMessage(() => 124->S.parseOrThrow(schema), `Expected 123`)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,

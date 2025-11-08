@@ -9,10 +9,7 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.int->S.port
 
-  t->U.assertThrowsMessage(
-    () => 65536->S.parseOrThrow(schema),
-    `Failed parsing: Expected port, received 65536`,
-  )
+  t->U.assertThrowsMessage(() => 65536->S.parseOrThrow(schema), `Expected port, received 65536`)
 })
 
 test("Successfully serializes valid value", t => {
@@ -26,7 +23,7 @@ test("Fails to serialize invalid value", t => {
 
   t->U.assertThrowsMessage(
     () => -80->S.reverseConvertOrThrow(schema),
-    `Failed converting: Expected port, received -80`,
+    `Expected port, received -80`,
   )
 })
 

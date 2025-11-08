@@ -97,7 +97,7 @@ If the data is invalid, the function will throw an error.
 
 ```ts
 S.parser(Player)({ username: "billie", xp: "not a number" });
-// => throws S.Error: Failed parsing at ["xp"]: Expected number, got string
+// => throws S.Error: Failed at ["xp"]: Expected number, got string
 ```
 
 **Sury** API explicitly tells you that it might throw an error. If you need you can catch it and perform `err instanceof S.Error` check. But **Sury** provides a convenient API which does it for you:
@@ -290,7 +290,7 @@ S.assert(
   }),
   "example.com"
 );
-// Throws S.Error: Failed asserting: Invalid email address
+// Throws S.Error: Invalid email address
 ```
 
 ### Standard Schema
@@ -852,7 +852,7 @@ const TestSchema = S.instance(Test);
 
 const blob: any = "whatever";
 S.parser(TestSchema)(new Test()); // passes
-S.parser(TestSchema)(blob); // throws S.Error: Failed parsing: Expected Test, received "whatever"
+S.parser(TestSchema)(blob); // throws S.Error: Expected Test, received "whatever"
 ```
 
 ## Meta
@@ -945,8 +945,8 @@ const numberSetSchema = mySet(S.number);
 type NumberSet = S.Infer<typeof numberSetSchema>; // Set<number>
 
 S.parser(numberSetSchema)(new Set([1, 2, 3])); // passes
-S.parser(numberSetSchema)(new Set([1, 2, "3"])); // throws S.Error: Failed parsing: At item 3 - Expected number, received "3"
-S.parser(numberSetSchema)([1, 2, 3]); // throws S.Error: Failed parsing: Expected Set<number>, received [1, 2, 3]
+S.parser(numberSetSchema)(new Set([1, 2, "3"])); // throws S.Error: At item 3 - Expected number, received "3"
+S.parser(numberSetSchema)([1, 2, 3]); // throws S.Error: Expected Set<number>, received [1, 2, 3]
 ```
 
 ## Recursive schemas
@@ -1134,7 +1134,7 @@ S.parser(reversed)("bar");
 // {"foo": "bar"}
 
 S.parser(reversed)(123);
-// throws S.error with the message: `Failed parsing: Expected string, received 123`
+// throws S.error with the message: `Expected string, received 123`
 ```
 
 Reverses the schema. This gets especially magical for schemas with transformations 🪄
@@ -1147,7 +1147,7 @@ This very powerful API allows you to coerce another data type in a declarative w
 const schema = S.string.with(S.to, S.number);
 
 S.parser(schema)("123"); //? 123.
-S.parser(schema)("abc"); //? throws: Failed parsing: Expected number, received "abc"
+S.parser(schema)("abc"); //? throws: Expected number, received "abc"
 
 // Reverse works correctly as well 🔥
 S.encoder(schema)(123); //? "123"
@@ -1176,7 +1176,7 @@ const schema = S.string.with(
 );
 
 S.parser(schema)("123"); //? 123
-S.parser(schema)("abc"); //? throws: Failed parsing: Invalid number
+S.parser(schema)("abc"); //? throws: Invalid number
 
 S.encodeOrThrow(schema)(123); //? "123"
 ```
@@ -1213,7 +1213,7 @@ Used internally for readable error messages.
 
 ```ts
 S.parser(S.schema(false))(true);
-// => Throws S.Error with the following message: Failed parsing: Expected false, received true".
+// => Throws S.Error with the following message: Expected false, received true".
 ```
 
 You can catch the error using `S.safe` and `S.safeAsync` helpers:

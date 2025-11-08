@@ -73,7 +73,7 @@ test("Fails to parse tuple with holes", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`["value", "smth", 123]`)->S.parseOrThrow(schema),
-    `Failed parsing at ["1"]: Expected undefined, received "smth"`,
+    `Failed at ["1"]: Expected undefined, received "smth"`,
   )
 })
 
@@ -122,15 +122,9 @@ test(`Fails to serialize tuple with discriminant "Never"`, t => {
     s.item(1, S.string)
   })
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "bar"->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidOperation({
-        description: `Schema for ["0"] isn\'t registered`,
-      }),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `Missing input for never at ["0"]`,
   )
 })
 
@@ -148,15 +142,9 @@ test(`Fails to serialize tuple with discriminant "Never" inside of an object (te
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"foo": "bar"}->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidOperation({
-        description: `Schema for ["0"] isn\'t registered`,
-      }),
-      operation: ReverseConvert,
-      path: S.Path.fromLocation(`foo`),
-    },
+    `Failed at ["foo"]: Missing input for never at ["0"]`,
   )
 })
 
@@ -184,7 +172,7 @@ test("Fails to serialize tuple transformed to variant", t => {
 
   t->U.assertThrowsMessage(
     () => Error("foo")->S.parseOrThrow(schema->S.reverse),
-    `Failed parsing at ["TAG"]: Expected "Ok", received "Error"`,
+    `Failed at ["TAG"]: Expected "Ok", received "Error"`,
   )
 })
 
@@ -216,27 +204,27 @@ test("Tuple schema parsing checks order", t => {
   // Type check should be the first
   t->U.assertThrowsMessage(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected [string, "value"], received "foo"`,
+    `Expected [string, "value"], received "foo"`,
   )
   // Length check should be the second
   t->U.assertThrowsMessage(
     () => %raw(`["value"]`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected [string, "value"], received ["value"]`,
+    `Expected [string, "value"], received ["value"]`,
   )
   // Length check should be the second (extra items in strict mode)
   t->U.assertThrowsMessage(
     () => %raw(`["value", "value", "value"]`)->S.parseOrThrow(schema->S.strict),
-    `Failed parsing: Expected [string, "value"], received ["value", "value", "value"]`,
+    `Expected [string, "value"], received ["value", "value", "value"]`,
   )
   // Tag check should be the third
   t->U.assertThrowsMessage(
     () => %raw(`["value", "wrong"]`)->S.parseOrThrow(schema),
-    `Failed parsing at ["1"]: Expected "value", received "wrong"`,
+    `Failed at ["1"]: Expected "value", received "wrong"`,
   )
   // Field check should be the last
   t->U.assertThrowsMessage(
     () => %raw(`[1, "value"]`)->S.parseOrThrow(schema),
-    `Failed parsing at ["0"]: Expected string, received 1`,
+    `Failed at ["0"]: Expected string, received 1`,
   )
   // Parses valid
   t->Assert.deepEqual(

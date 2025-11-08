@@ -105,7 +105,7 @@ test("Doesn't allow to convert to JSON array with optional items", t => {
 
   t->U.assertThrowsMessage(
     () => [None]->S.reverseConvertToJsonOrThrow(schema),
-    "Failed converting to JSON: (boolean | undefined)[] is not valid JSON",
+    "Failed at []: Unsupported transformation from boolean | undefined to JSON",
   )
 })
 
@@ -114,7 +114,7 @@ test("Doesn't allow to encode tuple with optional item to JSON", t => {
 
   t->U.assertThrowsMessage(
     () => None->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON at ["0"]: Unsupported transformation from boolean | undefined to JSON`,
+    `Unsupported transformation from boolean | undefined to JSON`,
   )
 })
 
@@ -138,7 +138,7 @@ test("Fails to encode Function to JSON", t => {
   let schema = S.literal(fn)
   t->U.assertThrowsMessage(
     () => fn->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Unsupported transformation from Function to JSON`,
+    `Unsupported transformation from Function to JSON`,
   )
 })
 
@@ -148,12 +148,12 @@ test("Fails to encode Error literal to JSON", t => {
 
   t->U.assertThrowsMessage(
     () => error->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Unsupported transformation from [object Error] to JSON`,
+    `Unsupported transformation from [object Error] to JSON`,
   )
   t->Assert.is(error->S.reverseConvertOrThrow(schema), error)
   t->U.assertThrowsMessage(
     () => %raw(`new Error("foo")`)->S.reverseConvertOrThrow(schema),
-    `Failed converting: Expected [object Error], received [object Error]`,
+    `Expected [object Error], received [object Error]`,
   )
 })
 
@@ -162,7 +162,7 @@ test("Fails to encode Symbol to JSON", t => {
   let schema = S.literal(symbol)
   t->U.assertThrowsMessage(
     () => symbol->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Unsupported transformation from Symbol() to JSON`,
+    `Unsupported transformation from Symbol() to JSON`,
   )
 })
 
@@ -180,7 +180,7 @@ test("Encodes NaN to JSON", t => {
   t->Assert.deepEqual(%raw(`NaN`)->S.reverseConvertToJsonOrThrow(schema), JSON.Null)
   t->U.assertThrowsMessage(
     () => ()->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Expected NaN, received undefined`,
+    `Expected NaN, received undefined`,
   )
 })
 
@@ -202,7 +202,7 @@ test("Encodes object with unknown schema to JSON", t => {
   )
   t->U.assertThrowsMessage(
     () => Obj.magic(123n)->S.reverseConvertToJsonOrThrow(S.object(s => s.field("foo", S.unknown))),
-    `Failed parsing to JSON at ["foo"]: Expected JSON, received 123n`,
+    `Expected JSON, received 123n`,
   )
 })
 
@@ -213,7 +213,7 @@ test("Encodes tuple with unknown item to JSON", t => {
   )
   t->U.assertThrowsMessage(
     () => Obj.magic(123n)->S.reverseConvertToJsonOrThrow(S.tuple1(S.unknown)),
-    `Failed parsing to JSON at ["0"]: Expected JSON, received 123n`,
+    `Expected JSON, received 123n`,
   )
 })
 
@@ -224,7 +224,7 @@ test("Encodes a union to JSON when at least one item is not JSON-able", t => {
   t->Assert.deepEqual(%raw(`true`)->S.reverseConvertToJsonOrThrow(schema), JSON.Encode.bool(true))
   t->U.assertThrowsMessage(
     () => %raw(`123n`)->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Expected string | unknown, received 123n
+    `Expected string | unknown, received 123n
 - Expected string, received 123n
 - Expected JSON, received 123n`,
   )
@@ -232,7 +232,7 @@ test("Encodes a union to JSON when at least one item is not JSON-able", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvertToJson,
-    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e0){try{let v0=e[1](i);i=v0}catch(e1){e[2](i,e0,e1)}}return i}`,
+    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e1){try{let v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
   )
 })
 
@@ -252,7 +252,7 @@ test("Encodes a union of NaN and unknown to JSON", t => {
   )
   t->U.assertThrowsMessage(
     () => %raw(`123n`)->S.reverseConvertToJsonOrThrow(schema),
-    `Failed converting to JSON: Expected NaN | unknown, received 123n
+    `Expected NaN | unknown, received 123n
 - Expected NaN, received 123n
 - Expected JSON, received 123n`,
   )

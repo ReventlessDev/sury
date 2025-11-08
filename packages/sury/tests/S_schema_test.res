@@ -241,7 +241,7 @@ test(
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{if(!Array.isArray(i)||i.length!==2){e[0](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}return i}`,
+      `i=>{if(!Array.isArray(i)||i.length!==2){e[2](i)}let v0=i["0"],v1=i["1"];if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="boolean"){e[1](v1)}return i}`,
     )
     t->U.assertCompiledCodeIsNoop(~schema, ~op=#Convert)
   },
@@ -256,7 +256,7 @@ test("Object schema with empty object field", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`{"foo": "bar"}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["foo"]: Expected {}, received "bar"`,
+    `Failed at ["foo"]: Expected {}, received "bar"`,
   )
 
   t->U.assertCompiledCode(
@@ -276,7 +276,7 @@ test("Object schema with nested object field containing only literal", t => {
 
   t->U.assertThrowsMessage(
     () => %raw(`{"foo": {"bar": "bap"}}`)->S.parseOrThrow(schema),
-    `Failed parsing at ["foo"]["bar"]: Expected "baz", received "bap"`,
+    `Failed at ["foo"]["bar"]: Expected "baz", received "bap"`,
   )
 
   t->U.assertCompiledCode(
@@ -297,7 +297,7 @@ test("https://github.com/DZakh/sury/issues/131", t => {
   let json = (%raw(`{"weird": true}`): JSON.t)
   t->U.assertThrowsMessage(
     () => json->S.parseOrThrow(testSchema),
-    `Failed parsing at ["foobar"]: Expected (string | undefined)[], received undefined`,
+    `Failed at ["foobar"]: Expected (string | undefined)[], received undefined`,
   )
 
   t->U.assertCompiledCode(

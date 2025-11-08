@@ -98,7 +98,7 @@ test("Fails to parse undefined", t => {
   let schema = S.json
   t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
-    `Failed parsing: Expected JSON, received undefined`,
+    `Expected JSON, received undefined`,
   )
 })
 

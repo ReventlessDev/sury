@@ -30,7 +30,7 @@ module Common = {
 
     t->U.assertThrowsMessage(
       () => value->S.convertToJsonOrThrow(schema),
-      "Failed converting to JSON: bigint is not valid JSON",
+      "bigint is not valid JSON",
     )
   })
 

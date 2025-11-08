@@ -109,10 +109,10 @@ test("Custom schema", t => {
   )
   t->U.assertThrowsMessage(
     () => S.parseOrThrow(%raw(`new Set([1, 2, "3"])`), intSetSchema),
-    `Failed parsing: Expected int32, received "3"`,
+    `Expected int32, received "3"`,
   )
   t->U.assertThrowsMessage(
     () => S.parseOrThrow(%raw(`[1, 2, 3]`), intSetSchema),
-    `Failed parsing: Expected Set.t<int32>, received [1, 2, 3]`,
+    `Expected Set.t<int32>, received [1, 2, 3]`,
   )
 })
