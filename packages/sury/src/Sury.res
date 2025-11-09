@@ -1989,7 +1989,11 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
   let isAsync = output.flag->Flag.has(ValFlag.async)
   schema.isAsync = Some(isAsync)
 
-  if code === "" && output === input && !(flag->Flag.unsafeHas(Flag.async)) {
+  if (
+    code === "" &&
+    (output === input || output.inline === input.inline) &&
+    !(flag->Flag.unsafeHas(Flag.async))
+  ) {
     Builder.noopOperation
   } else {
     let inlinedOutput = ref(output.inline)
@@ -2159,7 +2163,6 @@ let getDecoder = (~s1 as _, ~flag as _=?) => {
   | Some(cacheTarget) => {
       let key = keyRef.contents
       if cacheTarget->Obj.magic->Stdlib.Dict.has(key) {
-        Js.log(key)
         cacheTarget->Obj.magic->Stdlib.Dict.getUnsafe(key)->Obj.magic
       } else {
         let schema = ref(args->Js.Array2.unsafe_get(idx.contents - 1))
@@ -2541,29 +2544,24 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
   // Ignore #/$defs/
   let identifier = ref->Js.String2.sliceToEnd(~from=8)
   let def = defs->Js.Dict.unsafeGet(identifier)
-  // let flag = if selfSchema.noValidation->X.Option.getUnsafe {
-  //   input.global.flag->Flag.without(Flag.typeValidation)
-  // } else {
-  //   input.global.flag->Flag.with(Flag.typeValidation)
-  // }
   let flag = input.global.flag
-  // FIXME: Instead of flags it should accept from and to schemas
-  let recOperation = switch def->Obj.magic->X.Dict.getUnsafeOptionByInt(flag) {
+  let key = `${input.schema.seq->Obj.magic}-${def.seq->Obj.magic}--${flag->Obj.magic}`
+  let recOperation = switch def->Obj.magic->X.Dict.getUnsafeOption(key) {
   | Some(fn) =>
     // A hacky way to prevent infinite recursion
     if fn === %raw(`0`) {
-      input->B.embed(def) ++ `[${flag->X.Int.unsafeToString}]`
+      input->B.embed(def) ++ `["${key}"]`
     } else {
       input->B.embed(fn)
     }
   | None => {
       def
       ->Obj.magic
-      ->X.Dict.setByInt(flag, 0)
+      ->Stdlib.Dict.set(key, 0)
       let fn = compileDecoder(~schema=input.schema, ~expected=def, ~flag, ~defs=Some(defs))
       def
       ->Obj.magic
-      ->X.Dict.setByInt(flag, fn)
+      ->Stdlib.Dict.set(key, fn)
       input->B.embed(fn)
     }
   }
@@ -3103,6 +3101,8 @@ module Union = {
           // might mutate the input
           let input = typeValidationOutput->B.Val.cleanValFrom
           input.isUnion = Some(true)
+          input.expected =
+            arr->Stdlib.Array.getUnsafe(itemIdx.contents)->(Obj.magic: unknown => internal)
 
           let isLast = itemIdx.contents === lastIdx
           let isFirst = itemIdx.contents === preItems
@@ -5542,7 +5542,6 @@ let stringLength = (schema, length, ~message as maybeMessage=?) => {
 }
 
 let email = (schema, ~message=`Invalid email address`) => {
-  Js.log("foo")
   schema->addRefinement(
     ~metadataId=String.Refinement.metadataId,
     ~refiner=(b, ~inputVar, ~selfSchema as _) => {

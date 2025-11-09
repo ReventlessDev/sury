@@ -1278,7 +1278,7 @@ function compileDecoder(schema, expected, flag, defs) {
   let code = merge(output);
   let isAsync = has(output.f, 1);
   schema.isAsync = isAsync;
-  if (code === "" && output === input && !(flag & 1)) {
+  if (code === "" && (output === input || output.i === input.i) && !(flag & 1)) {
     return noopOperation;
   }
   let inlinedOutput = output.i;
@@ -1321,7 +1321,6 @@ function getDecoder(param, param$1) {
   if (cacheTarget$1 !== undefined) {
     let key = keyRef;
     if (key in cacheTarget$1) {
-      console.log(key);
       return cacheTarget$1[key];
     }
     let schema = args[idx - 1 | 0];
@@ -1627,15 +1626,16 @@ function recursiveDecoder(input, selfSchema) {
   let identifier = ref.slice(8);
   let def = defs[identifier];
   let flag = input.g.o;
-  let fn = def[flag];
+  let key = input.s.seq + "-" + def.seq + "--" + flag;
+  let fn = def[key];
   let recOperation;
   if (fn !== undefined) {
     let fn$1 = Primitive_option.valFromOption(fn);
-    recOperation = fn$1 === 0 ? embed(input, def) + ("[" + flag + "]") : embed(input, fn$1);
+    recOperation = fn$1 === 0 ? embed(input, def) + ("[\"" + key + "\"]") : embed(input, fn$1);
   } else {
-    def[flag] = 0;
+    def[key] = 0;
     let fn$2 = compileDecoder(input.s, def, flag, defs);
-    def[flag] = fn$2;
+    def[key] = fn$2;
     recOperation = embed(input, fn$2);
   }
   let output = withPathPrepend(input, input, undefined, undefined, (param, input) => {
@@ -2045,6 +2045,7 @@ function unionDecoder(input, selfSchema) {
     while (itemIdx <= lastIdx) {
       let input = cleanValFrom(typeValidationOutput);
       input.u = true;
+      input.e = arr[itemIdx];
       let isLast = itemIdx === lastIdx;
       let isFirst = itemIdx === 2;
       let withExhaustiveCheck = !(isFirst && isLast);
@@ -2944,6 +2945,20 @@ function proxifyShapedSchema(schema, from, fromFlattened) {
   });
 }
 
+function getValByFrom(_input, from, _idx) {
+  while (true) {
+    let idx = _idx;
+    let input = _input;
+    let key = from[idx];
+    if (key === undefined) {
+      return input;
+    }
+    _idx = idx + 1 | 0;
+    _input = input.d[key];
+    continue;
+  };
+}
+
 function getShapedParserOutput(input, targetSchema) {
   let from = targetSchema.from;
   let fromFlattened = targetSchema.fromFlattened;
@@ -2981,18 +2996,14 @@ function getShapedParserOutput(input, targetSchema) {
   return v;
 }
 
-function getValByFrom(_input, from, _idx) {
-  while (true) {
-    let idx = _idx;
-    let input = _input;
-    let key = from[idx];
-    if (key === undefined) {
-      return input;
-    }
-    _idx = idx + 1 | 0;
-    _input = input.d[key];
-    continue;
-  };
+function shapedSerializer(input, selfSchema) {
+  let acc = {};
+  prepareShapedSerializerAcc(acc, input);
+  let targetSchema = selfSchema.to;
+  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
+  output.from = input;
+  output.t = targetSchema.to === undefined;
+  return output;
 }
 
 function traverseDefinition(definition, onNode) {
@@ -3034,16 +3045,6 @@ function traverseDefinition(definition, onNode) {
   mut$2.additionalItems = globalConfig.a;
   mut$2.decoder = objectDecoder;
   return mut$2;
-}
-
-function shapedSerializer(input, selfSchema) {
-  let acc = {};
-  prepareShapedSerializerAcc(acc, input);
-  let targetSchema = selfSchema.to;
-  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
-  output.from = input;
-  output.t = targetSchema.to === undefined;
-  return output;
 }
 
 function definitionToSchema(definition) {
@@ -3251,6 +3252,12 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema, path) {
   return complete(output);
 }
 
+function definitionToShapedSchema(definition) {
+  let s = copySchema(traverseDefinition(definition, toEmbededItem));
+  s.serializer = shapedSerializer;
+  return s;
+}
+
 function shapedParser(input, selfSchema) {
   let flattened = selfSchema.flattened;
   if (flattened !== undefined) {
@@ -3268,12 +3275,6 @@ function shapedParser(input, selfSchema) {
   output.from = input;
   output.t = targetSchema.to === undefined;
   return output;
-}
-
-function definitionToShapedSchema(definition) {
-  let s = copySchema(traverseDefinition(definition, toEmbededItem));
-  s.serializer = shapedSerializer;
-  return s;
 }
 
 function shape(schema, definer) {
@@ -3645,7 +3646,6 @@ function stringMaxLength(schema, length, maybeMessage) {
 
 function email(schema, messageOpt) {
   let message = messageOpt !== undefined ? messageOpt : "Invalid email address";
-  console.log("foo");
   return addRefinement(schema, metadataId$1, {
     kind: "Email",
     message: message

@@ -2550,13 +2550,11 @@ test("ArkType pattern matching", async (t) => {
     ])
   );
 
-  console.log(schema);
-
-  // t.deepEqual(S.parser(schema)(`foo`), "foo");
+  t.deepEqual(S.parser(schema)(`foo`), "foo");
   t.deepEqual(S.parser(schema)(5n), "5");
-  // t.deepEqual(S.parser(schema)({ nested: 5n }), { nested: "5" });
+  t.deepEqual(S.parser(schema)({ nested: 5n }), { nested: "5" });
   t.deepEqual(S.encoder(schema)("5"), 5n);
-  // t.deepEqual(S.encoder(schema)("foo"), "foo");
+  t.deepEqual(S.encoder(schema)("foo"), "foo");
 });
 
 test("Example of transformed schema", (t) => {
