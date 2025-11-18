@@ -163,6 +163,7 @@ module Negative = {
       discriminantSchema: S.t<unknown>,
       discriminantData: unknown,
       testNamePostfix: string,
+      missingInputExpression: string,
       path: S.Path.t,
     }
 
@@ -171,6 +172,7 @@ module Negative = {
       ~discriminantData: 'any,
       ~description as maybeDescription=?,
       ~path=S.Path.empty,
+      ~missingInputExpression=discriminantSchema->S.toExpression,
     ) => {
       discriminantSchema: discriminantSchema->Obj.magic,
       discriminantData: discriminantData->Obj.magic,
@@ -178,6 +180,7 @@ module Negative = {
       | Some(description) => ` ${description}`
       | None => ""
       },
+      missingInputExpression,
       path,
     }
   }
@@ -198,6 +201,7 @@ module Negative = {
     TestData.make(
       ~discriminantSchema=S.tuple2(S.literal(true), S.bool),
       ~discriminantData=(true, false),
+      ~missingInputExpression="boolean",
       ~path=S.Path.fromLocation("1"),
     ),
     TestData.make(~discriminantSchema=S.union([S.bool, S.literal(false)]), ~discriminantData=true),
@@ -240,15 +244,9 @@ module Negative = {
           },
         )
 
-        t->U.assertThrows(
+        t->U.assertThrowsMessage(
           () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-          {
-            code: InvalidOperation({
-              description: `Schema for ["discriminant"]${testData.path->S.Path.toString} isn\'t registered`,
-            }),
-            operation: ReverseConvert,
-            path: S.Path.empty,
-          },
+          `Missing input for ${testData.missingInputExpression} at ["discriminant"]${testData.path->S.Path.toString}`,
         )
       },
     )
@@ -302,18 +300,12 @@ test(`Fails to parse object with invalid data passed to discriminant field`, t =
     }
   })
 
-  t->U.assertThrows(
-    () =>
-      {
-        "discriminant": false,
-        "field": "bar",
-      }->S.parseOrThrow(schema),
+  t->U.assertThrowsMessage(() =>
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, value: Obj.magic(false)}),
-      operation: Parse,
-      path: S.Path.fromArray(["discriminant"]),
-    },
-  )
+      "discriminant": false,
+      "field": "bar",
+    }->S.parseOrThrow(schema)
+  , `Failed at ["discriminant"]: Expected string, received false`)
 })
 
 test(`Parses discriminant fields before registered fields`, t => {
@@ -324,18 +316,12 @@ test(`Parses discriminant fields before registered fields`, t => {
     }
   })
 
-  t->U.assertThrows(
-    () =>
-      {
-        "discriminant": false,
-        "field": false,
-      }->S.parseOrThrow(schema),
+  t->U.assertThrowsMessage(() =>
     {
-      code: InvalidType({expected: S.string->S.castToUnknown, value: Obj.magic(false)}),
-      operation: Parse,
-      path: S.Path.fromArray(["discriminant"]),
-    },
-  )
+      "discriminant": false,
+      "field": false,
+    }->S.parseOrThrow(schema)
+  , `Failed at ["discriminant"]: Expected string, received false`)
 })
 
 test(`Fails to serialize object with discriminant "Never"`, t => {

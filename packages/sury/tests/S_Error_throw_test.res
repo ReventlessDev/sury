@@ -5,31 +5,33 @@ test(
   t => {
     t->Assert.throws(
       () => {
-        S.ErrorClass.constructor(
-          ~code=OperationFailed("Should be positive"),
-          ~flag=S.Flag.none,
-          ~path=S.Path.empty,
+        S.Error.make(
+          Custom({
+            reason: "Should be positive",
+            path: S.Path.empty,
+          }),
         )->U.throwError
       },
       ~expectations={
         message: "Should be positive",
-        instanceOf: S.ErrorClass.value->(U.magic: S.ErrorClass.t => 'instanceOf),
+        instanceOf: S.Error.class->(U.magic: S.Error.class => 'instanceOf),
       },
     )
   },
 )
 
 test("Raised error is also the S.Error exeption and can be caught with catch", t => {
-  let error = S.ErrorClass.constructor(
-    ~code=OperationFailed("Should be positive"),
-    ~flag=S.Flag.none,
-    ~path=S.Path.empty,
+  let error = S.Error.make(
+    Custom({
+      reason: "Should be positive",
+      path: S.Path.empty,
+    }),
   )
   t->ExecutionContext.plan(1)
   try {
     let _ = U.throwError(error)
     t->Assert.fail("Should throw before the line")
   } catch {
-  | S.Error(throwdError) => t->Assert.is(error, throwdError)
+  | S.Exn(throwdError) => t->Assert.is(error, throwdError)
   }
 })

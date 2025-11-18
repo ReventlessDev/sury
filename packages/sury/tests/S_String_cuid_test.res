@@ -12,10 +12,7 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.string->S.cuid
 
-  t->U.assertThrows(
-    () => "cifjhdsfhsd-invalid-cuid"->S.parseOrThrow(schema),
-    {code: OperationFailed("Invalid CUID"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "cifjhdsfhsd-invalid-cuid"->S.parseOrThrow(schema), `Invalid CUID`)
 })
 
 test("Successfully serializes valid value", t => {
@@ -30,19 +27,16 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.string->S.cuid
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "cifjhdsfhsd-invalid-cuid"->S.reverseConvertOrThrow(schema),
-    {code: OperationFailed("Invalid CUID"), operation: ReverseConvert, path: S.Path.empty},
+    `Invalid CUID`,
   )
 })
 
 test("Returns custom error message", t => {
   let schema = S.string->S.cuid(~message="Custom")
 
-  t->U.assertThrows(
-    () => "cifjhdsfhsd-invalid-cuid"->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "cifjhdsfhsd-invalid-cuid"->S.parseOrThrow(schema), `Custom`)
 })
 
 test("Returns refinement", t => {

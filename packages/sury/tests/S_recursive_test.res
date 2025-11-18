@@ -46,7 +46,7 @@ test("Fails to parses recursive object when provided invalid type", t => {
       "Children": ["invalid"],
     }->S.parseOrThrow(nodeSchema) {
     | _ => "Shouldn't pass"
-    | exception S.Error({message}) => message
+    | exception S.Exn({message}) => message
     },
     `Failed at ["Children"]["0"]: Expected Node, received "invalid"`,
   )
@@ -140,7 +140,7 @@ test("Fails to parse nested recursive object", t => {
     )
   })
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () =>
       {
         "Id": "1",
@@ -149,11 +149,11 @@ test("Fails to parse nested recursive object", t => {
           {"Id": "3", "Children": [{"Id": "4", "Children": []}]},
         ],
       }->S.parseOrThrow(nodeSchema),
-    {
+    `{
       code: OperationFailed("Invalid id"),
       operation: Parse,
       path: S.Path.fromArray(["Children", "1", "Children", "0", "Id"]),
-    },
+    }`,
   )
 })
 
@@ -185,7 +185,7 @@ test("Fails to parse nested recursive object inside of another object", t => {
     )
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () =>
       {
         "recursive": {
@@ -196,11 +196,11 @@ test("Fails to parse nested recursive object inside of another object", t => {
           ],
         },
       }->S.parseOrThrow(schema),
-    {
+    `{
       code: OperationFailed("Invalid id"),
       operation: Parse,
       path: S.Path.fromArray(["recursive", "Children", "1", "Children", "0", "Id"]),
-    },
+    }`,
   )
 })
 
@@ -294,17 +294,17 @@ test("Fails to serialise nested recursive object", t => {
     )
   })
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () =>
       {
         id: "1",
         children: [{id: "2", children: []}, {id: "3", children: [{id: "4", children: []}]}],
       }->S.reverseConvertOrThrow(nodeSchema),
-    {
+    `{
       code: OperationFailed("Invalid id"),
       operation: ReverseConvert,
       path: S.Path.fromArray(["children", "1", "children", "0", "id"]),
-    },
+    }`,
   )
 })
 

@@ -14,16 +14,9 @@ module Common = {
   test("Fails to parse invalid", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalid->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal(("bar", true))->S.castToUnknown,
-          value: invalid,
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected ["bar", true], received 123`,
     )
   })
 
@@ -51,32 +44,18 @@ module Common = {
   test("Fails to parse array like object", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`{0: "bar",1:true}`)->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal(("bar", true))->S.castToUnknown,
-          value: %raw(`{0: "bar",1:true}`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected ["bar", true], received { 0: "bar"; 1: true; }`,
     )
   })
 
   test("Fails to parse array with excess item", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`["bar", true, false]`)->S.parseOrThrow(schema->S.strict),
-      {
-        code: InvalidType({
-          expected: S.literal(("bar", true))->S.castToUnknown,
-          value: %raw(`["bar", true, false]`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected ["bar", true], received ["bar", true, false]`,
     )
   })
 
@@ -124,16 +103,9 @@ module EmptyArray = {
 
     t->Assert.deepEqual(invalid->S.parseOrThrow(schema->S.strip), [])
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalid->S.parseOrThrow(schema->S.strict),
-      {
-        code: InvalidType({
-          expected: S.literal([])->S.castToUnknown,
-          value: invalid->U.castAnyToUnknown,
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected [], received ["abc"]`,
     )
   })
 

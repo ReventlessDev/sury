@@ -6,13 +6,9 @@ test("Correctly parses", t => {
   t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), None)
   t->Assert.deepEqual(%raw(`undefined`)->S.parseOrThrow(schema), None)
   t->Assert.deepEqual(%raw(`true`)->S.parseOrThrow(schema), Some(true))
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`"foo"`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean | undefined | null, received "foo"`,
   )
 
   t->U.assertCompiledCode(

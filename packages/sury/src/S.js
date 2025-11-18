@@ -1,7 +1,7 @@
 /* @ts-self-types="./S.d.ts" */
 import * as S from "./Sury.res.mjs";
 export { unit as void } from "./Sury.res.mjs";
-export var Error = S.ErrorClass.value;
+export var Error = S.$$Error.$$class;
 export var string = S.string;
 export var boolean = S.bool;
 export var int32 = S.int;

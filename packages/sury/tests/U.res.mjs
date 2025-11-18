@@ -24,12 +24,6 @@ function throwTestException() {
   };
 }
 
-function error(param) {
-  let tmp;
-  tmp = param.operation === "ParseAsync" ? S.Flag.async : S.Flag.none;
-  return S.ErrorClass.constructor(param.code, tmp, param.path);
-}
-
 function assertThrowsTestException(t, fn, message) {
   try {
     fn();
@@ -51,8 +45,8 @@ function assertThrows(t, cb, errorPayload) {
     any = cb();
   } catch (raw_exn) {
     let exn = Primitive_exceptions.internalToException(raw_exn);
-    if (exn.RE_EXN_ID === S.$$Error) {
-      t.is(exn._1.message, error(errorPayload).message);
+    if (exn.RE_EXN_ID === S.Exn) {
+      t.is(exn._1.message, S.$$Error.make(errorPayload).message);
       return;
     }
     throw exn;
@@ -66,28 +60,28 @@ function assertThrowsMessage(t, cb, errorMessage, message) {
     any = cb();
   } catch (raw_exn) {
     let exn = Primitive_exceptions.internalToException(raw_exn);
-    if (exn.RE_EXN_ID === S.$$Error) {
+    if (exn.RE_EXN_ID === S.Exn) {
       t.is(exn._1.message, errorMessage, message !== undefined ? Primitive_option.valFromOption(message) : undefined);
       return;
     }
     throw exn;
   }
-  t.fail("Asserted result is not S.Error \"" + errorMessage + "\". Instead got: " + JSON.stringify(any));
+  t.fail("Asserted result is not S.Exn \"" + errorMessage + "\". Instead got: " + JSON.stringify(any));
 }
 
-async function assertThrowsAsync(t, cb, errorPayload) {
+async function asyncAssertThrowsMessage(t, cb, errorMessage, message) {
   let any;
   try {
     any = await cb();
   } catch (raw_exn) {
     let exn = Primitive_exceptions.internalToException(raw_exn);
-    if (exn.RE_EXN_ID === S.$$Error) {
-      t.is(exn._1.message, error(errorPayload).message);
+    if (exn.RE_EXN_ID === S.Exn) {
+      t.is(exn._1.message, errorMessage, message !== undefined ? Primitive_option.valFromOption(message) : undefined);
       return;
     }
     throw exn;
   }
-  return t.fail("Asserted result is not Error. Recieved: " + JSON.stringify(any));
+  return t.fail("Asserted result is not S.Exn \"" + errorMessage + "\". Instead got: " + JSON.stringify(any));
 }
 
 function getCompiledCodeString(schema, op) {
@@ -183,11 +177,10 @@ export {
   unsafeGetVariantPayload,
   Test,
   throwTestException,
-  error,
   assertThrowsTestException,
   assertThrows,
   assertThrowsMessage,
-  assertThrowsAsync,
+  asyncAssertThrowsMessage,
   getCompiledCodeString,
   cleanUpSchema,
   unsafeAssertEqualSchemas,

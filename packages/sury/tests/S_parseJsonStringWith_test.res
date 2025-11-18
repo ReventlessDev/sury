@@ -1,5 +1,7 @@
 open Ava
 
+S.enableJsonString()
+
 test("Successfully parses", t => {
   let schema = S.bool
 
@@ -17,17 +19,14 @@ test("Fails to parse JSON", t => {
 
   switch "123,"->S.parseJsonStringOrThrow(schema) {
   | _ => t->Assert.fail("Must return Error")
-  | exception S.Error({code, flag, path}) => {
-      t->Assert.deepEqual(flag, S.Flag.none)
+  | exception S.Exn({reason, path}) => {
       t->Assert.deepEqual(path, S.Path.empty)
-      switch code {
+      switch reason {
       // Different errors for different Node.js versions
-      | OperationFailed("Unexpected token , in JSON at position 3")
-      | OperationFailed("Unexpected non-whitespace character after JSON at position 3")
-      | OperationFailed(
-        "Unexpected non-whitespace character after JSON at position 3 (line 1 column 4)",
-      ) => ()
-      | _ => t->Assert.fail("Code must be OperationFailed")
+      | "Unexpected token , in JSON at position 3"
+      | "Unexpected non-whitespace character after JSON at position 3"
+      | "Unexpected non-whitespace character after JSON at position 3 (line 1 column 4)" => ()
+      | _ => t->Assert.fail("Invalid reason")
       }
     }
   }
@@ -36,12 +35,8 @@ test("Fails to parse JSON", t => {
 test("Fails to parse", t => {
   let schema = S.bool
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "123"->S.parseJsonStringOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: Obj.magic(123)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean, received 123`,
   )
 })

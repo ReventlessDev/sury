@@ -205,16 +205,9 @@ test(
 
     t->Assert.deepEqual(%raw(`["foo", true]`)->S.parseOrThrow(schema), {"0": "foo", "1": true})
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`["foo", true]`)->S.parseOrThrow(schema->S.strict),
-      {
-        code: InvalidType({
-          expected: schema->S.strict->S.castToUnknown,
-          value: %raw(`["foo", true]`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected { 0: string; 1: boolean; }, received ["foo", true]`,
     )
   },
 )
@@ -226,16 +219,9 @@ test(
 
     t->Assert.deepEqual(%raw(`["foo", true]`)->S.parseOrThrow(schema), ("foo", true))
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`["foo", true, 1]`)->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: schema->S.strict->S.castToUnknown,
-          value: %raw(`["foo", true, 1]`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected [string, boolean], received ["foo", true, 1]`,
     )
 
     t->U.assertCompiledCode(

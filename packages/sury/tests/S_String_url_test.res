@@ -9,10 +9,7 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.string->S.url
 
-  t->U.assertThrows(
-    () => "cifjhdsfhsd"->S.parseOrThrow(schema),
-    {code: OperationFailed("Invalid url"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "cifjhdsfhsd"->S.parseOrThrow(schema), `Invalid url`)
 })
 
 test("Successfully serializes valid value", t => {
@@ -27,17 +24,11 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.string->S.url
 
-  t->U.assertThrows(
-    () => "cifjhdsfhsd"->S.reverseConvertOrThrow(schema),
-    {code: OperationFailed("Invalid url"), operation: ReverseConvert, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "cifjhdsfhsd"->S.reverseConvertOrThrow(schema), `Invalid url`)
 })
 
 test("Returns custom error message", t => {
   let schema = S.string->S.url(~message="Custom")
 
-  t->U.assertThrows(
-    () => "abc"->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "abc"->S.parseOrThrow(schema), `Custom`)
 })

@@ -22,13 +22,9 @@ test("Fails to parse object with inlinable string field", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{field: 123}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`123`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: Expected string, received 123`,
   )
 })
 
@@ -41,13 +37,9 @@ test(
       }
     )
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`{field: ["foo"]}`)->S.parseOrThrow(schema),
-      {
-        code: OperationFailed("User error"),
-        operation: Parse,
-        path: S.Path.fromArray(["field", "0"]),
-      },
+      `Failed at ["field"]["0"]: User error`,
     )
   },
 )
@@ -69,13 +61,9 @@ test("Fails to parse object with inlinable bool field", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{field: 123}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.bool->S.castToUnknown, value: %raw(`123`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: Expected boolean, received 123`,
   )
 })
 
@@ -112,13 +100,9 @@ test("Fails to parse object with inlinable never field", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.never->S.castToUnknown, value: %raw(`true`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: Expected never, received true`,
   )
 })
 
@@ -139,13 +123,9 @@ test("Fails to parse object with inlinable float field", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.float->S.castToUnknown, value: %raw(`true`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: Expected number, received true`,
   )
 })
 
@@ -166,13 +146,9 @@ test("Fails to parse object with inlinable int field", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{field: true}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: S.int->S.castToUnknown, value: %raw(`true`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: Expected int32, received true`,
   )
 })
 
@@ -207,13 +183,9 @@ test("Fails to parse object when provided invalid data", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`12`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`12`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected { field: string; }, received 12`,
   )
 })
 
@@ -275,13 +247,9 @@ test("Fails to parse object when transformed field has throws error", t => {
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"field": "bar"}->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: Parse,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: User error`,
   )
 })
 
@@ -295,13 +263,9 @@ test("Shows transformed object field name in error path when fails to parse", t 
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"originalFieldName": "bar"}->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: Parse,
-      path: S.Path.fromArray(["originalFieldName"]),
-    },
+    `Failed at ["originalFieldName"]: User error`,
   )
 })
 
@@ -331,13 +295,9 @@ test("Fails to serializes object when transformed field has throws error", t => 
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"field": "bar"}->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: ReverseConvert,
-      path: S.Path.fromArray(["field"]),
-    },
+    `Failed at ["field"]: User error`,
   )
 })
 
@@ -351,13 +311,9 @@ test("Shows transformed object field name in error path when fails to serializes
     }
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => {"transformedFieldName": "bar"}->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: ReverseConvert,
-      path: S.Path.fromArray(["transformedFieldName"]),
-    },
+    `Failed at ["transformedFieldName"]: User error`,
   )
 })
 
@@ -373,19 +329,13 @@ test("Shows transformed to nested object field name in error path when fails to 
     }
   )
 
-  t->U.assertThrows(
-    () =>
-      {
-        "v1": {
-          "transformedFieldName": "bar",
-        },
-      }->S.reverseConvertOrThrow(schema),
+  t->U.assertThrowsMessage(() =>
     {
-      code: OperationFailed("User error"),
-      operation: ReverseConvert,
-      path: S.Path.fromArray(["v1", "transformedFieldName"]),
-    },
-  )
+      "v1": {
+        "transformedFieldName": "bar",
+      },
+    }->S.reverseConvertOrThrow(schema)
+  , `Failed at ["v1"]["transformedFieldName"]: User error`)
 })
 
 test("Successfully parses object with optional fields", t => {

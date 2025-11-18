@@ -15,13 +15,9 @@ module Common = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected number, received "Hello world!"`,
     )
   })
 
@@ -68,12 +64,8 @@ test("Successfully parses number with a fractional part", t => {
 test("Fails to parse NaN", t => {
   let schema = S.float
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`NaN`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`NaN`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected number, received NaN`,
   )
 })

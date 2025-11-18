@@ -12,17 +12,7 @@ test("Coerce from string to bool", t => {
 
   t->Assert.deepEqual("false"->S.parseOrThrow(schema), false)
   t->Assert.deepEqual("true"->S.parseOrThrow(schema), true)
-  t->U.assertThrows(
-    () => "tru"->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.bool->S.castToUnknown,
-        value: %raw(`"tru"`),
-      }),
-      path: S.Path.empty,
-      operation: Parse,
-    },
-  )
+  t->U.assertThrowsMessage(() => "tru"->S.parseOrThrow(schema), `Expected boolean, received "tru"`)
   t->Assert.deepEqual(false->S.reverseConvertOrThrow(schema), %raw(`"false"`))
 
   t->U.assertCompiledCode(
@@ -43,16 +33,9 @@ test("Coerce from bool to string", t => {
 
   t->Assert.deepEqual(false->S.parseOrThrow(schema), "false")
   t->Assert.deepEqual(true->S.parseOrThrow(schema), "true")
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "tru"->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.bool->S.castToUnknown,
-        value: %raw(`"tru"`),
-      }),
-      path: S.Path.empty,
-      operation: ReverseConvert,
-    },
+    `Expected boolean, received "tru"`,
   )
   t->Assert.deepEqual("false"->S.reverseConvertOrThrow(schema), %raw(`false`))
 
@@ -207,28 +190,11 @@ test("Coerce from string to int32", t => {
   let schema = S.string->S.to(S.int)
 
   t->Assert.deepEqual("10"->S.parseOrThrow(schema), 10)
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "2147483648"->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.int->S.castToUnknown,
-        value: %raw(`"2147483648"`),
-      }),
-      path: S.Path.empty,
-      operation: Parse,
-    },
+    `Expected int32, received "2147483648"`,
   )
-  t->U.assertThrows(
-    () => "10.2"->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.int->S.castToUnknown,
-        value: %raw(`"10.2"`),
-      }),
-      path: S.Path.empty,
-      operation: Parse,
-    },
-  )
+  t->U.assertThrowsMessage(() => "10.2"->S.parseOrThrow(schema), `Expected int32, received "10.2"`)
   t->Assert.deepEqual(10->S.reverseConvertOrThrow(schema), %raw(`"10"`))
 
   t->U.assertCompiledCode(
@@ -295,17 +261,7 @@ test("Coerce from string to bigint", t => {
   let schema = S.string->S.to(S.bigint)
 
   t->Assert.deepEqual("10"->S.parseOrThrow(schema), 10n)
-  t->U.assertThrows(
-    () => "10.2"->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.bigint->S.castToUnknown,
-        value: %raw(`"10.2"`),
-      }),
-      path: S.Path.empty,
-      operation: Parse,
-    },
-  )
+  t->U.assertThrowsMessage(() => "10.2"->S.parseOrThrow(schema), `Expected bigint, received "10.2"`)
   t->Assert.deepEqual(10n->S.reverseConvertOrThrow(schema), %raw(`"10"`))
 
   t->U.assertCompiledCode(
@@ -428,16 +384,9 @@ test("Coerce from unit to null literal", t => {
   let schema = S.unit->S.to(S.literal(%raw(`null`)))
 
   t->Assert.deepEqual(()->S.parseOrThrow(schema), %raw(`null`))
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`null`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.unit->S.castToUnknown,
-        value: %raw(`null`),
-      }),
-      path: S.Path.empty,
-      operation: Parse,
-    },
+    `Expected undefined, received null`,
   )
   t->Assert.deepEqual(%raw(`null`)->S.reverseConvertOrThrow(schema), %raw(`undefined`))
 
@@ -480,10 +429,10 @@ test("Coerce from object to string", t => {
 
   t->U.assertThrowsMessage(() => {
     %raw(`{"foo": "bar"}`)->S.parseOrThrow(schema)
-  }, `Unsupported transformation from { foo: string; } to string`)
+  }, `Unsupported conversion from { foo: string; } to string`)
   t->U.assertThrowsMessage(() => {
     %raw(`{"foo": "bar"}`)->S.reverseConvertOrThrow(schema)
-  }, `Unsupported transformation from string to { foo: string; }`)
+  }, `Unsupported conversion from string to { foo: string; }`)
 })
 
 test("Coerce from string to JSON and then to bigint", t => {
@@ -677,9 +626,13 @@ test("Coerce from union to bigint", t => {
 
   t->Assert.deepEqual("123"->S.parseOrThrow(schema), %raw(`123n`))
   t->Assert.deepEqual(123->S.parseOrThrow(schema), %raw(`123n`))
-  t->U.assertThrowsMessage(() => {
-    true->S.parseOrThrow(schema)
-  }, "Unsupported transformation from boolean to bigint")
+  t->U.assertThrowsMessage(
+    () => {
+      true->S.parseOrThrow(schema)
+    },
+    `Expected string | number | boolean, received true
+- Unsupported conversion from boolean to bigint`,
+  )
   t->U.assertThrowsMessage(() => {
     123n->S.parseOrThrow(schema)
   }, "Expected string | number | boolean, received 123n")
@@ -754,9 +707,13 @@ test("Coerce from union to bigint and then to string", t => {
 
   t->Assert.deepEqual("123"->S.parseOrThrow(schema), %raw(`"123"`))
   t->Assert.deepEqual(123->S.parseOrThrow(schema), %raw(`"123"`))
-  t->U.assertThrowsMessage(() => {
-    true->S.parseOrThrow(schema)
-  }, "Unsupported transformation from boolean to bigint")
+  t->U.assertThrowsMessage(
+    () => {
+      true->S.parseOrThrow(schema)
+    },
+    `Expected string | number | boolean, received true
+- Unsupported conversion from boolean to bigint`,
+  )
   t->U.assertThrowsMessage(() => {
     123n->S.parseOrThrow(schema)
   }, "Expected string | number | boolean, received 123n")
@@ -799,7 +756,7 @@ test("Coerce from union to wider union should keep the original value type", t =
   )
 })
 
-test("Fails to transform union to union to string (no reason for this, just not supported)", t => {
+test("Fails to transform union to union to string", t => {
   let schema =
     S.union([S.string->S.castToUnknown, S.float->S.castToUnknown])
     ->S.to(S.union([S.string->S.castToUnknown, S.float->S.castToUnknown, S.bool->S.castToUnknown]))
@@ -807,7 +764,7 @@ test("Fails to transform union to union to string (no reason for this, just not 
 
   t->U.assertThrowsMessage(() => {
     true->S.parseOrThrow(schema)
-  }, "Unsupported transformation from string | number to string")
+  }, "Expected string | number, received true")
 })
 
 test(

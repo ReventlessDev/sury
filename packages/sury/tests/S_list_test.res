@@ -18,11 +18,10 @@ module CommonWithNested = {
 
     switch invalidAny->S.parseOrThrow(schema) {
     | _ => t->Assert.fail("Unexpected result.")
-    | exception S.Error(e) => {
-        t->Assert.deepEqual(e.flag, S.Flag.none)
+    | exception S.Exn(e) => {
         t->Assert.deepEqual(e.path, S.Path.empty)
-        switch e.code {
-        | InvalidType({expected, received}) => {
+        switch e->S.Error.classify {
+        | InvalidInput({expected, received}) => {
             t->Assert.deepEqual(received, invalidAny)
             t->U.unsafeAssertEqualSchemas(expected, schema)
           }
@@ -35,13 +34,9 @@ module CommonWithNested = {
   test("Fails to parse nested", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => nestedInvalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.string->S.castToUnknown, value: 1->Obj.magic}),
-        operation: Parse,
-        path: S.Path.fromArray(["1"]),
-      },
+      `Failed at ["1"]: Expected string, received 1`,
     )
   })
 

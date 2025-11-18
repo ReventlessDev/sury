@@ -17,26 +17,15 @@ module Common = {
   test("Fails to parse invalid value", t => {
     let schema = factory()
 
-    t->U.assertThrows(
-      () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.literal(123.)->S.castToUnknown, value: 444.->Obj.magic}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
-    )
+    t->U.assertThrowsMessage(() => invalidAny->S.parseOrThrow(schema), `Expected 123, received 444`)
   })
 
   test("Fails to parse invalid type", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidTypeAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.literal(123.)->S.castToUnknown, value: invalidTypeAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected 123, received "Hello world!"`,
     )
   })
 
@@ -49,13 +38,9 @@ module Common = {
   test("Fails to serialize invalid value", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidValue->S.reverseConvertOrThrow(schema),
-      {
-        code: InvalidType({expected: S.literal(123.)->S.castToUnknown, value: invalidValue}),
-        operation: ReverseConvert,
-        path: S.Path.empty,
-      },
+      `Expected 123, received 444`,
     )
   })
 
@@ -85,15 +70,8 @@ module Common = {
 test("Formatting of negative number with a decimal point in an error message", t => {
   let schema = S.literal(-123.567)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`"foo"`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({
-        expected: S.literal(-123.567)->S.castToUnknown,
-        value: "foo"->Obj.magic,
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected -123.567, received "foo"`,
   )
 })

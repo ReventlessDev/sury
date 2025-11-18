@@ -825,6 +825,34 @@ test("Fails to parses async schema", async (t) => {
   }
   t.is(result.error.message, "User error");
   t.true(result.error instanceof S.Error);
+
+  expectType<
+    TypeEqual<
+      typeof result.error.code,
+      | "invalid_input"
+      | "invalid_operation"
+      | "unsupported_conversion"
+      | "invalid_conversion"
+      | "unrecognized_keys"
+      | "custom"
+    >
+  >(true);
+
+  if (result.error.code === "custom") {
+    expectType<
+      TypeEqual<
+        typeof result.error,
+        {
+          readonly code: "custom";
+          readonly path: S.Path;
+          readonly message: string;
+          readonly reason: string;
+        }
+      >
+    >(true);
+  } else {
+    t.fail("Should be custom error");
+  }
 });
 
 test("Successfully parses object by provided shape", (t) => {
@@ -2378,7 +2406,7 @@ test("Recursive with self as transform target", (t) => {
       t.deepEqual(S.parser(nodeSchema)(`["[]","[]"]`), [[], []]);
     },
     {
-      message: "Unsupported transformation from string to Node[]",
+      message: "Unsupported conversion from string to Node[]",
     }
   );
 });

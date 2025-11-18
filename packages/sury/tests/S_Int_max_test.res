@@ -10,13 +10,9 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.int->S.max(1)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => 1234->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("Number must be lower than or equal to 1"),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Number must be lower than or equal to 1`,
   )
 })
 
@@ -30,23 +26,16 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.int->S.max(1)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => 1234->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("Number must be lower than or equal to 1"),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `Number must be lower than or equal to 1`,
   )
 })
 
 test("Returns custom error message", t => {
   let schema = S.int->S.max(~message="Custom", 1)
 
-  t->U.assertThrows(
-    () => 12->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => 12->S.parseOrThrow(schema), `Custom`)
 })
 
 test("Returns refinement", t => {

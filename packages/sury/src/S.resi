@@ -245,31 +245,45 @@ and error = private {
   message: string,
   reason: string,
   path: Path.t,
-  code: errorCode,
-  flag: flag,
 }
-and errorCode =
-  | OperationFailed(string)
-  | InvalidOperation({description: string})
-  | InvalidType({
+@tag("code")
+and errorDetails =
+  // When received input doesn't match the expected schema
+  | @as("invalid_input")
+  InvalidInput({
+      path: Path.t,
+      reason: string,
       expected: schema<unknown>,
-      received?: schema<unknown>,
-      value: unknown,
+      received: schema<unknown>,
+      input?: unknown,
       unionErrors?: array<error>,
     })
-  | FailedTransformation({from: schema<unknown>, to: schema<unknown>, error: exn})
-  | UnsupportedTransformation({from: schema<unknown>, to: schema<unknown>})
-  | ExcessField(string)
-  | UnexpectedAsync
-  | InvalidJsonSchema(schema<unknown>)
+  // When an operation fails, because it's impossible or called incorrectly
+  | @as("invalid_operation") InvalidOperation({path: Path.t, reason: string})
+  // When the value conversion between two schemas is not supported
+  | @as("unsupported_conversion")
+  UnsupportedConversion({
+      path: Path.t,
+      reason: string,
+      from: schema<unknown>,
+      to: schema<unknown>,
+    })
+  // When a decoder/encoder fails
+  | @as("invalid_conversion")
+  InvalidConversion({
+      path: Path.t,
+      reason: string,
+      from: schema<unknown>,
+      to: schema<unknown>,
+      cause?: exn,
+    })
+  | @as("unrecognized_keys") UnrecognizedKeys({path: Path.t, reason: string, keys: array<string>})
+  | @as("custom") Custom({path: Path.t, reason: string})
 and flag
 
-type exn += private Error(error)
+type exn += private Exn(error)
 
-type s<'value> = {
-  schema: t<'value>,
-  fail: 'a. (string, ~path: Path.t=?) => 'a,
-}
+type s<'value> = {fail: 'a. (string, ~path: Path.t=?) => 'a}
 
 module Flag: {
   @inline let none: flag
@@ -507,10 +521,12 @@ type globalConfigOverride = {
 
 let global: globalConfigOverride => unit
 
-module ErrorClass: {
-  type t
+module Error: {
+  type class
 
-  let value: t
+  let class: class
 
-  let constructor: (~code: errorCode, ~flag: flag, ~path: Path.t) => error
+  let make: errorDetails => error
+
+  external classify: error => errorDetails = "%identity"
 }

@@ -16,29 +16,18 @@ module Common = {
   test("Fails to parse invalid value", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: schema->S.castToUnknown,
-          value: invalidAny,
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected [int32, boolean], received [123]`,
     )
   })
 
   test("Fails to parse invalid type", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidTypeAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidTypeAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected [int32, boolean], received "Hello world!"`,
     )
   })
 

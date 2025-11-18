@@ -22,26 +22,18 @@ module CommonWithNested = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected { [key: string]: string; }, received true`,
     )
   })
 
   test("Fails to parse nested", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => nestedInvalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.string->S.castToUnknown, value: %raw(`true`)}),
-        operation: Parse,
-        path: S.Path.fromArray(["key2"]),
-      },
+      `Failed at ["key2"]: Expected string, received true`,
     )
   })
 
@@ -128,13 +120,9 @@ test("Applies operation for each item on serializing", t => {
 test("Fails to serialize dict item", t => {
   let schema = S.dict(S.string->S.refine(s => _ => s.fail("User error")))
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => Dict.fromArray([("a", "aa"), ("b", "bb")])->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: ReverseConvert,
-      path: S.Path.fromLocation("a"),
-    },
+    `Failed at ["a"]: User error`,
   )
 })
 

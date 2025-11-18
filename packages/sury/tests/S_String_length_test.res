@@ -9,21 +9,13 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.string->S.length(1)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => ""->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("String must be exactly 1 characters long"),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `String must be exactly 1 characters long`,
   )
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "1234"->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("String must be exactly 1 characters long"),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `String must be exactly 1 characters long`,
   )
 })
 
@@ -36,31 +28,20 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.string->S.length(1)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => ""->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("String must be exactly 1 characters long"),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `String must be exactly 1 characters long`,
   )
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "1234"->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("String must be exactly 1 characters long"),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `String must be exactly 1 characters long`,
   )
 })
 
 test("Returns custom error message", t => {
   let schema = S.string->S.length(~message="Custom", 12)
 
-  t->U.assertThrows(
-    () => "123"->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "123"->S.parseOrThrow(schema), `Custom`)
 })
 
 test("Returns refinement", t => {

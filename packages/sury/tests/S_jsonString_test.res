@@ -194,12 +194,12 @@ test("Parses JSON string to symbol literal", t => {
 
   t->U.assertThrowsMessage(
     () => `true`->S.parseOrThrow(schema),
-    `Unsupported transformation from Symbol(foo) to JSON string`,
+    `Unsupported conversion from Symbol(foo) to JSON string`,
   )
 
   t->U.assertThrowsMessage(
     () => symbol->S.reverseConvertOrThrow(schema),
-    `Unsupported transformation from Symbol(foo) to JSON string`,
+    `Unsupported conversion from Symbol(foo) to JSON string`,
   )
 })
 

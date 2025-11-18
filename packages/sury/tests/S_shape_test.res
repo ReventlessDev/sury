@@ -22,14 +22,7 @@ asyncTest("Parses with wrapping async schema in variant", async t => {
 test("Fails to parse wrapped schema", t => {
   let schema = S.string->S.shape(s => Ok(s))
 
-  t->U.assertThrows(
-    () => 123->S.parseOrThrow(schema),
-    {
-      code: InvalidType({value: 123->Obj.magic, expected: schema->S.castToUnknown}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
-  )
+  t->U.assertThrowsMessage(() => 123->S.parseOrThrow(schema), `Expected string, received 123`)
 })
 
 test("Serializes with unwrapping the value from variant", t => {
@@ -62,16 +55,7 @@ test("Successfully parses when the value is not used as the variant payload", t 
 test("Fails to serialize when the value is not used as the variant payload", t => {
   let schema = S.string->S.shape(_ => #foo)
 
-  t->U.assertThrows(
-    () => #foo->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidOperation({
-        description: `Missing input for string schema`,
-      }),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
-  )
+  t->U.assertThrowsMessage(() => #foo->S.reverseConvertOrThrow(schema), `Missing input for string`)
 })
 
 test(

@@ -15,13 +15,9 @@ module Common = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected string | undefined, received 123.45`,
     )
   })
 
@@ -101,26 +97,18 @@ test("Successfully parses primitive", t => {
 test("Fails to parse JS null", t => {
   let schema = S.option(S.bool)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`null`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`null`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean | undefined, received null`,
   )
 })
 
 test("Fails to parse JS undefined when schema doesn't allow optional data", t => {
   let schema = S.bool
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`undefined`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean, received undefined`,
   )
 })
 

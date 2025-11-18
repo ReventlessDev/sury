@@ -38,32 +38,18 @@ module Common = {
       ~message=`Convert operation doesn't validate anything and assumes a valid input`,
     )
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalid->S.parseOrThrow(schema->S.reverse),
-      {
-        code: InvalidType({
-          expected: schema->S.castToUnknown,
-          value: %raw(`123`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected { foo: "bar"; }, received 123`,
     )
   })
 
   test("Fails to parse null", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`null`)->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal(Dict.fromArray([("foo", "bar")]))->S.castToUnknown,
-          value: %raw(`null`),
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected { foo: "bar"; }, received null`,
     )
   })
 

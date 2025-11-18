@@ -55,7 +55,7 @@ Nodefs.mkdirSync(Nodepath.join(artifactsPath, "scripts"));
 let filesMapping = [
   [
     "Error",
-    "S.ErrorClass.value"
+    "S.$$Error.$$class"
   ],
   [
     "string",

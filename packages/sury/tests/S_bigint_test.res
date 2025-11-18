@@ -15,13 +15,9 @@ module Common = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected bigint, received 123.45`,
     )
   })
 

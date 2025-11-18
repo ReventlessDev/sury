@@ -21,10 +21,7 @@ test("Successfully parses uuid V7", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.string->S.uuid
 
-  t->U.assertThrows(
-    () => "123e4567"->S.parseOrThrow(schema),
-    {code: OperationFailed("Invalid UUID"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "123e4567"->S.parseOrThrow(schema), `Invalid UUID`)
 })
 
 test("Successfully serializes valid value", t => {
@@ -39,17 +36,11 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.string->S.uuid
 
-  t->U.assertThrows(
-    () => "123e4567"->S.reverseConvertOrThrow(schema),
-    {code: OperationFailed("Invalid UUID"), operation: ReverseConvert, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "123e4567"->S.reverseConvertOrThrow(schema), `Invalid UUID`)
 })
 
 test("Returns custom error message", t => {
   let schema = S.string->S.uuid(~message="Custom")
 
-  t->U.assertThrows(
-    () => "abc"->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "abc"->S.parseOrThrow(schema), `Custom`)
 })

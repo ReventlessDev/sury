@@ -28,23 +28,16 @@ asyncTest(
 test("Fails to parse primitive with transform when parser isn't provided", t => {
   let schema = S.string->S.transform(_ => {serializer: value => value})
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "Hello world!"->S.parseOrThrow(schema),
-    {
-      code: InvalidOperation({description: "The S.transform parser is missing"}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `The S.transform parser is missing`,
   )
 })
 
 test("Fails to parse when user throws error in a Transformed Primitive parser", t => {
   let schema = S.string->S.transform(s => {parser: _ => s.fail("User error")})
 
-  t->U.assertThrows(
-    () => "Hello world!"->S.parseOrThrow(schema),
-    {code: OperationFailed("User error"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "Hello world!"->S.parseOrThrow(schema), `User error`)
 })
 
 test("Uses the path from S.Error.throw called in the transform parser", t => {
@@ -52,22 +45,19 @@ test("Uses the path from S.Error.throw called in the transform parser", t => {
     S.string->S.transform(_ => {
       parser: _ =>
         U.throwError(
-          U.error({
-            code: OperationFailed("User error"),
-            operation: Parse,
-            path: S.Path.fromArray(["a", "b"]),
-          }),
+          S.Error.make(
+            Custom({
+              reason: "User error",
+              path: S.Path.fromArray(["a", "b"]),
+            }),
+          ),
         ),
     }),
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => ["Hello world!"]->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: Parse,
-      path: S.Path.fromArray(["0", "a", "b"]),
-    },
+    `Failed at ["0"]["a"]["b"]: User error`,
   )
 })
 
@@ -76,42 +66,47 @@ test("Uses the path from S.Error.throw called in the transform serializer", t =>
     S.string->S.transform(_ => {
       serializer: _ =>
         U.throwError(
-          U.error({
-            code: OperationFailed("User error"),
-            operation: ReverseConvert,
-            path: S.Path.fromArray(["a", "b"]),
-          }),
+          S.Error.make(
+            Custom({
+              reason: "User error",
+              path: S.Path.fromArray(["a", "b"]),
+            }),
+          ),
         ),
     }),
   )
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => ["Hello world!"]->S.reverseConvertToJsonOrThrow(schema),
-    {
-      code: OperationFailed("User error"),
-      operation: ReverseConvert,
-      path: S.Path.fromArray(["0", "a", "b"]),
-    },
+    `Failed at ["0"]["a"]["b"]: User error`,
   )
 })
 
-test("Transform parser passes through non rescript-schema errors", t => {
-  let schema = S.array(
-    S.string->S.transform(_ => {parser: _ => JsError.throwWithMessage("Application crashed")}),
-  )
+test("All errors thrown in operation context are caught and wrapped in SuryError", t => {
+  let jsError = JsError.make("Application crashed")
+  let schema = S.array(S.string->S.transform(_ => {parser: _ => JsError.throw(jsError)}))
 
-  t->Assert.throws(
+  t->U.assertThrowsMessage(
     () => {["Hello world!"]->S.parseOrThrow(schema)},
-    ~expectations={
-      message: "Application crashed",
-    },
+    `Failed at ["0"]: Application crashed`,
   )
+  switch ["Hello world!"]->S.parseOrThrow(schema) {
+  | _ => t->Assert.fail("Didn't throw")
+  | exception S.Exn(error) =>
+    switch error->S.Error.classify {
+    | InvalidConversion({cause}) => t->Assert.is(cause->Obj.magic, jsError)
+    | _ => t->Assert.fail("Thrown another exception")
+    }
+  }
 })
 
-test("Transform parser passes through other rescript exceptions", t => {
+test("Operation context catches ReScript exceptions as they are", t => {
   let schema = S.array(S.string->S.transform(_ => {parser: _ => U.throwTestException()}))
 
-  t->U.assertThrowsTestException(() => {["Hello world!"]->S.parseOrThrow(schema)})
+  t->U.assertThrowsMessage(
+    () => {["Hello world!"]->S.parseOrThrow(schema)},
+    `Failed at ["0"]: { RE_EXN_ID: "U.Test"; Error: [object Error]; }`,
+  )
 })
 
 test("Transform definition passes through non rescript-schema errors", t => {
@@ -125,10 +120,18 @@ test("Transform definition passes through non rescript-schema errors", t => {
   )
 })
 
-test("Transform definition passes through other rescript exceptions", t => {
+test("Rescript exceptions caught in transform", t => {
   let schema = S.array(S.string->S.transform(_ => U.throwTestException()))
+  t->U.assertThrowsTestException(
+    () => ["Hello world!"]->S.parseOrThrow(schema),
+    ~message="When exn thrown outside of the operation context, it's not wrapped in SuryError",
+  )
 
-  t->U.assertThrowsTestException(() => {["Hello world!"]->S.parseOrThrow(schema)})
+  let schema = S.array(S.string->S.transform(_ => {parser: _ => U.throwTestException()}))
+  t->U.assertThrowsMessage(
+    () => ["Hello world!"]->S.parseOrThrow(schema),
+    `Failed at ["0"]: { RE_EXN_ID: "U.Test"; Error: [object Error]; }`,
+  )
 })
 
 test("Successfully serializes primitive with transformation to the same type", t => {
@@ -146,23 +149,16 @@ test("Successfully serializes primitive with transformation to another type", t 
 test("Transformed Primitive serializing fails when serializer isn't provided", t => {
   let schema = S.string->S.transform(_ => {parser: value => value})
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "Hello world!"->S.reverseConvertOrThrow(schema),
-    {
-      code: InvalidOperation({description: "The S.transform serializer is missing"}),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `The S.transform serializer is missing`,
   )
 })
 
 test("Fails to serialize when user throws error in a Transformed Primitive serializer", t => {
   let schema = S.string->S.transform(s => {serializer: _ => s.fail("User error")})
 
-  t->U.assertThrows(
-    () => "Hello world!"->S.reverseConvertOrThrow(schema),
-    {code: OperationFailed("User error"), operation: ReverseConvert, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => "Hello world!"->S.reverseConvertOrThrow(schema), `User error`)
 })
 
 test("Transform operations applyed in the right order when parsing", t => {
@@ -171,10 +167,7 @@ test("Transform operations applyed in the right order when parsing", t => {
     ->S.transform(s => {parser: _ => s.fail("First transform")})
     ->S.transform(s => {parser: _ => s.fail("Second transform")})
 
-  t->U.assertThrows(
-    () => 123->S.parseOrThrow(schema),
-    {code: OperationFailed("First transform"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => 123->S.parseOrThrow(schema), `First transform`)
 })
 
 test("Transform operations applyed in the right order when serializing", t => {
@@ -183,14 +176,7 @@ test("Transform operations applyed in the right order when serializing", t => {
     ->S.transform(s => {serializer: _ => s.fail("First transform")})
     ->S.transform(s => {serializer: _ => s.fail("Second transform")})
 
-  t->U.assertThrows(
-    () => 123->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("Second transform"),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
-  )
+  t->U.assertThrowsMessage(() => 123->S.reverseConvertOrThrow(schema), `Second transform`)
 })
 
 test(
@@ -210,24 +196,18 @@ test(
 test("Fails to parse schema with transform having both parser and asyncParser", t => {
   let schema = S.string->S.transform(_ => {parser: _ => (), asyncParser: _ => Promise.resolve()})
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => "foo"->S.parseOrThrow(schema),
-    {
-      code: InvalidOperation({
-        description: "The S.transform doesn\'t allow parser and asyncParser at the same time. Remove parser in favor of asyncParser",
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `The S.transform doesn't allow parser and asyncParser at the same time. Remove parser in favor of asyncParser`,
   )
 })
 
 test("Fails to parse async using parseOrThrow", t => {
   let schema = S.string->S.transform(_ => {asyncParser: value => Promise.resolve(value)})
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`"Hello world!"`)->S.parseOrThrow(schema),
-    {code: UnexpectedAsync, operation: Parse, path: S.Path.empty},
+    `Encountered unexpected async transform or refine. Use parseAsyncOrThrow operation instead`,
   )
 })
 
@@ -256,9 +236,9 @@ asyncTest("Successfully parses async using parseAsyncOrThrow", t => {
 asyncTest("Fails to parse async with user error", t => {
   let schema = S.string->S.transform(s => {asyncParser: _ => s.fail("User error")})
 
-  t->U.assertThrowsAsync(
+  t->U.asyncAssertThrowsMessage(
     () => %raw(`"Hello world!"`)->S.parseAsyncOrThrow(schema),
-    {code: OperationFailed("User error"), operation: ParseAsync, path: S.Path.empty},
+    `User error`,
   )
 })
 
@@ -291,7 +271,7 @@ test("Compiled parse code snapshot", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[1](i)}return e[0](i)}`,
+    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[2](i)}let v0;try{v0=e[0](i)}catch(x){e[1](x)}return v0}`,
   )
 })
 
@@ -304,7 +284,7 @@ test("Compiled async parse code snapshot", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[1](i)}return e[0](i)}`,
+    `i=>{if(typeof i!=="number"||i>2147483647||i<-2147483648||i%1!==0){e[2](i)}let v0;try{v0=e[0](i).catch(x=>e[1](x))}catch(x){e[1](x)}return v0}`,
   )
 })
 
@@ -317,7 +297,7 @@ test("Compiled serialize code snapshot", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{let v0=e[0](i);if(typeof v0!=="number"||v0>2147483647||v0<-2147483648||v0%1!==0){e[1](v0)}return v0}`,
+    `i=>{let v0;try{v0=e[0](i)}catch(x){e[1](x)}if(typeof v0!=="number"||v0>2147483647||v0<-2147483648||v0%1!==0){e[2](v0)}return v0}`,
   )
 })
 
@@ -338,7 +318,7 @@ test("Compiled serialize code snapshot with two transforms", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{let v1=e[0](i);if(typeof v1!=="number"||v1>2147483647||v1<-2147483648||v1%1!==0){e[3](v1)}let v0=e[1](e[0](i));if(typeof v0!=="string"){e[2](v0)}return v0}`,
+    `i=>{let v0;try{v0=e[0](i)}catch(x){e[1](x)}if(typeof v0!=="number"||v0>2147483647||v0<-2147483648||v0%1!==0){e[5](v0)}let v1;try{v1=e[2](v0)}catch(x){e[3](x)}if(typeof v1!=="string"){e[4](v1)}return v1}`,
   )
 })
 

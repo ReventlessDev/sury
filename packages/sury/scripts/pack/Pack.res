@@ -112,7 +112,7 @@ NodeJs.Fs.mkdirSync(NodeJs.Path.join2(artifactsPath, "tests"))
 NodeJs.Fs.mkdirSync(NodeJs.Path.join2(artifactsPath, "scripts"))
 
 let filesMapping = [
-  ("Error", "S.ErrorClass.value"),
+  ("Error", "S.$$Error.$$class"),
   ("string", "S.string"),
   ("boolean", "S.bool"),
   ("int32", "S.int"),

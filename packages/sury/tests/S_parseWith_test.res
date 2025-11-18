@@ -15,13 +15,9 @@ test("Successfully parses unknown", t => {
 test("Fails to parse", t => {
   let schema = S.bool
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw("123")->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw("123")}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean, received 123`,
   )
 })
 

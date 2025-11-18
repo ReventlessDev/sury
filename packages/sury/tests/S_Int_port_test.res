@@ -30,10 +30,7 @@ test("Fails to serialize invalid value", t => {
 test("Returns custom error message", t => {
   let schema = S.int->S.port(~message="Custom")
 
-  t->U.assertThrows(
-    () => 400000->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => 400000->S.parseOrThrow(schema), `Custom`)
 })
 
 test("Reflects refinement on schema", t => {

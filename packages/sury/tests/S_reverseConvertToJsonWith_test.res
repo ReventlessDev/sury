@@ -105,7 +105,7 @@ test("Doesn't allow to convert to JSON array with optional items", t => {
 
   t->U.assertThrowsMessage(
     () => [None]->S.reverseConvertToJsonOrThrow(schema),
-    "Failed at []: Unsupported transformation from boolean | undefined to JSON",
+    "Failed at []: Unsupported conversion from boolean | undefined to JSON",
   )
 })
 
@@ -114,7 +114,7 @@ test("Doesn't allow to encode tuple with optional item to JSON", t => {
 
   t->U.assertThrowsMessage(
     () => None->S.reverseConvertToJsonOrThrow(schema),
-    `Unsupported transformation from boolean | undefined to JSON`,
+    `Unsupported conversion from boolean | undefined to JSON`,
   )
 })
 
@@ -138,7 +138,7 @@ test("Fails to encode Function to JSON", t => {
   let schema = S.literal(fn)
   t->U.assertThrowsMessage(
     () => fn->S.reverseConvertToJsonOrThrow(schema),
-    `Unsupported transformation from Function to JSON`,
+    `Unsupported conversion from Function to JSON`,
   )
 })
 
@@ -148,7 +148,7 @@ test("Fails to encode Error literal to JSON", t => {
 
   t->U.assertThrowsMessage(
     () => error->S.reverseConvertToJsonOrThrow(schema),
-    `Unsupported transformation from [object Error] to JSON`,
+    `Unsupported conversion from [object Error] to JSON`,
   )
   t->Assert.is(error->S.reverseConvertOrThrow(schema), error)
   t->U.assertThrowsMessage(
@@ -162,7 +162,7 @@ test("Fails to encode Symbol to JSON", t => {
   let schema = S.literal(symbol)
   t->U.assertThrowsMessage(
     () => symbol->S.reverseConvertToJsonOrThrow(schema),
-    `Unsupported transformation from Symbol() to JSON`,
+    `Unsupported conversion from Symbol() to JSON`,
   )
 })
 
@@ -185,13 +185,9 @@ test("Encodes NaN to JSON", t => {
 })
 
 test("Fails to encode Never to JSON", t => {
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => Obj.magic(123)->S.reverseConvertToJsonOrThrow(S.never),
-    {
-      code: InvalidType({expected: S.never->S.castToUnknown, value: Obj.magic(123)}),
-      operation: ReverseConvertToJson,
-      path: S.Path.empty,
-    },
+    `Expected never, received 123`,
   )
 })
 

@@ -4,7 +4,7 @@ import * as Sury from "./Sury.res.mjs";
 
 let Path = Sury.Path;
 
-let $$Error = Sury.$$Error;
+let Exn = Sury.Exn;
 
 let Flag = Sury.Flag;
 
@@ -186,11 +186,11 @@ let extendJSONSchema = Sury.extendJSONSchema;
 
 let global = Sury.global;
 
-let ErrorClass = Sury.ErrorClass;
+let $$Error = Sury.$$Error;
 
 export {
   Path,
-  $$Error,
+  Exn,
   Flag,
   never,
   unknown,
@@ -281,6 +281,6 @@ export {
   fromJSONSchema,
   extendJSONSchema,
   global,
-  ErrorClass,
+  $$Error,
 }
 /* Sury Not a pure module */

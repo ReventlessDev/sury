@@ -35,14 +35,14 @@ test("Parses when both schemas misses parser and have the same type", t => {
     let _ = %raw(`null`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) => t->Assert.is(error.message, `Expected string | string, received null`)
+  | S.Exn(error) => t->Assert.is(error.message, `Expected string | string, received null`)
   }
 
   try {
     let _ = %raw(`"foo"`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) =>
+  | S.Exn(error) =>
     t->Assert.is(
       error.message,
       `Expected string | string, received "foo"
@@ -67,14 +67,14 @@ test("Parses when both schemas misses parser and have different types", t => {
     let _ = %raw(`null`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) => t->Assert.is(error.message, `Expected "apple" | string, received null`)
+  | S.Exn(error) => t->Assert.is(error.message, `Expected "apple" | string, received null`)
   }
 
   try {
     let _ = %raw(`"abc"`)->S.parseOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) =>
+  | S.Exn(error) =>
     t->Assert.is(
       error.message,
       `Expected "apple" | string, received "abc"
@@ -99,7 +99,7 @@ test("Serializes when both schemas misses serializer", t => {
     let _ = %raw(`null`)->S.reverseConvertOrThrow(schema)
     t->Assert.fail("Expected to throw")
   } catch {
-  | S.Error(error) =>
+  | S.Exn(error) =>
     t->Assert.is(
       error.message,
       `Expected unknown | unknown, received null
@@ -264,16 +264,10 @@ module Advanced = {
       "y": 3,
     }`)
 
-    let error: U.errorPayload = {
-      code: InvalidType({
-        expected: shapeSchema->S.castToUnknown,
-        value: shape->Obj.magic,
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    }
-
-    t->U.assertThrows(() => shape->S.parseOrThrow(shapeSchema), error)
+    t->U.assertThrowsMessage(
+      () => shape->S.parseOrThrow(shapeSchema),
+      `Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received { kind: "oval"; x: 2; y: 3; }`,
+    )
   })
 
   test("Fails to parse with unknown kind when the union is an object field", t => {
@@ -288,24 +282,14 @@ module Advanced = {
       "field": shape,
     }
 
-    let error: U.errorPayload = {
-      code: InvalidType({
-        expected: shapeSchema->S.castToUnknown,
-        value: shape->Obj.magic,
-      }),
-      operation: Parse,
-      path: S.Path.fromLocation("field"),
-    }
-
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
       `i=>{if(typeof i!=="object"||!i){e[6](i)}let v0=i["field"];if(typeof v0==="object"&&v0&&!Array.isArray(v0)){if(v0["kind"]==="circle"){let v1=v0["radius"];if(typeof v1!=="number"||Number.isNaN(v1)){e[0](v1)}v0={"TAG":"Circle","radius":v1,}}else if(v0["kind"]==="square"){let v2=v0["x"];if(typeof v2!=="number"||Number.isNaN(v2)){e[1](v2)}v0={"TAG":"Square","x":v2,}}else if(v0["kind"]==="triangle"){let v3=v0["x"],v4=v0["y"];if(typeof v3!=="number"||Number.isNaN(v3)){e[2](v3)}if(typeof v4!=="number"||Number.isNaN(v4)){e[3](v4)}v0={"TAG":"Triangle","x":v3,"y":v4,}}else{e[4](v0)}}else{e[5](v0)}return v0}`,
     )
 
-    t->U.assertThrows(() => data->S.parseOrThrow(schema), error)
-    t->Assert.is(
-      (error->U.error).message,
+    t->U.assertThrowsMessage(
+      () => data->S.parseOrThrow(schema),
       `Failed at ["field"]: Expected { kind: "circle"; radius: number; } | { kind: "square"; x: number; } | { kind: "triangle"; x: number; y: number; }, received { kind: "oval"; x: 2; y: 3; }`,
     )
   })

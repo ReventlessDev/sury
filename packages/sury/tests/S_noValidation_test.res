@@ -4,17 +4,7 @@ test("Successfully parses", t => {
   let schema = S.string
   let schemaWithoutTypeValidation = schema->S.noValidation(true)
 
-  t->U.assertThrows(
-    () => 1->S.parseOrThrow(schema),
-    {
-      code: S.InvalidType({
-        expected: schema->S.castToUnknown,
-        value: %raw(`1`),
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
-  )
+  t->U.assertThrowsMessage(() => 1->S.parseOrThrow(schema), `Expected string, received 1`)
   t->Assert.deepEqual(1->S.parseOrThrow(schemaWithoutTypeValidation), %raw(`1`))
 })
 
@@ -22,16 +12,9 @@ test("Works for literals", t => {
   let schema = S.literal("foo")
   let schemaWithoutTypeValidation = schema->S.noValidation(true)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => 1->S.parseOrThrow(schema),
-    {
-      code: S.InvalidType({
-        expected: schema->S.castToUnknown,
-        value: %raw(`1`),
-      }),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected "foo", received 1`,
   )
   t->Assert.deepEqual(1->S.parseOrThrow(schemaWithoutTypeValidation), "foo")
   t->U.assertCompiledCode(~schema=schemaWithoutTypeValidation, ~op=#Parse, `i=>{return "foo"}`)

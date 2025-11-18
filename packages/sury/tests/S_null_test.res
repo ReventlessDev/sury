@@ -17,13 +17,9 @@ module Common = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected string | null, received 123.45`,
     )
   })
 
@@ -87,13 +83,9 @@ test("Successfully parses primitive", t => {
 test("Fails to parse JS undefined", t => {
   let schema = S.null(S.bool)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`undefined`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean | null, received undefined`,
   )
 })
 
@@ -101,26 +93,18 @@ test("Fails to parse object with missing field that marked as null", t => {
   let fieldSchema = S.null(S.string)
   let schema = S.object(s => s.field("nullableField", fieldSchema))
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`{}`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: fieldSchema->S.castToUnknown, value: %raw(`undefined`)}),
-      operation: Parse,
-      path: S.Path.fromArray(["nullableField"]),
-    },
+    `Failed at ["nullableField"]: Expected string | null, received undefined`,
   )
 })
 
 test("Fails to parse JS null when schema doesn't allow optional data", t => {
   let schema = S.bool
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`null`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`null`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean, received null`,
   )
 })
 

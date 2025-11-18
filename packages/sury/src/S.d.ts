@@ -241,17 +241,58 @@ export abstract class Path {
   protected opaque: any;
 } /* simulate opaque types */
 
-export class Error {
-  readonly flag: number;
-  readonly code: ErrorCode;
-  readonly path: Path;
-  readonly message: string;
-  readonly reason: string;
-}
+export type Error =
+  | {
+      readonly code: "invalid_input";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+      readonly expected: Schema<unknown>;
+      readonly received: Schema<unknown>;
+      readonly input?: unknown;
+      readonly unionErrors?: readonly Error[];
+    }
+  | {
+      readonly code: "invalid_operation";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+    }
+  | {
+      readonly code: "unsupported_conversion";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+      readonly from: Schema<unknown>;
+      readonly to: Schema<unknown>;
+    }
+  | {
+      readonly code: "invalid_conversion";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+      readonly from: Schema<unknown>;
+      readonly to: Schema<unknown>;
+      readonly cause?: Error;
+    }
+  | {
+      readonly code: "unrecognized_keys";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+      readonly keys: readonly string[];
+    }
+  | {
+      readonly code: "custom";
+      readonly path: Path;
+      readonly message: string;
+      readonly reason: string;
+    };
 
-export abstract class ErrorCode {
-  protected opaque: any;
-} /* simulate opaque types */
+export const Error: {
+  new (): Error;
+  prototype: Error;
+};
 
 export type Output<T> = T extends Schema<infer Output, unknown>
   ? Output

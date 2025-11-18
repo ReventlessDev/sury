@@ -15,13 +15,9 @@ module Common = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: invalidAny}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected int32, received 123.45`,
     )
   })
 
@@ -62,13 +58,9 @@ module Common = {
 test("Fails to parse int when JSON is a number bigger than +2^31", t => {
   let schema = S.int
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`2147483648`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`2147483648`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected int32, received 2147483648`,
   )
   t->Assert.deepEqual(%raw(`2147483647`)->S.parseOrThrow(schema), 2147483647)
 })
@@ -76,13 +68,9 @@ test("Fails to parse int when JSON is a number bigger than +2^31", t => {
 test("Fails to parse int when JSON is a number lower than -2^31", t => {
   let schema = S.int
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`-2147483649`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`-2147483649`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected int32, received -2147483649`,
   )
   t->Assert.deepEqual(%raw(`-2147483648`)->S.parseOrThrow(schema), -2147483648)
 })
@@ -90,12 +78,8 @@ test("Fails to parse int when JSON is a number lower than -2^31", t => {
 test("Fails to parse NaN", t => {
   let schema = S.int
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`NaN`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`NaN`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected int32, received NaN`,
   )
 })

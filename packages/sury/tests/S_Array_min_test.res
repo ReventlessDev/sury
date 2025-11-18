@@ -10,14 +10,7 @@ test("Successfully parses valid data", t => {
 test("Fails to parse invalid data", t => {
   let schema = S.array(S.int)->S.min(1)
 
-  t->U.assertThrows(
-    () => []->S.parseOrThrow(schema),
-    {
-      code: OperationFailed("Array must be 1 or more items long"),
-      operation: Parse,
-      path: S.Path.empty,
-    },
-  )
+  t->U.assertThrowsMessage(() => []->S.parseOrThrow(schema), `Array must be 1 or more items long`)
 })
 
 test("Successfully serializes valid value", t => {
@@ -30,23 +23,16 @@ test("Successfully serializes valid value", t => {
 test("Fails to serialize invalid value", t => {
   let schema = S.array(S.int)->S.min(1)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => []->S.reverseConvertOrThrow(schema),
-    {
-      code: OperationFailed("Array must be 1 or more items long"),
-      operation: ReverseConvert,
-      path: S.Path.empty,
-    },
+    `Array must be 1 or more items long`,
   )
 })
 
 test("Returns custom error message", t => {
   let schema = S.array(S.int)->S.min(~message="Custom", 1)
 
-  t->U.assertThrows(
-    () => []->S.parseOrThrow(schema),
-    {code: OperationFailed("Custom"), operation: Parse, path: S.Path.empty},
-  )
+  t->U.assertThrowsMessage(() => []->S.parseOrThrow(schema), `Custom`)
 })
 
 test("Returns refinement", t => {

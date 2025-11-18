@@ -24,30 +24,6 @@ let unsafeGetVariantPayload = variant => (variant->Obj.magic)["_0"]
 exception Test
 let throwTestException = () => throw(Test)
 
-type taggedFlag =
-  | Parse
-  | ParseAsync
-  | ReverseConvertToJson
-  | ReverseParse
-  | ReverseConvert
-
-type errorPayload = {operation: taggedFlag, code: S.errorCode, path: S.Path.t}
-
-// TODO: Get rid of the helper
-let error = ({operation, code, path}: errorPayload): S.error => {
-  S.ErrorClass.constructor(
-    ~code,
-    ~flag=switch operation {
-    | Parse
-    | ReverseParse
-    | ReverseConvertToJson
-    | ReverseConvert => S.Flag.none
-    | ParseAsync => S.Flag.async
-    },
-    ~path,
-  )
-}
-
 let assertThrowsTestException = {
   (t, fn, ~message=?) => {
     try {
@@ -63,7 +39,7 @@ let assertThrowsTestException = {
 let assertThrows = (t, cb, errorPayload) => {
   switch cb() {
   | any => t->Assert.fail("Asserted result is not Error. Recieved: " ++ any->unsafeStringify)
-  | exception S.Error({message}) => t->Assert.is(message, error(errorPayload).message)
+  | exception S.Exn({message}) => t->Assert.is(message, S.Error.make(errorPayload).message)
   }
 }
 
@@ -71,17 +47,21 @@ let assertThrowsMessage = (t, cb, errorMessage, ~message=?) => {
   switch cb() {
   | any =>
     t->Assert.fail(
-      `Asserted result is not S.Error "${errorMessage}". Instead got: ${any->unsafeStringify}`,
+      `Asserted result is not S.Exn "${errorMessage}". Instead got: ${any->unsafeStringify}`,
     )
-  | exception S.Error({message: actualErrorMessage}) =>
+  | exception S.Exn({message: actualErrorMessage}) =>
     t->Assert.is(actualErrorMessage, errorMessage, ~message?)
   }
 }
 
-let assertThrowsAsync = async (t, cb, errorPayload) => {
+let asyncAssertThrowsMessage = async (t, cb, errorMessage, ~message=?) => {
   switch await cb() {
-  | any => t->Assert.fail("Asserted result is not Error. Recieved: " ++ any->unsafeStringify)
-  | exception S.Error({message}) => t->Assert.is(message, error(errorPayload).message)
+  | any =>
+    t->Assert.fail(
+      `Asserted result is not S.Exn "${errorMessage}". Instead got: ${any->unsafeStringify}`,
+    )
+  | exception S.Exn({message: actualErrorMessage}) =>
+    t->Assert.is(actualErrorMessage, errorMessage, ~message?)
   }
 }
 

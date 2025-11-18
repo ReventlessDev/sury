@@ -4,29 +4,18 @@ module Common = {
   let any = %raw(`true`)
   let factory = () => S.never
 
-  test("Fails to ", t => {
+  test("Fails to parse", t => {
     let schema = factory()
 
-    t->U.assertThrows(
-      () => any->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.never->S.castToUnknown, value: any}),
-        operation: Parse,
-        path: S.Path.empty,
-      },
-    )
+    t->U.assertThrowsMessage(() => any->S.parseOrThrow(schema), `Expected never, received true`)
   })
 
   test("Fails to serialize ", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => any->S.reverseConvertOrThrow(schema),
-      {
-        code: InvalidType({expected: schema->S.castToUnknown, value: any}),
-        operation: ReverseConvert,
-        path: S.Path.empty,
-      },
+      `Expected never, received true`,
     )
   })
 
@@ -58,13 +47,9 @@ module ObjectField = {
       }
     )
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => %raw(`{"key":"value"}`)->S.parseOrThrow(schema),
-      {
-        code: InvalidType({expected: S.never->S.castToUnknown, value: %raw(`undefined`)}),
-        operation: Parse,
-        path: S.Path.fromArray(["oldKey"]),
-      },
+      `Failed at ["oldKey"]: Expected never, received undefined`,
     )
   })
 

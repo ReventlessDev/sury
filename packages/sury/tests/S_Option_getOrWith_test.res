@@ -41,13 +41,9 @@ test("Successfully parses nested option with default value", t => {
 test("Fails to parse data with default", t => {
   let schema = S.bool->S.option->S.Option.getOrWith(() => false)
 
-  t->U.assertThrows(
+  t->U.assertThrowsMessage(
     () => %raw(`"string"`)->S.parseOrThrow(schema),
-    {
-      code: InvalidType({expected: schema->S.castToUnknown, value: %raw(`"string"`)}),
-      operation: Parse,
-      path: S.Path.empty,
-    },
+    `Expected boolean | undefined, received "string"`,
   )
 })
 

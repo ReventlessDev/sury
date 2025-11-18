@@ -17,32 +17,18 @@ module Common = {
   test("Fails to parse invalid value", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          value: "Hello world!"->Obj.magic,
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected "ReScript is Great!", received "Hello world!"`,
     )
   })
 
   test("Fails to parse invalid type", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidTypeAny->S.parseOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          value: invalidTypeAny,
-        }),
-        operation: Parse,
-        path: S.Path.empty,
-      },
+      `Expected "ReScript is Great!", received true`,
     )
   })
 
@@ -55,16 +41,9 @@ module Common = {
   test("Fails to serialize invalid value", t => {
     let schema = factory()
 
-    t->U.assertThrows(
+    t->U.assertThrowsMessage(
       () => invalidValue->S.reverseConvertOrThrow(schema),
-      {
-        code: InvalidType({
-          expected: S.literal("ReScript is Great!")->S.castToUnknown,
-          value: "Hello world!"->Obj.magic,
-        }),
-        operation: ReverseConvert,
-        path: S.Path.empty,
-      },
+      `Expected "ReScript is Great!", received "Hello world!"`,
     )
   })
 
