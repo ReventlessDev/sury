@@ -6,8 +6,6 @@ let Path = Sury.Path;
 
 let Exn = Sury.Exn;
 
-let Flag = Sury.Flag;
-
 let never = Sury.never;
 
 let unknown = Sury.unknown;
@@ -191,7 +189,6 @@ let $$Error = Sury.$$Error;
 export {
   Path,
   Exn,
-  Flag,
   never,
   unknown,
   unit,

@@ -662,6 +662,7 @@ module ValFlag = {
 module Flag = {
   @inline let none = 0
   @inline let async = 1
+  @inline let disableNanNumberValidation = 2
   // @inline let flatten = 64
 
   external with: (flag, flag) => flag = "%orint"
@@ -880,8 +881,8 @@ type globalConfig = {
   mutable defsAccumulator: option<dict<internal>>,
   @as("a")
   mutable defaultAdditionalItems: additionalItems,
-  @as("n")
-  mutable disableNanNumberValidation: bool,
+  @as("f")
+  mutable defaultFlag: flag,
 }
 
 type globalConfigOverride = {
@@ -890,12 +891,12 @@ type globalConfigOverride = {
 }
 
 let initialOnAdditionalItems: additionalItemsMode = Strip
-let initialDisableNanNumberProtection = false
+let initialDefaultFlag = Flag.none
 let globalConfig: globalConfig = {
   message: InternalError.message,
   defsAccumulator: None,
   defaultAdditionalItems: (initialOnAdditionalItems :> additionalItems),
-  disableNanNumberValidation: initialDisableNanNumberProtection,
+  defaultFlag: initialDefaultFlag,
 }
 
 @new
@@ -1734,7 +1735,7 @@ let numberDecoder = Builder.make((~input, ~selfSchema) => {
             )}${inputVar}%1${B.eq(~negative)}0`
 
         | _ =>
-          if globalConfig.disableNanNumberValidation {
+          if input.global.flag->Flag.unsafeHas(Flag.disableNanNumberValidation) {
             ""
           } else {
             `${B.and_(~negative)}${B.exp(~negative=!negative)}Number.isNaN(${inputVar})`
@@ -2210,11 +2211,13 @@ let getDecoder = (~s1 as _, ~flag as _=?) => {
   while flag.contents === None {
     let arg = args->Js.Array2.unsafe_get(idx.contents)
     if !(arg->Obj.magic) {
-      flag := Some(0)
-      keyRef := keyRef.contents ++ "-0"
+      let f = globalConfig.defaultFlag
+      flag := Some(f)
+      keyRef := keyRef.contents ++ "-" ++ f->X.Int.unsafeToString
     } else if Js.typeof(arg->Obj.magic) === "number" {
-      flag := Some(arg->Obj.magic)
-      keyRef := keyRef.contents ++ "-" ++ arg->Obj.magic
+      let f = arg->Obj.magic->Flag.with(globalConfig.defaultFlag)
+      flag := Some(f)
+      keyRef := keyRef.contents ++ "-" ++ f->X.Int.unsafeToString
     } else {
       let schema: internal = arg->Obj.magic
       let seq: float = schema.seq->Obj.magic
@@ -5861,9 +5864,9 @@ let global = override => {
   | Some(defaultAdditionalItems) => defaultAdditionalItems
   | None => initialOnAdditionalItems
   } :> additionalItems)
-  globalConfig.disableNanNumberValidation = switch override.disableNanNumberValidation {
-  | Some(disableNanNumberValidation) => disableNanNumberValidation
-  | None => initialDisableNanNumberProtection
+  globalConfig.defaultFlag = switch override.disableNanNumberValidation {
+  | Some(true) => Flag.disableNanNumberValidation
+  | _ => initialDefaultFlag
   }
 }
 

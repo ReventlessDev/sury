@@ -285,14 +285,6 @@ type exn += private Exn(error)
 
 type s<'value> = {fail: 'a. (string, ~path: Path.t=?) => 'a}
 
-module Flag: {
-  @inline let none: flag
-  @inline let async: flag
-
-  external with: (flag, flag) => flag = "%orint"
-  let has: (flag, flag) => bool
-}
-
 let never: t<never>
 let unknown: t<unknown>
 let unit: t<unit>
