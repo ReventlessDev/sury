@@ -21,13 +21,10 @@ module Common = {
     )
   })
 
-  test("Fails to convert to Json", t => {
+  test("Decodes to Json", t => {
     let schema = factory()
 
-    t->U.assertThrowsMessage(
-      () => value->S.convertToJsonOrThrow(schema),
-      "bigint is not valid JSON",
-    )
+    t->Assert.deepEqual(value->S.convertToJsonOrThrow(schema), "123"->Obj.magic)
   })
 
   test("BigInt name", t => {

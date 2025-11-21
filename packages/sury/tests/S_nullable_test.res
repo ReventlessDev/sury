@@ -39,7 +39,11 @@ test("Correctly reverse convert", t => {
   t->Assert.deepEqual(Nullable.Undefined->S.reverseConvertOrThrow(schema), %raw(`undefined`))
   t->Assert.deepEqual(Nullable.Value(true)->S.reverseConvertOrThrow(schema), %raw(`true`))
 
-  t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{if(!(typeof i==="boolean"||i===void 0||i===null)){e[0](i)}return i}`,
+  )
 })
 
 test("Correctly reverse convert transformed", t => {
@@ -52,6 +56,6 @@ test("Correctly reverse convert transformed", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="string"){let v1;(v1=i==="true")||i==="false"||e[1](i);i=v1}return i}`,
+    `i=>{if(typeof i==="string"){let v0;(v0=i==="true")||i==="false"||e[0](i);i=v0}else if(!(i===void 0||i===null)){e[1](i)}return i}`,
   )
 })

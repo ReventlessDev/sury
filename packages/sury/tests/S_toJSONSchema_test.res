@@ -192,12 +192,15 @@ test("JSONSchema of null", t => {
 test("JSONSchema of undefined", t => {
   t->U.assertThrowsMessage(
     () => S.literal(%raw(`undefined`))->S.toJSONSchema,
-    `undefined is not valid JSON`,
+    `Expected JSON, received undefined`,
   )
 })
 
 test("JSONSchema of NaN", t => {
-  t->U.assertThrowsMessage(() => S.literal(%raw(`NaN`))->S.toJSONSchema, `NaN is not valid JSON`)
+  t->U.assertThrowsMessage(
+    () => S.literal(%raw(`NaN`))->S.toJSONSchema,
+    `Expected JSON, received NaN`,
+  )
 })
 
 test("JSONSchema of tuple", t => {
@@ -331,7 +334,7 @@ test("JSONSchema of dict with optional fields", t => {
 test("JSONSchema of dict with optional invalid field", t => {
   t->U.assertThrowsMessage(
     () => S.dict(S.option(S.bigint))->S.toJSONSchema,
-    `Failed at []: bigint | undefined is not valid JSON`,
+    `Failed at []: Expected JSON, received bigint | undefined`,
   )
 })
 
@@ -453,7 +456,7 @@ test("JSONSchema of object with one optional and one normal field", t => {
 test("JSONSchema of optional root schema", t => {
   t->U.assertThrowsMessage(
     () => S.option(S.string)->S.toJSONSchema,
-    "string | undefined is not valid JSON",
+    "Expected JSON, received string | undefined",
   )
 })
 
@@ -475,7 +478,7 @@ test("JSONSchema of object with S.option(S.option(_)) field", t => {
 test("JSONSchema of reversed object with S.option(S.option(_)) field", t => {
   t->U.assertThrowsMessage(
     () => S.object(s => s.field("field", S.option(S.option(S.string))))->S.reverse->S.toJSONSchema,
-    `string | undefined | { BS_PRIVATE_NESTED_SOME_NONE: 0; } is not valid JSON`,
+    `Expected JSON, received string | undefined | { BS_PRIVATE_NESTED_SOME_NONE: 0; }`,
   )
 })
 
@@ -585,7 +588,7 @@ test("Primitive schema with an example", t => {
 })
 
 test("Transformed schema with an example", t => {
-  let schema = S.null(S.bool)->S.meta({examples: [%raw(`null`)]})
+  let schema = S.null(S.bool)->S.meta({examples: [None]})
 
   t->Assert.deepEqual(
     schema->S.toJSONSchema,
@@ -642,7 +645,7 @@ test("Additional raw schema works with optional fields", t => {
 })
 
 test("JSONSchema of unknown schema", t => {
-  t->U.assertThrowsMessage(() => S.unknown->S.toJSONSchema, `unknown is not valid JSON`)
+  t->U.assertThrowsMessage(() => S.unknown->S.toJSONSchema, `Expected JSON, received unknown`)
 })
 
 test("JSON schema doesn't affect final schema", t => {
@@ -737,32 +740,32 @@ test("JSONSchema of recursive schema with non-jsonable field", t => {
       },
     )
     schema->S.toJSONSchema
-  }, `Failed at ["Id"]: bigint is not valid JSON`)
+  }, `Failed at ["Id"]: Expected JSON, received bigint`)
 })
 
 test("Fails to create schema for schemas with optional items", t => {
   t->U.assertThrowsMessage(
     () => S.array(S.option(S.string))->S.toJSONSchema,
-    "Failed at []: string | undefined is not valid JSON",
+    "Failed at []: Expected JSON, received string | undefined",
   )
   t->U.assertThrowsMessage(
     () => S.union([S.option(S.string), S.null(S.string)])->S.toJSONSchema,
-    "string | undefined | null is not valid JSON",
+    "Expected JSON, received string | undefined | null",
   )
   t->U.assertThrowsMessage(
     () => S.tuple1(S.option(S.string))->S.toJSONSchema,
-    `Failed at ["0"]: string | undefined is not valid JSON`,
+    `Failed at ["0"]: Expected JSON, received string | undefined`,
   )
   t->U.assertThrowsMessage(
     () => S.tuple1(S.array(S.option(S.string)))->S.toJSONSchema,
-    `Failed at ["0"][]: string | undefined is not valid JSON`,
+    `Failed at ["0"][]: Expected JSON, received string | undefined`,
   )
 })
 
 test("JSONSchema error of nested object has path", t => {
   t->U.assertThrowsMessage(
     () => S.object(s => s.nested("nested").field("field", S.bigint))->S.toJSONSchema,
-    `Failed at ["nested"]["field"]: bigint is not valid JSON`,
+    `Failed at ["nested"]["field"]: Expected JSON, received bigint`,
   )
 })
 
