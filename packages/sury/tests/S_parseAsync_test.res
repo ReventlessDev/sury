@@ -704,7 +704,7 @@ module Union = {
 
 // module Null = {
 //   asyncTest("[Null] Successfully parses", t => {
-//     let schema = S.null(S.int->validAsyncRefine)
+//     let schema = S.nullAsOption(S.int->validAsyncRefine)
 
 //     Promise.all([
 //       (1->S.parseAnyAsyncInStepsWith(schema)->Result.getExn)()->Promise.thenResolve(result => {
@@ -719,7 +719,7 @@ module Union = {
 //   })
 
 //   asyncTest("[Null] Fails to parse with invalid async refine", t => {
-//     let schema = S.null(S.int->invalidAsyncRefine)
+//     let schema = S.nullAsOption(S.int->invalidAsyncRefine)
 
 //     (1->S.parseAnyAsyncInStepsWith(schema)->Result.getExn)()->Promise.thenResolve(result => {
 //       t->Assert.deepEqual(
@@ -737,7 +737,7 @@ module Union = {
 //   })
 
 //   test("[Null] Returns sync error when fails to parse sync part of async item", t => {
-//     let schema = S.null(S.int->validAsyncRefine)
+//     let schema = S.nullAsOption(S.int->validAsyncRefine)
 
 //     t->Assert.deepEqual(
 //       true->S.parseAnyAsyncInStepsWith(schema),

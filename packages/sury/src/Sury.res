@@ -4993,12 +4993,6 @@ module Schema = {
   }
 }
 
-module Null = {
-  let factory = item => {
-    Option.factory(item, ~unit=nullAsUnit)
-  }
-}
-
 let schema = Schema.factory
 
 let js_schema = definition => definition->Obj.magic->Schema.definitionToSchema->castToPublic
@@ -5260,7 +5254,7 @@ let unnest = schema => {
 //     | BigInt => `S.bigint`
 //     | Bool => `S.bool`
 //     | Option(schema) => `S.option(${schema->internalInline()})`
-//     | Null(schema) => `S.null(${schema->internalInline()})`
+//     | Null(schema) => `S.nullAsOption(${schema->internalInline()})`
 //     | Never => `S.never`
 //     | Unknown => `S.unknown`
 //     | Array(schema) => `S.array(${schema->internalInline()})`
@@ -5426,7 +5420,8 @@ let unnest = schema => {
 // }
 
 let object = Schema.object
-let null = Null.factory
+let nullAsOption = item => Option.factory(item, ~unit=nullAsUnit)
+let null = item => Union.factory([item->castToUnknown, nullLiteral->castToPublic])
 let option = item => item->Option.factory(~unit=unit->castToPublic)
 let array = array
 let dict = Dict.factory

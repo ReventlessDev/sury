@@ -45,7 +45,7 @@
 //     S.schema(s =>
 //       {
 //         "id": s.matches(S.string),
-//         "name": s.matches(S.null(S.string)),
+//         "name": s.matches(S.nullAsOption(S.string)),
 //         "deleted": s.matches(S.bool),
 //       }
 //     ),
@@ -62,7 +62,7 @@
 //     S.schema(s =>
 //       {
 //         "foo": s.matches(S.string),
-//         "bar": s.matches(S.null(S.int)),
+//         "bar": s.matches(S.nullAsOption(S.int)),
 //       }
 //     ),
 //   )

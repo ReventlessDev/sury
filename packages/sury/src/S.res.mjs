@@ -56,6 +56,8 @@ let option = Sury.option;
 
 let $$null = Sury.$$null;
 
+let nullAsOption = Sury.nullAsOption;
+
 let nullable = Sury.nullable;
 
 let nullableAsOption = Sury.nullableAsOption;
@@ -214,6 +216,7 @@ export {
   dict,
   option,
   $$null,
+  nullAsOption,
   nullable,
   nullableAsOption,
   union,

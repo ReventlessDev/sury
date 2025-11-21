@@ -74,7 +74,7 @@ test("Expression of Option schema with name", t => {
 })
 
 test("Expression of Null schema", t => {
-  t->Assert.deepEqual(S.null(S.string)->S.toExpression, "string | null")
+  t->Assert.deepEqual(S.nullAsOption(S.string)->S.toExpression, "string | null")
 })
 
 test("Expression of Union schema", t => {
@@ -126,7 +126,7 @@ test("Expression of renamed schema", t => {
     () => "smth"->S.parseOrThrow(renamedSchema),
     `Expected Ethers.BigInt, received "smth"`,
   )
-  let schema = S.null(S.never)->S.meta({name: "Ethers.BigInt"})
+  let schema = S.nullAsOption(S.never)->S.meta({name: "Ethers.BigInt"})
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseParse,

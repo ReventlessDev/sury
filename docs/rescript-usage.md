@@ -20,6 +20,7 @@
   - [`Option.getOr`](#optiongetor)
   - [`Option.getOrWith`](#optiongetorwith)
   - [`null`](#null)
+  - [`nullAsOption`](#nullasoption)
   - [`nullable`](#nullable)
   - [`nullableAsOption`](#nullableasoption)
   - [`unit`](#unit)
@@ -403,10 +404,25 @@ Also you can use `Option.getOrWith` for lazy evaluation of the default value.
 
 ### **`null`**
 
-`S.t<'value> => S.t<option<'value>>`
+`S.t<'value> => S.t<null<'value>>`
 
 ```rescript
 let schema = S.null(S.string)
+
+"Hello World!"->S.parseOrThrow(schema)
+// Value("Hello World!")
+%raw(`null`)->S.parseOrThrow(schema)
+// Null
+```
+
+The `S.null` schema represents a data of a specific type that might be null.
+
+### **`nullAsOption`**
+
+`S.t<'value> => S.t<option<'value>>`
+
+```rescript
+let schema = S.nullAsOption(S.string)
 
 "Hello World!"->S.parseOrThrow(schema)
 // Some("Hello World!")
@@ -414,9 +430,9 @@ let schema = S.null(S.string)
 // None
 ```
 
-The `S.null` schema represents a data of a specific type that might be null.
+The `S.nullAsOption` schema represents a data of a specific type that might be null.
 
-> 🧠 Since `S.null` transforms value into `option` type, you can use `Option.getOr`/`Option.getOrWith` for it as well.
+> 🧠 Since `S.nullAsOption` transforms value into `option` type, you can use `Option.getOr`/`Option.getOrWith` for it as well.
 
 ### **`nullable`**
 
@@ -907,7 +923,7 @@ The `S.list` schema represents an array of data of a specific type which is tran
 ```rescript
 let schema = S.unnest(S.schema(s => {
   id: s.matches(S.string),
-  name: s.matches(S.null(S.string)),
+  name: s.matches(S.nullAsOption(S.string)),
   deleted: s.matches(S.bool),
 }))
 
@@ -1366,7 +1382,7 @@ And you can configure compiled function `typeValidation` with the following opti
 `(S.t<'value>) => S.t<'value>`
 
 ```rescript
-S.null(S.string)->S.reverse
+S.nullAsOption(S.string)->S.reverse
 // S.option(S.string)
 ```
 

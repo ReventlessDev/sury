@@ -536,7 +536,7 @@ test("Union with nested variant", t => {
     S.schema(s =>
       {
         "foo": {
-          "tag": #Null(s.matches(S.null(S.string))),
+          "tag": #Null(s.matches(S.nullAsOption(S.string))),
         },
       }
     ),
@@ -616,7 +616,7 @@ test("Enum is a shorthand for union", t => {
 })
 
 test("Reverse schema with items", t => {
-  let schema = S.union([S.literal(%raw(`0`)), S.null(S.bool)])
+  let schema = S.union([S.literal(%raw(`0`)), S.nullAsOption(S.bool)])
 
   t->U.assertEqualSchemas(
     schema->S.reverse,
@@ -625,7 +625,7 @@ test("Reverse schema with items", t => {
 })
 
 test("Succesfully uses reversed schema for parsing back to initial value", t => {
-  let schema = S.union([S.literal(%raw(`0`)), S.null(S.bool)])
+  let schema = S.union([S.literal(%raw(`0`)), S.nullAsOption(S.bool)])
   t->U.assertReverseParsesBack(schema, None)
 })
 

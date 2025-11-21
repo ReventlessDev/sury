@@ -140,7 +140,7 @@ test("JSONSchema of float with max", t => {
 
 test("JSONSchema of nullable float", t => {
   t->Assert.deepEqual(
-    S.null(S.float)->S.toJSONSchema,
+    S.nullAsOption(S.float)->S.toJSONSchema,
     %raw(`{"anyOf": [{"type": "number"}, {"type": "null"}]}`),
   )
 })
@@ -550,7 +550,7 @@ test("Transformed schema schema uses default with correct type", t => {
 })
 
 test("Currently Option.getOrWith is not reflected on JSON schema", t => {
-  let schema = S.null(S.bool)->S.Option.getOrWith(() => true)
+  let schema = S.nullAsOption(S.bool)->S.Option.getOrWith(() => true)
 
   t->Assert.deepEqual(
     schema->S.toJSONSchema,
@@ -588,7 +588,7 @@ test("Primitive schema with an example", t => {
 })
 
 test("Transformed schema with an example", t => {
-  let schema = S.null(S.bool)->S.meta({examples: [None]})
+  let schema = S.nullAsOption(S.bool)->S.meta({examples: [None]})
 
   t->Assert.deepEqual(
     schema->S.toJSONSchema,
@@ -749,7 +749,7 @@ test("Fails to create schema for schemas with optional items", t => {
     "Failed at []: Expected JSON, received string | undefined",
   )
   t->U.assertThrowsMessage(
-    () => S.union([S.option(S.string), S.null(S.string)])->S.toJSONSchema,
+    () => S.union([S.option(S.string), S.nullAsOption(S.string)])->S.toJSONSchema,
     "Expected JSON, received string | undefined | null",
   )
   t->U.assertThrowsMessage(

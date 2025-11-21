@@ -42,13 +42,13 @@ test("Object with embeded transformed schema", t => {
   let schema = S.schema(s =>
     {
       "foo": "bar",
-      "zoo": s.matches(S.null(S.int)),
+      "zoo": s.matches(S.nullAsOption(S.int)),
     }
   )
   let objectSchema = S.object(s =>
     {
       "foo": s.field("foo", S.literal("bar")),
-      "zoo": s.field("zoo", S.null(S.int)),
+      "zoo": s.field("zoo", S.nullAsOption(S.int)),
     }
   )
   // t->U.assertEqualSchemas(schema, objectSchema)
@@ -111,9 +111,9 @@ test("Tuple with embeded schema", t => {
 })
 
 test("Tuple with embeded transformed schema", t => {
-  let schema = S.schema(s => (s.matches(S.null(S.string)), (), "bar"))
+  let schema = S.schema(s => (s.matches(S.nullAsOption(S.string)), (), "bar"))
   let tupleSchema = S.tuple(s => (
-    s.item(0, S.null(S.string)),
+    s.item(0, S.nullAsOption(S.string)),
     s.item(1, S.literal()),
     s.item(2, S.literal("bar")),
   ))

@@ -3418,10 +3418,6 @@ function factory$3(definer) {
   return definitionToSchema(definer(ctx));
 }
 
-function factory$4(item) {
-  return factory$2(item, nullAsUnit);
-}
-
 let js_schema = definitionToSchema;
 
 function $$enum(values) {
@@ -3539,6 +3535,17 @@ function unnest(schema) {
     return mut;
   }
   throw new Error("[Sury] S.unnest supports only object schemas.");
+}
+
+function nullAsOption(item) {
+  return factory$2(item, nullAsUnit);
+}
+
+function $$null(item) {
+  return factory$1([
+    item,
+    nullLiteral
+  ]);
 }
 
 function option(item) {
@@ -4195,7 +4202,7 @@ function fromJSONSchema(jsonSchema) {
   let exit = 0;
   let exit$1 = 0;
   if (jsonSchema.nullable) {
-    schema = factory$4(fromJSONSchema(Object.assign({}, jsonSchema, {
+    schema = $$null(fromJSONSchema(Object.assign({}, jsonSchema, {
       nullable: false
     })));
   } else if (type_ !== undefined) {
@@ -4538,8 +4545,6 @@ let literal = js_schema;
 
 let dict = factory;
 
-let $$null = factory$4;
-
 let union = factory$1;
 
 let Schema$1 = {};
@@ -4615,6 +4620,7 @@ export {
   dict,
   option,
   $$null,
+  nullAsOption,
   nullable,
   nullableAsOption,
   union,

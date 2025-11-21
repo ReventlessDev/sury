@@ -6,7 +6,7 @@ module Common = {
   let value = None
   let any = %raw(`null`)
   let invalidAny = %raw(`123.45`)
-  let factory = () => S.null(S.string)
+  let factory = () => S.nullAsOption(S.string)
 
   test("Successfully parses", t => {
     let schema = factory()
@@ -45,7 +45,7 @@ module Common = {
   })
 
   test("Compiled async parse code snapshot", t => {
-    let schema = S.null(S.unknown->S.transform(_ => {asyncParser: i => Promise.resolve(i)}))
+    let schema = S.nullAsOption(S.unknown->S.transform(_ => {asyncParser: i => Promise.resolve(i)}))
 
     t->U.assertCompiledCode(
       ~schema,
@@ -75,13 +75,13 @@ module Common = {
 }
 
 test("Successfully parses primitive", t => {
-  let schema = S.null(S.bool)
+  let schema = S.nullAsOption(S.bool)
 
   t->Assert.deepEqual(JSON.Encode.bool(true)->S.parseOrThrow(schema), Some(true))
 })
 
 test("Fails to parse JS undefined", t => {
-  let schema = S.null(S.bool)
+  let schema = S.nullAsOption(S.bool)
 
   t->U.assertThrowsMessage(
     () => %raw(`undefined`)->S.parseOrThrow(schema),
@@ -90,7 +90,7 @@ test("Fails to parse JS undefined", t => {
 })
 
 test("Fails to parse object with missing field that marked as null", t => {
-  let fieldSchema = S.null(S.string)
+  let fieldSchema = S.nullAsOption(S.string)
   let schema = S.object(s => s.field("nullableField", fieldSchema))
 
   t->U.assertThrowsMessage(
@@ -109,7 +109,7 @@ test("Fails to parse JS null when schema doesn't allow optional data", t => {
 })
 
 test("Successfully parses null and serializes it back for deprecated nullable schema", t => {
-  let schema = S.null(S.bool)->S.meta({description: "Deprecated", deprecated: true})
+  let schema = S.nullAsOption(S.bool)->S.meta({description: "Deprecated", deprecated: true})
 
   t->Assert.deepEqual(
     %raw(`null`)->S.parseOrThrow(schema)->S.reverseConvertOrThrow(schema),
@@ -118,7 +118,7 @@ test("Successfully parses null and serializes it back for deprecated nullable sc
 })
 
 test("Serializes Some(None) to null for null nested in option", t => {
-  let schema = S.option(S.null(S.bool))
+  let schema = S.option(S.nullAsOption(S.bool))
 
   t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), Some(None))
   t->Assert.deepEqual(%raw(`undefined`)->S.parseOrThrow(schema), None)
@@ -140,7 +140,7 @@ test("Serializes Some(None) to null for null nested in option", t => {
 })
 
 test("Serializes Some(None) to null for null nested in null", t => {
-  let schema = S.null(S.null(S.bool))
+  let schema = S.nullAsOption(S.nullAsOption(S.bool))
 
   t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), None)
 
@@ -165,14 +165,14 @@ module OuterRecord = {
     type t = {k?: option<int>}
 
     let schema = S.schema((s): t => {
-      k: ?s.matches(S.option(S.null(S.int))),
+      k: ?s.matches(S.option(S.nullAsOption(S.int))),
     })
   }
 
   type t = {record?: option<Inner.t>}
 
   let schema = S.schema(s => {
-    record: ?s.matches(S.option(S.null(Inner.schema))),
+    record: ?s.matches(S.option(S.nullAsOption(Inner.schema))),
   })
 
   test("Record schema with optional nullable field", t => {

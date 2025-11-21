@@ -153,7 +153,7 @@ test("Custom optional string schema", t => {
 // The incompatible parts: option<string> vs myNullOfString (defined as null<string>)
 // So use the code below instead
 @schema
-type myNullOfString = @s.matches(S.null(S.string)) option<string>
+type myNullOfString = @s.matches(S.nullAsOption(S.string)) option<string>
 test("Null of string schema", t => {
-  t->assertEqualSchemas(myNullOfStringSchema, S.null(S.string))
+  t->assertEqualSchemas(myNullOfStringSchema, S.nullAsOption(S.string))
 })

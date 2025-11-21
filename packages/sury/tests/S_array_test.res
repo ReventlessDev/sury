@@ -66,7 +66,7 @@ module CommonWithNested = {
   })
 
   test("Compiled serialize code snapshot with transform", t => {
-    let schema = S.array(S.null(S.string))
+    let schema = S.array(S.nullAsOption(S.string))
 
     t->U.assertCompiledCode(
       ~schema,
@@ -87,7 +87,7 @@ module CommonWithNested = {
 }
 
 test("Reverse child schema", t => {
-  let schema = S.array(S.null(S.string))
+  let schema = S.array(S.nullAsOption(S.string))
 
   t->U.assertEqualSchemas(
     schema->S.reverse,

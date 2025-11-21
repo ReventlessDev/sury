@@ -46,7 +46,7 @@ type stringWithDefaultNullAndMatches = @s.default("Foo") @s.null @s.matches(S.st
 test("Creates schema with default null using @s.matches", t => {
   t->assertEqualSchemas(
     stringWithDefaultNullAndMatchesSchema,
-    S.null(S.string->S.url)->S.Option.getOr("Foo"),
+    S.nullAsOption(S.string->S.url)->S.Option.getOr("Foo"),
   )
 })
 

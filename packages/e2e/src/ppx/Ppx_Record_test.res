@@ -64,13 +64,13 @@ test("Record schema with optional fields", t => {
 
 @schema
 type recordWithNullableField = {
-  subscription: @s.matches(S.option(S.null(S.string))) option<option<string>>,
+  subscription: @s.matches(S.option(S.nullAsOption(S.string))) option<option<string>>,
 }
 test("Record schema with nullable field", t => {
   t->assertEqualSchemas(
     recordWithNullableFieldSchema,
     S.schema(s => {
-      subscription: s.matches(S.option(S.null(S.string))),
+      subscription: s.matches(S.option(S.nullAsOption(S.string))),
     }),
   )
   t->Assert.deepEqual(

@@ -13,8 +13,8 @@ test("Object with a single nested field", t => {
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return {"nested":{"foo":i,},}}`)
 })
 
-test("Object with a single nested field with S.null", t => {
-  let schema = S.object(s => s.nested("nested").field("foo", S.null(S.string)))
+test("Object with a single nested field with S.nullAsOption", t => {
+  let schema = S.object(s => s.nested("nested").field("foo", S.nullAsOption(S.string)))
 
   t->U.assertReverseReversesBack(schema)
 
@@ -278,7 +278,7 @@ test("S.schema object with a deep strict applied to the nested field parent + re
     S.schema(s =>
       {
         "nested": {
-          "foo": s.matches(S.null(S.string)),
+          "foo": s.matches(S.nullAsOption(S.string)),
         },
       }
     )

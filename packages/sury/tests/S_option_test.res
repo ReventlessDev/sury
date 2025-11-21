@@ -67,7 +67,7 @@ module Common = {
 }
 
 test("Classify schema", t => {
-  let schema = S.option(S.null(S.string))
+  let schema = S.option(S.nullAsOption(S.string))
 
   t->U.assertEqualSchemas(
     schema->S.castToUnknown,
@@ -113,7 +113,7 @@ test("Fails to parse JS undefined when schema doesn't allow optional data", t =>
 })
 
 test("Serializes Some(None) to undefined for option nested in null", t => {
-  let schema = S.null(S.option(S.bool))
+  let schema = S.nullAsOption(S.option(S.bool))
 
   t->Assert.deepEqual(%raw(`undefined`)->S.parseOrThrow(schema), Some(None))
   t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), None)

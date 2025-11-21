@@ -39,7 +39,7 @@ test("Successfully reverse converts jsonable schemas", t => {
       ]),
     ),
   )
-  t->Assert.deepEqual(None->S.reverseConvertToJsonOrThrow(S.null(S.bool)), JSON.Encode.null)
+  t->Assert.deepEqual(None->S.reverseConvertToJsonOrThrow(S.nullAsOption(S.bool)), JSON.Encode.null)
   t->Assert.deepEqual(
     JSON.Encode.null->S.reverseConvertToJsonOrThrow(S.literal(JSON.Encode.null)),
     JSON.Encode.null,

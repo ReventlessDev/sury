@@ -13,7 +13,7 @@ test("Uses default value when nullable optional unknown primitive", t => {
   let value = 123.
   let any = %raw(`null`)
 
-  let schema = S.float->S.null->S.Option.getOr(value)
+  let schema = S.float->S.nullAsOption->S.Option.getOr(value)
 
   t->Assert.deepEqual(any->S.parseOrThrow(schema), value)
 })

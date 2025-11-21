@@ -16,6 +16,7 @@
   - Reworked error code and added `S.Error.classify` to turn error into a variant of all possible error codes
 - All errors thrown in transform/refine are wrapped in `SuryError`
 - TS: Updated `S.Error` type to use variants instead of code property
+- ReScript: `S.null` -> `S.nullAsOption`
 
 ### TS
 
@@ -39,6 +40,8 @@
 - Add `promise` type and `S.promise` (instead of async flag internally)
 
 TODO:
+
+Test null<> in ppx
 
 ```
 // Test that refinement works correctly with reverse
