@@ -1915,16 +1915,19 @@ module Literal = {
             ),
           )
       ) {
+        let expected = base(stringTag)
+        expected.const = %raw(`"" + selfSchema.const`)
+
         // FIXME: Test, that when from item has a refinement
         // and we need to keep existing validation
         // S.string->S.check->S.to(S.literal(false))
         input.validation = Some(
           (~inputVar, ~negative) => {
-            let inlinedConst = `"${selfSchema.const->Obj.magic}"`
-            input.expected.name = Some(inlinedConst)
-            `${inputVar}${B.eq(~negative)}${inlinedConst}`
+            input.expected = expected
+            `${inputVar}${B.eq(~negative)}"${expected.const->Obj.magic}"`
           },
         )
+
         input->B.newConst(~schema=selfSchema)
       } else if schemaTagFlag->Flag.unsafeHas(TagFlag.nan) {
         input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
@@ -3195,7 +3198,7 @@ module Union = {
             | None => ()
             }
 
-            if itemOutput !== input ? itemOutput.inline !== typeValidationInput.inline : false {
+            if itemOutput.inline !== typeValidationInput.inline {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
                 typeValidationInput.flag = input.flag->Flag.with(ValFlag.async)
               }
@@ -3433,9 +3436,16 @@ module Union = {
             } else {
               unknown
             }
-            let typeValidationOutput = typeValidationInput->parse
-            typeValidationInput.expected = schema
+            let typeValidationOutput = try {
+              typeValidationInput->parse
+            } catch {
+            | _ => {
+                typeValidationInput.validation = None
+                typeValidationInput
+              }
+            }
 
+            typeValidationInput.expected = schema
             if isPriority(tagFlag, byKey.contents) {
               // Not the fastest way, but it's the simplest way
               // to make sure NaN is checked before number
@@ -3936,13 +3946,14 @@ let jsonEncoder = Builder.make((~input, ~selfSchema as to) => {
     input.schema = unknown
     input
   } else if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    let expected = string->copySchema
+    expected.to = Some(to)
     input.schema = unknown
-    input.expected = string
-    let output = stringDecoder(~input, ~selfSchema=input.expected)
-    output.expected = to
-    output
+    input.expected = expected
+    stringDecoder(~input, ~selfSchema=expected)
   } else if toTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
     input.schema = unknown
+    input.expected = nullLiteral
     Literal.literalDecoder(~input, ~selfSchema=nullLiteral)
   } else if toTagFlag->Flag.unsafeHas(TagFlag.array) {
     // Validate that the input is an array

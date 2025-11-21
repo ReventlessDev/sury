@@ -1074,7 +1074,7 @@ module Compiled = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ParseAsync,
-      `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["bar"];if(typeof v0!=="boolean"){e[1](v0)}return Promise.all([e[0](i["foo"]),]).then(a=>({"foo":a[0],"bar":v0,}))}`,
+      `i=>{if(typeof i!=="object"||!i){e[3](i)}let v1=i["bar"];let v0;try{v0=e[0](i["foo"]).catch(x=>e[1](x))}catch(x){e[1](x)}if(typeof v1!=="boolean"){e[2](v1)}return Promise.all([v0,]).then(a=>({"foo":a[0],"bar":v1,}))}`,
     )
   })
 
@@ -1086,7 +1086,7 @@ module Compiled = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ParseAsync,
-      `i=>{if(typeof i!=="object"||!i){e[1](i)}return e[0](i["foo"])}`,
+      `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0;try{v0=e[0](i["foo"]).catch(x=>e[1](x))}catch(x){e[1](x)}return v0}`,
     )
   })
 

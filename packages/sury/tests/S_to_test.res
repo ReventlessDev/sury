@@ -56,9 +56,14 @@ test("Coerce from string to bool literal", t => {
     () => "true"->S.parseOrThrow(schema),
     `Expected "false", received "true"`,
   )
+  t->U.assertThrowsMessage(() => 123->S.parseOrThrow(schema), `Expected string, received 123`)
   t->Assert.deepEqual(false->S.reverseConvertOrThrow(schema), %raw(`"false"`))
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="false"){e[0](i)}return false}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="false"){e[0](i)}return false}`,
+  )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==false){e[0](i)}return "false"}`)
 })
 
@@ -69,7 +74,11 @@ test("Coerce from string to null literal", t => {
   t->U.assertThrowsMessage(() => "true"->S.parseOrThrow(schema), `Expected "null", received "true"`)
   t->Assert.deepEqual(%raw(`null`)->S.reverseConvertOrThrow(schema), %raw(`"null"`))
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="null"){e[0](i)}return null}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="null"){e[0](i)}return null}`,
+  )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==null){e[0](i)}return "null"}`)
 })
 
@@ -83,7 +92,11 @@ test("Coerce from string to undefined literal", t => {
   )
   t->Assert.deepEqual(%raw(`undefined`)->S.reverseConvertOrThrow(schema), %raw(`"undefined"`))
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="undefined"){e[0](i)}return void 0}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="undefined"){e[0](i)}return void 0}`,
+  )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
@@ -98,7 +111,11 @@ test("Coerce from string to NaN literal", t => {
   t->U.assertThrowsMessage(() => "true"->S.parseOrThrow(schema), `Expected "NaN", received "true"`)
   t->Assert.deepEqual(%raw(`NaN`)->S.reverseConvertOrThrow(schema), %raw(`"NaN"`))
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="NaN"){e[0](i)}return NaN}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="NaN"){e[0](i)}return NaN}`,
+  )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
@@ -121,7 +138,11 @@ test("Coerce from string to string literal", t => {
     `Expected "${quotedString}", received "bar"`,
   )
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="\\"\'\`"){e[0](i)}return i}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="\\"\'\`"){e[0](i)}return i}`,
+  )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!=="\\"\'\`"){e[0](i)}return i}`)
 })
 
@@ -160,7 +181,7 @@ test("Coerce to literal can be used as tag and automatically embeded on reverse 
     ~schema,
     ~op=#Parse,
     // TODO: Test that it'll work with S.refine on S.string
-    `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["tag"];if(v0!=="true"){e[0](v0)}return void 0}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["tag"];if(typeof v0!=="string"){e[1](v0)}if(v0!=="true"){e[0](v0)}return void 0}`,
   )
 })
 
@@ -252,7 +273,11 @@ test("Coerce from string to bigint literal", t => {
   t->U.assertThrowsMessage(() => "11"->S.parseOrThrow(schema), `Expected "10", received "11"`)
   t->Assert.deepEqual(10n->S.reverseConvertOrThrow(schema), %raw(`"10"`))
 
-  t->U.assertCompiledCode(~schema, ~op=#Parse, `i=>{if(i!=="10"){e[0](i)}return 10n}`)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="string"){e[1](i)}if(i!=="10"){e[0](i)}return 10n}`,
+  )
   t->U.assertCompiledCode(~schema, ~op=#Convert, `i=>{if(i!=="10"){e[0](i)}return 10n}`)
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{if(i!==10n){e[0](i)}return "10"}`)
 })
@@ -287,7 +312,7 @@ test("Coerce string after a transform", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[2](i)}let v0=e[0](i);if(typeof v0!=="boolean"){e[1](v0)}return v0}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=e[0](i)}catch(x){e[1](x)}if(typeof v0!=="boolean"){e[2](v0)}return v0}`,
   )
 
   t->U.assertThrowsMessage(
@@ -297,7 +322,7 @@ test("Coerce string after a transform", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseParse,
-    `i=>{if(typeof i!=="boolean"){e[2](i)}let v0=e[0](i);if(typeof v0!=="string"){e[1](v0)}return v0}`,
+    `i=>{if(typeof i!=="boolean"){e[3](i)}let v0;try{v0=e[0](i)}catch(x){e[1](x)}if(typeof v0!=="string"){e[2](v0)}return v0}`,
   )
 })
 
@@ -332,40 +357,46 @@ test("Coerce string to unboxed union (each item separately)", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[3](i)}try{let v0=+i;Number.isNaN(v0)&&e[0](i);i=v0}catch(e0){try{let v1;(v1=i==="true")||i==="false"||e[1](i);i=v1}catch(e1){e[2](i,e0,e1)}}return i}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}try{let v0=+i;if(Number.isNaN(v0)){e[0](i)}i=v0}catch(e0){try{let v1;(v1=i==="true")||i==="false"||e[1](i);i=v1}catch(e1){e[2](i,e0,e1)}}return i}`,
   )
 
   t->Assert.deepEqual(Number(10.)->S.reverseConvertOrThrow(schema), %raw(`"10"`))
   t->Assert.deepEqual(Boolean(true)->S.reverseConvertOrThrow(schema), %raw(`"true"`))
 
-  // // TODO: Can be improved
+  // TODO: Can be improved
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){i=""+i}else if(typeof i==="boolean"){i=""+i}return i}`,
+    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){i=""+i}else if(typeof i==="boolean"){i=""+i}else{e[0](i)}return i}`,
   )
 })
 
-// test("Coerce string to JSON schema", t => {
-//   let schema = S.string->S.to(
-//     S.recursive(self => {
-//       S.union([
-//         S.schema(_ => Json.Null),
-//         S.schema(s => Json.Number(s.matches(S.float))),
-//         S.schema(s => Json.Boolean(s.matches(S.bool))),
-//         S.schema(s => Json.String(s.matches(S.string))),
-//         S.schema(s => Json.Object(s.matches(S.dict(self)))),
-//         S.schema(s => Json.Array(s.matches(S.array(self)))),
-//       ])
-//     }),
-//   )
+test("Coerce string to custom JSON schema", t => {
+  let schema = S.string->S.to(
+    S.recursive("CustomJSON", self => {
+      S.union([
+        S.schema(_ => JSON.Null),
+        S.schema(s => JSON.Number(s.matches(S.float))),
+        S.schema(s => JSON.Boolean(s.matches(S.bool))),
+        S.schema(s => JSON.String(s.matches(S.string))),
+        S.schema(s => JSON.Object(s.matches(S.dict(self)))),
+        S.schema(s => JSON.Array(s.matches(S.array(self)))),
+      ])
+    }),
+  )
 
-//   t->U.assertCompiledCode(
-//     ~schema,
-//     ~op=#ReverseConvert,
-//     ``,
-//   )
-// })
+  t->U.assertThrowsMessage(
+    () => S.reverseConvertOrThrow(JSON.Boolean(true), schema),
+    `Expected string, received true`,
+    ~message="I don't know what we expect here, but currently it works this way",
+  )
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{let v0=e[0](i);if(typeof v0!=="string"){e[1](v0)}return v0}`,
+  )
+})
 
 test("Keeps description of the schema we are coercing to (not working)", t => {
   // Fix it later if it's needed
@@ -386,6 +417,7 @@ test("Coerce from unit to null literal", t => {
   t->Assert.deepEqual(()->S.parseOrThrow(schema), %raw(`null`))
   t->U.assertThrowsMessage(
     () => %raw(`null`)->S.parseOrThrow(schema),
+    // FIXME: It fails because we overwrite expected name with string version
     `Expected undefined, received null`,
   )
   t->Assert.deepEqual(%raw(`null`)->S.reverseConvertOrThrow(schema), %raw(`undefined`))
@@ -515,27 +547,21 @@ test("Coerce from JSON to optional bigint", t => {
 
   t->Assert.deepEqual(%raw(`null`)->S.parseOrThrow(schema), None)
   t->Assert.deepEqual(%raw(`"123"`)->S.parseOrThrow(schema), Some(123n))
-  t->U.assertThrowsMessage(
-    () => {
-      %raw(`123`)->S.parseOrThrow(schema)
-    },
-    `Expected bigint | undefined, received 123
-- Expected string, received 123
-- Expected null, received 123`,
-  )
+  t->U.assertThrowsMessage(() => {
+    %raw(`123`)->S.parseOrThrow(schema)
+  }, `Expected bigint | undefined, received 123`)
   t->Assert.deepEqual(None->S.reverseConvertOrThrow(schema), %raw(`null`))
   t->Assert.deepEqual(Some(123n)->S.reverseConvertOrThrow(schema), %raw(`"123"`))
 
-  // TODO: Improve union logic to avoid try/catch
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{try{if(typeof i!=="string"){e[1](i)}let v0;try{v0=BigInt(i)}catch(_){e[0](i)}i=v0}catch(e0){try{if(i!==null){e[2](i)}i=void 0}catch(e1){e[3](i,e0,e1)}}return i}`,
+    `i=>{if(typeof i==="string"){let v0;try{v0=BigInt(i)}catch(_){e[0](i)}i=v0}else if(i===null){i=void 0}else{e[1](i)}return i}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{if(typeof i==="bigint"){i=""+i}else if(i===void 0){i=null}return i}`,
+    `i=>{if(typeof i==="bigint"){i=""+i}else if(i===void 0){i=null}else{e[0](i)}return i}`,
   )
 })
 
@@ -572,7 +598,7 @@ test("Coerce from JSON to tuple with bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[4](i)}if(i.length!==2){e[3](i)}let v0=i["0"],v2=i["1"];if(typeof v0!=="string"){e[0](v0)}if(typeof v2!=="string"){e[2](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[1](v2)}return [v0,v1,]}`,
+    `i=>{if(!Array.isArray(i)||i.length!==2){e[3](i)}let v0=i["0"],v2=i["1"];if(typeof v0!=="string"){e[0](v0)}if(typeof v2!=="string"){e[2](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[1](v2)}return [v0,v1,]}`,
   )
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return [i["0"],""+i["1"],]}`)
 })
@@ -640,7 +666,7 @@ test("Coerce from union to bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i==="string"){let v0;try{v0=BigInt(i)}catch(_){e[0](i)}i=v0}else if(typeof i==="number"&&!Number.isNaN(i)){i=BigInt(i)}else if(typeof i==="boolean"){throw e[1]}else{e[2](i)}return i}`,
+    `i=>{if(typeof i==="string"){let v0;try{v0=BigInt(i)}catch(_){e[0](i)}i=v0}else if(typeof i==="number"&&!Number.isNaN(i)){i=BigInt(i)}else if(typeof i==="boolean"){e[2](i,e[1])}else{e[3](i)}return i}`,
   )
 
   t->Assert.deepEqual(123n->S.reverseConvertOrThrow(schema), %raw(`"123"`))
