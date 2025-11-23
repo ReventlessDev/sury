@@ -1720,6 +1720,12 @@ let inputToString = (input: val) => {
   input->B.val(`""+${input.inline}`, ~schema=string)
 }
 
+let int32FormatValidation = (~inputVar, ~negative) => {
+  `${inputVar}${B.lt(~negative)}2147483647${B.and_(~negative)}${inputVar}${B.lt(
+      ~negative=!negative,
+    )}-2147483648${B.and_(~negative)}${inputVar}%1${B.eq(~negative)}0`
+}
+
 let numberDecoder = Builder.make((~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
@@ -1727,12 +1733,7 @@ let numberDecoder = Builder.make((~input, ~selfSchema) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(numberTag :> string)}"` ++
       {
         switch selfSchema.format {
-        | Some(Int32) =>
-          `${B.and_(~negative)}${inputVar}${B.lt(~negative)}2147483647${B.and_(
-              ~negative,
-            )}${inputVar}${B.lt(~negative=!negative)}-2147483648${B.and_(
-              ~negative,
-            )}${inputVar}%1${B.eq(~negative)}0`
+        | Some(Int32) => `${B.and_(~negative)}${int32FormatValidation(~inputVar, ~negative)}`
 
         | _ =>
           if input.global.flag->Flag.unsafeHas(Flag.disableNanNumberValidation) {
@@ -1754,16 +1755,10 @@ let numberDecoder = Builder.make((~input, ~selfSchema) => {
     input.allocate(`${outputVar}=+${input.var()}`)
     let output = tmpInput->B.val(outputVar, ~schema=selfSchema)
     output.var = B._var
-
-    // TODO: Reuse logic for unknown case
     tmpInput.validation = Some(
       (~inputVar as _, ~negative) => {
         switch selfSchema.format {
-        | Some(Int32) =>
-          `${outputVar}${B.lt(~negative)}2147483647${B.and_(~negative)}${outputVar}${B.lt(
-              ~negative=!negative,
-            )}-2147483648${B.and_(~negative)}${outputVar}%1${B.eq(~negative)}0`
-
+        | Some(Int32) => int32FormatValidation(~inputVar=outputVar, ~negative)
         | _ => `${B.exp(~negative=!negative)}Number.isNaN(${outputVar})`
         }
       },
@@ -1772,6 +1767,11 @@ let numberDecoder = Builder.make((~input, ~selfSchema) => {
   } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.number)) {
     input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
   } else {
+    if input.schema.format !== selfSchema.format && selfSchema.format === Some(Int32) {
+      input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+        int32FormatValidation(~inputVar, ~negative)
+      })
+    }
     input
   }
 })
@@ -3497,8 +3497,6 @@ module Union = {
       let byKey = byKey.contents
       let keys = keys.contents
 
-      let typeValidation = true
-
       if !exit.contents {
         let nextElse = ref(false)
         let noop = ref("")
@@ -3529,24 +3527,22 @@ module Union = {
             let if_ = nextElse.contents ? "else if" : "if"
             start := start.contents ++ if_ ++ `(${cond.contents(~input)}){${blockCode}}`
             nextElse := true
-          } else if typeValidation {
+          } else {
             let cond = cond.contents(~input)
             noop := (noop.contents->X.String.unsafeToBool ? `${noop.contents}||${cond}` : cond)
           }
         }
 
-        if typeValidation || keys->Stdlib.Array.length === 0 {
-          let errorCode = fail(caught.contents)
-          start :=
-            start.contents ++ if noop.contents->X.String.unsafeToBool {
-              let if_ = nextElse.contents ? "else if" : "if"
-              if_ ++ `(!(${noop.contents})){${errorCode}}`
-            } else if nextElse.contents {
-              `else{${errorCode}}`
-            } else {
-              errorCode
-            }
-        }
+        let errorCode = fail(caught.contents)
+        start :=
+          start.contents ++ if noop.contents->X.String.unsafeToBool {
+            let if_ = nextElse.contents ? "else if" : "if"
+            if_ ++ `(!(${noop.contents})){${errorCode}}`
+          } else if nextElse.contents {
+            `else{${errorCode}}`
+          } else {
+            errorCode
+          }
       }
 
       let output = input->B.Val.cleanValFrom

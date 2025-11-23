@@ -147,7 +147,7 @@ test("Ensures parsing order with unknown schema", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{try{if(typeof i!=="string"){e[2](i)}if(i.length!==e[0]){e[1]()}}catch(e2){try{if(typeof i!=="boolean"){e[3](i)}}catch(e3){try{i=e[4](i)}catch(e4){if(!(typeof i==="number"&&!Number.isNaN(i)||typeof i==="bigint")){e[5](i,e2,e3,e4)}}}}return i}`,
+    `i=>{try{if(typeof i!=="string"){e[2](i)}if(i.length!==e[0]){e[1]()}}catch(e2){try{if(typeof i!=="boolean"){e[3](i)}}catch(e3){try{let v0;try{v0=e[4](i)}catch(x){e[5](x)}i=v0}catch(e4){if(!(typeof i==="number"&&!Number.isNaN(i)||typeof i==="bigint")){e[6](i,e2,e3,e4)}}}}return i}`,
   )
 })
 
@@ -184,7 +184,7 @@ test("Serializes when second struct misses serializer", t => {
   t->U.assertThrowsMessage(
     () => #orange->S.reverseConvertOrThrow(schema),
     `Expected "apple" | unknown, received "orange"
-- Expected string, received "orange"
+- Expected "apple", received "orange"
 - The S.transform serializer is missing`,
   )
 
@@ -463,12 +463,12 @@ test("Successfully serializes unboxed variant", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i==="string"){try{i=e[0](i)}catch(e0){}}else{e[1](i)}return i}`,
+    `i=>{if(typeof i==="string"){try{let v0;try{v0=e[0](i)}catch(x){e[1](x)}i=v0}catch(e0){}}else{e[2](i)}return i}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{try{let v0=e[0](i);if(typeof v0!=="string"){e[1](v0)}i=v0}catch(e0){if(!(typeof i==="string")){e[2](i,e0)}}return i}`,
+    `i=>{try{let v0;try{v0=e[0](i)}catch(x){e[1](x)}if(typeof v0!=="string"){e[2](v0)}i=v0}catch(e0){if(!(typeof i==="string")){e[3](i,e0)}}return i}`,
   )
 
   // The same, but toString schema is the first
@@ -484,7 +484,7 @@ test("Successfully serializes unboxed variant", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e1){try{let v0=e[1](i);if(typeof v0!=="string"){e[2](v0)}i=v0}catch(e2){e[3](i,e1,e2)}}return i}`,
+    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e1){try{let v0;try{v0=e[1](i)}catch(x){e[2](x)}if(typeof v0!=="string"){e[3](v0)}i=v0}catch(e2){e[4](i,e1,e2)}}return i}`,
   )
 })
 
@@ -501,8 +501,16 @@ test("Compiled parse code snapshot", t => {
     ~op=#ReverseParse,
     `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)&&(i===0||i===1))){e[0](i)}return i}`,
   )
-  t->U.assertCompiledCodeIsNoop(~schema, ~op=#Convert)
-  t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Convert,
+    `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)&&(i===0||i===1))){e[0](i)}return i}`,
+  )
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)&&(i===0||i===1))){e[0](i)}return i}`,
+  )
 })
 
 asyncTest("Compiled async parse code snapshot", async t => {
@@ -514,12 +522,12 @@ asyncTest("Compiled async parse code snapshot", async t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){if(i===0){i=e[0](i)}else if(!(i===1)){e[1](i)}}else{e[2](i)}return Promise.resolve(i)}`,
+    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){if(i===0){let v0;try{v0=e[0](i).catch(x=>e[1](x))}catch(x){e[1](x)}i=v0}else if(!(i===1)){e[2](i)}}else{e[3](i)}return Promise.resolve(i)}`,
   )
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ConvertAsync,
-    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){if(i===0){i=e[0](i)}else if(!(i===1)){e[1](i)}}else{e[2](i)}return Promise.resolve(i)}`,
+    `i=>{if(typeof i==="number"&&!Number.isNaN(i)){if(i===0){let v0;try{v0=e[0](i).catch(x=>e[1](x))}catch(x){e[1](x)}i=v0}else if(!(i===1)){e[2](i)}}else{e[3](i)}return Promise.resolve(i)}`,
   )
 
   t->Assert.deepEqual(await 1->S.parseAsyncOrThrow(schema), 1)
@@ -900,13 +908,13 @@ module CknittelBugReport = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){try{let v0=i["payload"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["a"];if(!(typeof v1==="string"||v1===void 0)){e[0](v1)}i={"TAG":"A","_0":{"payload":{"a":v1,},},}}catch(e0){try{let v2=i["payload"];if(typeof v2!=="object"||!v2){e[3](v2)}let v3=v2["b"];if(!(typeof v3==="number"&&!Number.isNaN(v3)||v3===void 0)){e[2](v3)}i={"TAG":"B","_0":{"payload":{"b":v3,},},}}catch(e1){e[4](i,e0,e1)}}}else{e[5](i)}return i}`,
+      `i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){try{let v0=i["payload"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["a"];if(!(typeof v1==="string"||v1===void 0)){e[0](v1)}i={"TAG":"A","_0":{"payload":{"a":v1,},},}}catch(e0){try{let v2=i["payload"];if(typeof v2!=="object"||!v2){e[3](v2)}let v3=v2["b"];if(!(typeof v3==="number"&&!Number.isNaN(v3)&&(v3<2147483647&&v3>-2147483648&&v3%1===0)||v3===void 0)){e[2](v3)}i={"TAG":"B","_0":{"payload":{"b":v3,},},}}catch(e1){e[4](i,e0,e1)}}}else{e[5](i)}return i}`,
     )
 
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ReverseConvert,
-      `i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){if(i["TAG"]==="A"){let v0=i["_0"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["payload"];if(typeof v1!=="object"||!v1){e[1](v1)}let v2=v1["a"];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}i={"payload":{"a":v2,},}}else if(i["TAG"]==="B"){let v3=i["_0"];if(typeof v3!=="object"||!v3){e[5](v3)}let v4=v3["payload"];if(typeof v4!=="object"||!v4){e[4](v4)}let v5=v4["b"];if(!(typeof v5==="number"&&!Number.isNaN(v5)||v5===void 0)){e[3](v5)}i={"payload":{"b":v5,},}}else{e[6](i)}}else{e[7](i)}return i}`,
+      `i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){if(i["TAG"]==="A"){let v0=i["_0"];if(typeof v0!=="object"||!v0){e[2](v0)}let v1=v0["payload"];if(typeof v1!=="object"||!v1){e[1](v1)}let v2=v1["a"];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}i={"payload":{"a":v2,},}}else if(i["TAG"]==="B"){let v3=i["_0"];if(typeof v3!=="object"||!v3){e[5](v3)}let v4=v3["payload"];if(typeof v4!=="object"||!v4){e[4](v4)}let v5=v4["b"];if(!(typeof v5==="number"&&!Number.isNaN(v5)&&(v5<2147483647&&v5>-2147483648&&v5%1===0)||v5===void 0)){e[3](v5)}i={"payload":{"b":v5,},}}else{e[6](i)}}else{e[7](i)}return i}`,
     )
 
     let x = {
@@ -923,3 +931,13 @@ module CknittelBugReport = {
     t->Assert.deepEqual(A(x)->S.reverseConvertOrThrow(schema), %raw(`{"payload":{"a":"foo"}}`))
   })
 }
+
+test("Optional of int32 should keep a format validation", t => {
+  let schema = S.option(S.int)
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)&&(i<2147483647&&i>-2147483648&&i%1===0)||i===void 0)){e[0](i)}return i}`,
+  )
+})

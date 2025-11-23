@@ -1,5 +1,7 @@
 open Ava
 
+S.enableJson()
+
 @dead
 type rating =
   | @as("G") GeneralAudiences
