@@ -123,11 +123,17 @@ let getCompiledCodeString = (
   | Some(defs) if code.contents !== noopOpCode =>
     defs->Dict.forEachWithKey((schema, key) =>
       try {
-        code := code.contents ++ "\n" ++ `${key}: ${schema->toCode}`
+        let defCode =
+          schema
+          ->toCode
+          ->String.replaceAll(
+            `${(S.unknown->S.untag).seq->Float.toString}-${(schema->S.untag).seq->Float.toString}`,
+            `unknown->${key}`,
+          )
+
+        code := code.contents ++ "\n" ++ `${key}: ${defCode}`
       } catch {
-      | _ => // Console.error("An error caught in U.getCompiledCodeString")
-        // throw(exn)
-        ()
+      | _exn => ()
       }
     )
   | _ => ()

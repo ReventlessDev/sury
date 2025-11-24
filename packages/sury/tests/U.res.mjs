@@ -109,9 +109,10 @@ function getCompiledCodeString(schema, op) {
   if (defs !== undefined && code.contents !== noopOpCode) {
     Stdlib_Dict.forEachWithKey(defs, (schema, key) => {
       try {
-        code.contents = code.contents + "\n" + (key + ": " + toCode(schema));
+        let defCode = toCode(schema).replaceAll(S.unknown.seq.toString() + "-" + schema.seq.toString(), "unknown->" + key);
+        code.contents = code.contents + "\n" + (key + ": " + defCode);
         return;
-      } catch (exn) {
+      } catch (_exn) {
         return;
       }
     });

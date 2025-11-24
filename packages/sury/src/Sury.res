@@ -500,6 +500,7 @@ and meta<'value> = {
 and untagged = private {
   @as("type")
   tag: tag,
+  seq: float,
   @as("$ref")
   ref?: string,
   @as("$defs")
@@ -899,13 +900,21 @@ let globalConfig: globalConfig = {
   defaultFlag: initialDefaultFlag,
 }
 
+let valueOptions = Js.Dict.empty()
+let configurableValueOptions = %raw(`{configurable: true}`)
+let valKey = "value"
+let reverseKey = "r"
+
 @new
 external base: unit => internal = "Schema"
-
-let base = tag => {
+let base = (tag, ~selfReverse) => {
   let s = base()
   s.tag = tag
   s.seq = %raw(`seq++`)
+  if selfReverse {
+    valueOptions->Js.Dict.set(valKey, s->Obj.magic)
+    let _ = X.Object.defineProperty(s, reverseKey, valueOptions->Obj.magic)
+  }
   s
 }
 
@@ -924,24 +933,27 @@ let shakenTraps: X.Proxy.traps<internal> = {
 }
 
 let shaken = (apiName: string) => {
-  let mut = base(neverTag)
+  let mut = base(neverTag, ~selfReverse=false)
   mut->Obj.magic->Js.Dict.set(shakenRef, apiName)
   mut->X.Proxy.make(shakenTraps)
 }
 
-let unknown = base(unknownTag)
-let bool = base(booleanTag)
-let symbol = base(symbolTag)
-let string = base(stringTag)
-let int = base(numberTag)
+let noopDecoder = (~input, ~selfSchema as _) => input
+
+let unknown = base(unknownTag, ~selfReverse=true)
+unknown.decoder = noopDecoder
+let bool = base(booleanTag, ~selfReverse=true)
+let symbol = base(symbolTag, ~selfReverse=true)
+let string = base(stringTag, ~selfReverse=true)
+let int = base(numberTag, ~selfReverse=true)
 int.format = Some(Int32)
-let float = base(numberTag)
-let bigint = base(bigintTag)
-let unit = base(undefinedTag)
+let float = base(numberTag, ~selfReverse=true)
+let bigint = base(bigintTag, ~selfReverse=true)
+let unit = base(undefinedTag, ~selfReverse=true)
 unit.const = %raw(`void 0`)
-let nullLiteral = base(nullTag)
+let nullLiteral = base(nullTag, ~selfReverse=true)
 nullLiteral.const = %raw(`null`)
-let nan = base(nanTag)
+let nan = base(nanTag, ~selfReverse=true)
 nan.const = %raw(`NaN`)
 
 type s<'value> = {fail: 'a. (string, ~path: Path.t=?) => 'a}
@@ -1771,7 +1783,7 @@ let stringDecoder = Builder.make((~input, ~selfSchema) => {
     ) && input.schema->isLiteral
   ) {
     let const = %raw(`""+input.s.const`)
-    let schema = base(stringTag)
+    let schema = base(stringTag, ~selfReverse=false)
     schema.const = const->Obj.magic
     input->B.val(`"${const}"`, ~schema)
   } else if (
@@ -1888,7 +1900,7 @@ module Literal = {
             ),
           )
       ) {
-        let expected = base(stringTag)
+        let expected = base(stringTag, ~selfReverse=false)
         expected.const = %raw(`"" + selfSchema.const`)
 
         // FIXME: Test, that when from item has a refinement
@@ -1934,14 +1946,14 @@ module Literal = {
       | #undefined => unit
       | #number if value->(Obj.magic: unknown => float)->Js.Float.isNaN => nan
       | #object => {
-          let s = base(instanceTag)
+          let s = base(instanceTag, ~selfReverse=true)
           s.class = (value->Obj.magic)["constructor"]
           s.const = value->Obj.magic
           s.decoder = literalDecoder
           s
         }
       | typeof => {
-          let s = base(typeof->(Obj.magic: Type.t => tag))
+          let s = base(typeof->(Obj.magic: Type.t => tag), ~selfReverse=true)
           s.const = value->Obj.magic
           s.decoder = literalDecoder
           s
@@ -2054,7 +2066,7 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
   let code = output->B.merge
 
   let isAsync = output.flag->Flag.has(ValFlag.async)
-  schema.isAsync = Some(isAsync)
+  expected.isAsync = Some(isAsync)
 
   if (
     code === "" &&
@@ -2081,10 +2093,6 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
     )
   }
 }
-and valueOptions = Js.Dict.empty()
-and configurableValueOptions = %raw(`{configurable: true}`)
-and valKey = "value"
-and reverseKey = "r"
 and getOutputSchema = (schema: internal) => {
   switch schema.to {
   | Some(to) => getOutputSchema(to)
@@ -2304,7 +2312,7 @@ let rec makeObjectVal = (from: val, ~schema): B.Val.Object.t => {
   }
 }
 and array = item => {
-  let mut = base(arrayTag)
+  let mut = base(arrayTag, ~selfReverse=false)
   mut.additionalItems = Some(Schema(item->castToInternal->castToPublic))
   mut.items = Some(X.Array.immutableEmpty)
   mut.decoder = arrayDecoder
@@ -2453,7 +2461,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
     let isObjectInput = inputTagFlag->Flag.unsafeHas(TagFlag.object)
     if !isObjectInput {
       // TODO: Use dictFactory here
-      let mut = base(objectTag)
+      let mut = base(objectTag, ~selfReverse=false)
       mut.properties = Some(X.Object.immutableEmpty)
       mut.additionalItems = Some(Schema(unknown->castToPublic))
 
@@ -2652,11 +2660,12 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
     defsMut->Js.Dict.set(identifier, unknown)
     let _ = def->isAsyncInternal(~defs=Some(defsMut))
   }
-  if def.isAsync->X.Option.getUnsafe {
-    recInput.flag = recInput.flag->Flag.with(ValFlag.async)
-  }
 
   let output = input->B.val(recInput.inline, ~schema=selfSchema)
+  if def.isAsync->X.Option.getUnsafe {
+    output.flag = output.flag->Flag.with(ValFlag.async)
+  }
+
   output.code = recInput->B.mergeWithPathPrepend(~parent=input)
 
   output
@@ -2681,7 +2690,7 @@ let instanceDecoder = Builder.make((~input, ~selfSchema) => {
 })
 
 let instance = class_ => {
-  let mut = base(instanceTag)
+  let mut = base(instanceTag, ~selfReverse=true)
   mut.class = class_->Obj.magic
   mut.decoder = instanceDecoder
   mut->castToPublic
@@ -2719,19 +2728,6 @@ X.Object.defineProperty(
         }
       }
     )->X.Function.toExpression,
-  },
-)
-
-X.Object.defineProperty(
-  %raw(`sp`),
-  "decoder",
-  {
-    writable: true,
-    value: (
-      (~input, ~selfSchema as _) => {
-        input
-      }: Builder.t
-    ),
   },
 )
 
@@ -2884,7 +2880,7 @@ module Metadata = {
 let defsPath = `#/$defs/`
 let recursive = (name, fn) => {
   let ref = `${defsPath}${name}`
-  let refSchema = base(refTag)
+  let refSchema = base(refTag, ~selfReverse=true)
   refSchema.ref = Some(ref)
   refSchema.name = Some(name)
   refSchema.decoder = recursiveDecoder
@@ -2907,7 +2903,7 @@ let recursive = (name, fn) => {
   if isNestedRec {
     refSchema->castToPublic
   } else {
-    let schema = base(refTag)
+    let schema = base(refTag, ~selfReverse=true)
     schema.name = def.name
     schema.ref = Some(ref)
     schema.defs = globalConfig.defsAccumulator
@@ -2997,7 +2993,8 @@ let transform: (t<'input>, s<'output> => transformDefinition<'input, 'output>) =
       }),
     )
     mut.to = Some({
-      let to = base(unknownTag)
+      let to = base(unknownTag, ~selfReverse=false)
+      to.decoder = noopDecoder
       to.serializer = Some(
         (~input, ~selfSchema as _) => {
           switch transformer(input->B.effectCtx) {
@@ -3015,7 +3012,7 @@ let transform: (t<'input>, s<'output> => transformDefinition<'input, 'output>) =
   })
 }
 
-let nullAsUnit = base(nullTag)
+let nullAsUnit = base(nullTag, ~selfReverse=false)
 nullAsUnit.const = %raw(`null`)
 nullAsUnit.to = Some(unit)
 nullAsUnit.decoder = Literal.literalDecoder
@@ -3027,7 +3024,7 @@ let neverBuilder = Builder.make((~input, ~selfSchema) => {
   input
 })
 
-let never = base(neverTag)
+let never = base(neverTag, ~selfReverse=true)
 never.decoder = neverBuilder
 let never: t<never> = never->castToPublic
 
@@ -3036,7 +3033,7 @@ let nestedLoc = "BS_PRIVATE_NESTED_SOME_NONE"
 module Dict = {
   let factory = item => {
     let item = item->castToInternal
-    let mut = base(objectTag)
+    let mut = base(objectTag, ~selfReverse=false)
     mut.properties = Some(X.Object.immutableEmpty)
     mut.additionalItems = Some(Schema(item->castToPublic))
     mut.decoder = objectDecoder
@@ -3622,7 +3619,7 @@ module Union = {
           has->setHas(schema.tag)
         }
       }
-      let mut = base(unionTag)
+      let mut = base(unionTag, ~selfReverse=false)
       mut.anyOf = Some(anyOf->X.Set.toArray)
       mut.decoder = unionDecoder
       mut.has = Some(has)
@@ -3995,7 +3992,7 @@ let jsonDecoder = Builder.make((~input, ~selfSchema) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
     input->inputToString
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.array) {
-    let mut = base(arrayTag)
+    let mut = base(arrayTag, ~selfReverse=false)
     mut.items = Some(
       input.schema.items
       ->X.Option.getUnsafe
@@ -4009,7 +4006,7 @@ let jsonDecoder = Builder.make((~input, ~selfSchema) => {
     )
     arrayDecoder(~input, ~selfSchema=mut)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
-    let mut = base(objectTag)
+    let mut = base(objectTag, ~selfReverse=false)
     let properties = Js.Dict.empty()
     input.schema.properties
     ->X.Option.getUnsafe
@@ -4046,7 +4043,7 @@ let jsonDecoder = Builder.make((~input, ~selfSchema) => {
 let enableJson = () => {
   if json->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
     let _ = %raw(`delete json.as`)
-    let jsonRef = base(refTag)
+    let jsonRef = base(refTag, ~selfReverse=true)
     jsonRef.ref = Some(`${defsPath}${jsonName}`)
     jsonRef.name = Some(jsonName)
 
@@ -4455,7 +4452,7 @@ module Schema = {
         let properties = Js.Dict.empty()
 
         let schema = {
-          let schema = base(objectTag)
+          let schema = base(objectTag, ~selfReverse=false)
           schema.properties = Some(properties)
           schema.additionalItems = Some(globalConfig.defaultAdditionalItems)
           schema.decoder = objectDecoder
@@ -4603,7 +4600,7 @@ module Schema = {
 
       let definition = definer((ctx :> Object.s))->(Obj.magic: value => unknown)
 
-      let mut = base(objectTag)
+      let mut = base(objectTag, ~selfReverse=false)
       mut.properties = Some(properties)
       mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
       mut.decoder = objectDecoder
@@ -4648,7 +4645,7 @@ module Schema = {
       }
     }
 
-    let mut = base(arrayTag)
+    let mut = base(arrayTag, ~selfReverse=false)
     mut.items = Some(items)
     mut.additionalItems = Some(Strict)
     mut.decoder = arrayDecoder
@@ -4944,7 +4941,7 @@ module Schema = {
           }
           let items = node->(Obj.magic: array<unknown> => array<internal>)
 
-          let mut = base(arrayTag)
+          let mut = base(arrayTag, ~selfReverse=false)
           mut.items = Some(items)
           mut.additionalItems = Some(Strict)
           mut.decoder = arrayDecoder
@@ -4952,7 +4949,7 @@ module Schema = {
         } else {
           let cnstr = (definition->Obj.magic)["constructor"]
           if cnstr->Obj.magic && cnstr !== %raw(`Object`) {
-            let mut = base(instanceTag)
+            let mut = base(instanceTag, ~selfReverse=true)
             mut.class = cnstr
             mut.const = definition->Obj.magic
             mut.decoder = Literal.literalDecoder
@@ -4966,7 +4963,7 @@ module Schema = {
               let schema = node->Js.Dict.unsafeGet(location)->traverseDefinition(~onNode)
               node->Js.Dict.set(location, schema->(Obj.magic: internal => unknown))
             }
-            let mut = base(objectTag)
+            let mut = base(objectTag, ~selfReverse=false)
             mut.properties = Some(node->(Obj.magic: dict<unknown> => dict<internal>))
             mut.additionalItems = Some(globalConfig.defaultAdditionalItems)
             mut.decoder = objectDecoder
@@ -5056,7 +5053,7 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
       var: B._notVar,
       inline: `Promise.all(${outputVar})`,
       flag: ValFlag.async,
-      schema: base(arrayTag), // FIXME: full schema
+      schema: base(arrayTag, ~selfReverse=false), // FIXME: full schema
     }
   } else {
     {
@@ -5065,7 +5062,7 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
       var: B._var,
       inline: outputVar,
       flag: ValFlag.none,
-      schema: base(arrayTag), // FIXME: full schema
+      schema: base(arrayTag, ~selfReverse=false), // FIXME: full schema
     }
   }
 })
@@ -5078,7 +5075,7 @@ let unnest = schema => {
       InternalError.panic("Invalid empty object for S.unnest schema.")
     }
     let schema = schema->castToInternal
-    let mut = base(arrayTag)
+    let mut = base(arrayTag, ~selfReverse=false)
     mut.items = Some(
       keys->Js.Array2.map(key => {
         array(properties->Js.Dict.unsafeGet(key))->castToInternal
@@ -5105,7 +5102,7 @@ let unnest = schema => {
                 ->Js.Array2.joinWith("")}`
             },
           )
-          let mut = base(arrayTag)
+          let mut = base(arrayTag, ~selfReverse=false)
           let itemSchema = array(unknown->castToPublic)
           mut.items = Some(
             keys->Js.Array2.map(_ => {
@@ -5186,7 +5183,7 @@ let unnest = schema => {
       }),
     )
 
-    let to = base(arrayTag)
+    let to = base(arrayTag, ~selfReverse=false)
     to.items = Some(X.Array.immutableEmpty)
     to.additionalItems = Some(Schema(schema->castToPublic))
     to.serializer = Some(unnestSerializer)
@@ -5852,7 +5849,7 @@ let js_merge = (s1, s2) => {
       properties->Js.Dict.set(key, properties2->Js.Dict.unsafeGet(key))
     }
 
-    let mut = base(objectTag)
+    let mut = base(objectTag, ~selfReverse=false)
     mut.properties = Some(properties->(Obj.magic: dict<t<unknown>> => dict<internal>))
     mut.additionalItems = Some(additionalItems1)
     mut.decoder = objectDecoder

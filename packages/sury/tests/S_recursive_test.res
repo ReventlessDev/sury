@@ -140,21 +140,15 @@ test("Fails to parse nested recursive object", t => {
     )
   })
 
-  t->U.assertThrowsMessage(
-    () =>
-      {
-        "Id": "1",
-        "Children": [
-          {"Id": "2", "Children": []},
-          {"Id": "3", "Children": [{"Id": "4", "Children": []}]},
-        ],
-      }->S.parseOrThrow(nodeSchema),
-    `{
-      code: OperationFailed("Invalid id"),
-      operation: Parse,
-      path: S.Path.fromArray(["Children", "1", "Children", "0", "Id"]),
-    }`,
-  )
+  t->U.assertThrowsMessage(() =>
+    {
+      "Id": "1",
+      "Children": [
+        {"Id": "2", "Children": []},
+        {"Id": "3", "Children": [{"Id": "4", "Children": []}]},
+      ],
+    }->S.parseOrThrow(nodeSchema)
+  , `Failed at ["Children"]["1"]["Children"]["0"]["Id"]: Invalid id`)
 })
 
 test("Fails to parse nested recursive object inside of another object", t => {
@@ -185,23 +179,17 @@ test("Fails to parse nested recursive object inside of another object", t => {
     )
   )
 
-  t->U.assertThrowsMessage(
-    () =>
-      {
-        "recursive": {
-          "Id": "1",
-          "Children": [
-            {"Id": "2", "Children": []},
-            {"Id": "3", "Children": [{"Id": "4", "Children": []}]},
-          ],
-        },
-      }->S.parseOrThrow(schema),
-    `{
-      code: OperationFailed("Invalid id"),
-      operation: Parse,
-      path: S.Path.fromArray(["recursive", "Children", "1", "Children", "0", "Id"]),
-    }`,
-  )
+  t->U.assertThrowsMessage(() =>
+    {
+      "recursive": {
+        "Id": "1",
+        "Children": [
+          {"Id": "2", "Children": []},
+          {"Id": "3", "Children": [{"Id": "4", "Children": []}]},
+        ],
+      },
+    }->S.parseOrThrow(schema)
+  , `Failed at ["recursive"]["Children"]["1"]["Children"]["0"]["Id"]: Invalid id`)
 })
 
 test("Parses multiple nested recursive object inside of another object", t => {
@@ -241,7 +229,7 @@ test("Parses multiple nested recursive object inside of another object", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v1;try{v1=e[1](i["recursive1"])}catch(v0){if(v0&&v0.s===s){v0.path="[\\"recursive1\\"]"+v0.path}throw v0}let v3;try{v3=e[2](i["recursive2"])}catch(v2){if(v2&&v2.s===s){v2.path="[\\"recursive2\\"]"+v2.path}throw v2}return {"recursive1":v1,"recursive2":v3,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0;try{v0=e[0](i["recursive1"]);}catch(v1){if(v1&&v1.s===s){v1.path="[\\"recursive1\\"]"+v1.path}throw v1}let v2;try{v2=e[1](i["recursive2"]);}catch(v3){if(v3&&v3.s===s){v3.path="[\\"recursive2\\"]"+v3.path}throw v3}return {"recursive1":v0,"recursive2":v2,}}`,
   )
 
   t->Assert.deepEqual(
@@ -427,6 +415,7 @@ test("Recursively transforms nested objects when added transform to the placehol
   )
 })
 
+// FIXME: A good test to continue with
 test("Shallowly transforms object when added transform to the S.recursive result", t => {
   let nodeSchema = S.recursive("Node", nodeSchema => {
     S.object(
@@ -470,14 +459,14 @@ test("Shallowly transforms object when added transform to the S.recursive result
   t->U.assertCompiledCode(
     ~schema=nodeSchema,
     ~op=#Parse,
-    `i=>{let v0=e[0](i);return e[1](v0)}
-Node: i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[1](v0)}if(!Array.isArray(v1)){e[2](v1)}let v6=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){let v5;try{let v4=e[3][1](v1[v2]);v5=v4}catch(v3){if(v3&&v3.s===s){v3.path="[\\"Children\\"]"+'["'+v2+'"]'+v3.path}throw v3}v6[v2]=v5}return {"id":v0,"children":v6,}}`,
+    `i=>{let v0;v0=e[0](i);let v1;try{v1=e[1](v0)}catch(x){e[2](x)}return v1}
+Node: i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[0](v0)}if(!Array.isArray(v1)){e[2](v1)}let v5=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){try{let v3;v3=e[1]["unknown->Node--0"](v1[v2]);v5[v2]=v3}catch(v4){if(v4&&v4.s===s){v4.path="[\\"Children\\"]"+'["'+v2+'"]'+v4.path}throw v4}}return {"id":v0,"children":v5,}}`,
   )
   t->U.assertCompiledCode(
     ~schema=nodeSchema,
     ~op=#ReverseConvert,
     `i=>{let v0=e[1](e[0](i));return v0}
-Node: i=>{let v0=i["children"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][0](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"children\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}return {"Id":i["id"],"Children":v5,}}`,
+  Node: i=>{let v0=i["children"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][0](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"children\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}return {"Id":i["id"],"Children":v5,}}`,
   )
 })
 
@@ -494,8 +483,8 @@ asyncTest("Successfully parses recursive object with async parse function", t =>
   t->U.assertCompiledCode(
     ~schema=nodeSchema,
     ~op=#ParseAsync,
-    `i=>{let v0=e[0](i);return v0}
-Node: i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[1](v0)}if(!Array.isArray(v1)){e[3](v1)}let v6=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){let v5;try{let v4=e[4][3](v1[v2]);v5=v4.catch(v3=>{if(v3&&v3.s===s){v3.path="[\\"Children\\"]"+'["'+v2+'"]'+v3.path}throw v3})}catch(v3){if(v3&&v3.s===s){v3.path="[\\"Children\\"]"+'["'+v2+'"]'+v3.path}throw v3}v6[v2]=v5}return Promise.all([e[2](v0),Promise.all(v6),]).then(a=>({"id":a[0],"children":a[1],}))}`,
+    `i=>{let v0;v0=e[0](i);return v0}
+Node: i=>{if(typeof i!=="object"||!i){e[5](i)}let v1=i["Id"],v2=i["Children"];if(typeof v1!=="string"){e[2](v1)}let v0;try{v0=e[0](i["Id"]).catch(x=>e[1](x))}catch(x){e[1](x)}if(!Array.isArray(v2)){e[4](v2)}let v6=new Array(v2.length);for(let v3=0;v3<v2.length;++v3){try{let v4;v4=e[3]["unknown->Node--1"](v2[v3]);v6[v3]=v4.catch(v5=>{if(v5&&v5.s===s){v5.path="[\\"Children\\"]"+'["'+v3+'"]'+v5.path}throw v5})}catch(v5){if(v5&&v5.s===s){v5.path="[\\"Children\\"]"+'["'+v3+'"]'+v5.path}throw v5}}return Promise.all([v0,Promise.all(v6),]).then(a=>({"id":a[0],"children":a[1],}))}`,
   )
 
   %raw(`{
@@ -573,7 +562,7 @@ test("Compiled parse code snapshot", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{let v0=e[0](i);return v0}
-Node: i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[1](v0)}if(!Array.isArray(v1)){e[2](v1)}let v6=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){let v5;try{let v4=e[3][1](v1[v2]);v5=v4}catch(v3){if(v3&&v3.s===s){v3.path="[\\"Children\\"]"+'["'+v2+'"]'+v3.path}throw v3}v6[v2]=v5}return {"id":v0,"children":v6,}}`,
+    `i=>{let v0;v0=e[0](i);return v0}
+Node: i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[0](v0)}if(!Array.isArray(v1)){e[2](v1)}let v5=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){try{let v3;v3=e[1]["unknown->Node--0"](v1[v2]);v5[v2]=v3}catch(v4){if(v4&&v4.s===s){v4.path="[\\"Children\\"]"+'["'+v2+'"]'+v4.path}throw v4}}return {"id":v0,"children":v5,}}`,
   )
 })

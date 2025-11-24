@@ -202,6 +202,7 @@ and meta<'value> = {
 and untagged = private {
   @as("type")
   tag: tag,
+  seq: float,
   @as("$ref")
   ref?: string,
   @as("$defs")
