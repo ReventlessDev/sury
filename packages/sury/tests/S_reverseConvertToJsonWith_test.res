@@ -70,7 +70,7 @@ test("Encodes option schema to JSON", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvertToJson,
-    `i=>{if(i===void 0){i=null}else if(!(typeof i==="string")){e[0](i)}return i}`,
+    `i=>{if(i===void 0){i=null}else if(!(typeof i==="boolean")){e[0](i)}return i}`,
   )
 })
 
@@ -228,7 +228,7 @@ test("Encodes a union to JSON when at least one item is not JSON-able", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvertToJson,
-    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e1){try{let v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
+    `i=>{try{if(typeof i!=="string"){e[0](i)}}catch(e1){try{let v0;v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
   )
 })
 
@@ -238,7 +238,7 @@ test("Encodes a union of NaN and unknown to JSON", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvertToJson,
-    `i=>{try{if(!Number.isNaN(i)){e[0](i)}i=null}catch(e1){try{let v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
+    `i=>{try{if(!Number.isNaN(i)){e[0](i)}i=null}catch(e1){try{let v0;v0=e[1](i);i=v0}catch(e2){e[2](i,e1,e2)}}return i}`,
   )
 
   t->Assert.deepEqual(%raw(`NaN`)->S.reverseConvertToJsonOrThrow(schema), JSON.Null)
@@ -356,7 +356,7 @@ module SerializesDeepRecursive = {
     t->U.assertCompiledCode(
       ~schema=bodySchema,
       ~op=#ReverseConvert,
-      `i=>{let v1;try{v1=e[0](i["condition"])}catch(v0){if(v0&&v0.s===s){v0.path="[\\"condition\\"]"+v0.path}throw v0}return {"condition":v1,}}`,
+      `i=>{let v0;try{v0=e[0](i["condition"]);}catch(v1){if(v1&&v1.s===s){v1.path="[\\"condition\\"]"+v1.path}throw v1}return {"condition":v0,}}`,
     )
 
     t->Assert.deepEqual(

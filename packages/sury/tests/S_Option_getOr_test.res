@@ -79,7 +79,7 @@ test("Successfully parses schema with transformation", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)||i===void 0)){e[0](i)}let v0=e[1](i===void 0?-123:i);if(!(typeof v0==="string"||v0===void 0)){e[2](v0)}return v0===void 0?"not positive":v0}`,
+    `i=>{if(!(typeof i==="number"&&!Number.isNaN(i)||i===void 0)){e[0](i)}let v0;try{v0=e[1](i===void 0?-123:i)}catch(x){e[2](x)}if(!(typeof v0==="string"||v0===void 0)){e[3](v0)}return v0===void 0?"not positive":v0}`,
   )
 })
 

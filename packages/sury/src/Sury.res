@@ -1533,31 +1533,6 @@ module Builder = {
       `${var}&&${var}.s===s`
     }
 
-    let transform = (b: val, ~input: val, operation) => {
-      if input.flag->Flag.unsafeHas(ValFlag.async) {
-        // let bb = b->scope(~path=b.path)
-        let bb = b
-        let operationInput: val = {
-          // FIXME: This is probably wrong
-          ...b,
-          var: _var,
-          inline: bb.global->varWithoutAllocation,
-          flag: ValFlag.none,
-          schema: unknown, // FIXME:
-        }
-        let operationOutputVal = operation(bb, ~input=operationInput)
-        let operationCode = bb->merge
-
-        input->asyncVal(
-          `${input.inline}.then(${Val.var(
-              operationInput,
-            )}=>{${operationCode}return ${operationOutputVal.inline}})`,
-        )
-      } else {
-        operation(b, ~input)
-      }
-    }
-
     let embedTransformation = (~input: val, ~fn: 'input => 'output, ~isAsync) => {
       let output = input->allocateVal(~schema=unknown)
       if isAsync {
@@ -1640,15 +1615,14 @@ module Builder = {
       }
     }
 
-    let mergeWithPathPrepend = (val: val, ~locationVar=?, ~appendSafe=?) => {
+    let mergeWithPathPrepend = (val: val, ~parent, ~locationVar=?, ~appendSafe=?) => {
       if val.path === Path.empty && locationVar === None {
         val->merge
       } else {
         val->mergeWithCatch(~appendSafe?, ~catch=(~errorVar) => {
-          `${errorVar}.path=${switch val.parent {
-            | None
-            | Some({path: ""}) => ""
-            | Some({path}) => `${path->X.Inlined.Value.fromString}+`
+          `${errorVar}.path=${switch parent {
+            | {path: ""} => ""
+            | {path} => `${path->X.Inlined.Value.fromString}+`
             }}${switch locationVar {
             | Some(var) => `'["'+${var}+'"]'+`
             | _ => ""
@@ -1658,16 +1632,15 @@ module Builder = {
     }
 
     let withPathPrepend = (
-      b: val,
       ~input,
       ~dynamicLocationVar as maybeDynamicLocationVar=?,
       ~appendSafe=?,
       fn,
     ) => {
-      if b.path === Path.empty && maybeDynamicLocationVar === None {
-        fn(b, ~input)
+      if input.path === Path.empty && maybeDynamicLocationVar === None {
+        fn(~input)
       } else {
-        fn(b, ~input)
+        fn(~input)
 
         // try b->mergeWithCatch(
         //   ~path=Path.empty,
@@ -1992,6 +1965,7 @@ let rec parse = (input: val) => {
     },
   )
 
+  // FIXME: Should the check be here?
   if output.contents.skipTo !== Some(true) {
     output := expected.decoder(~input=output.contents, ~selfSchema=expected)
 
@@ -2028,6 +2002,26 @@ and parseDynamic = input => {
     }
 
     X.Exn.throwAny(error)
+  }
+}
+and transformVal = (~input: val, operation) => {
+  if input.flag->Flag.unsafeHas(ValFlag.async) {
+    let operationInputVar = input.global->B.varWithoutAllocation
+    let operationInput =
+      input->B.val(operationInputVar, ~schema=input.schema, ~expected=input.expected)
+    operationInput.var = B._var
+    operationInput.from = None
+
+    let operationOutputVal = operation(~input=operationInput)
+    let output = operationOutputVal->parse
+    let operationCode = output->B.merge
+
+    input.inline = `${input.inline}.then(${operationInputVar}=>{${operationCode}return ${output.inline}})`
+    input.schema = output.schema
+    input.expected = output.expected
+    input
+  } else {
+    operation(~input)
   }
 }
 and isAsyncInternal = (schema, ~defs) => {
@@ -2088,6 +2082,7 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
   }
 }
 and valueOptions = Js.Dict.empty()
+and configurableValueOptions = %raw(`{configurable: true}`)
 and valKey = "value"
 and reverseKey = "r"
 and getOutputSchema = (schema: internal) => {
@@ -2376,6 +2371,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
 
         let itemCode =
           itemOutput->B.mergeWithPathPrepend(
+            ~parent=input,
             ~locationVar=iteratorVar,
             ~appendSafe=?isTransformed
               ? Some(() => output->B.Val.addKey(iteratorVar, itemOutput))
@@ -2497,6 +2493,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
 
         let itemCode =
           itemOutput->B.mergeWithPathPrepend(
+            ~parent=input,
             ~locationVar=keyVar,
             ~appendSafe=?isTransformed
               ? Some(() => output->B.Val.addKey(keyVar, itemOutput))
@@ -2633,31 +2630,35 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
       input->B.embed(fn)
     }
   | None => {
-      def
-      ->Obj.magic
-      ->Stdlib.Dict.set(key, 0)
+      configurableValueOptions->Js.Dict.set(valKey, 0->Obj.magic)
+      // Use defineProperty, so the cache keys are not enumerable
+      let _ = X.Object.defineProperty(def, key, configurableValueOptions->Obj.magic)
+
       let fn = compileDecoder(~schema=input.schema, ~expected=def, ~flag, ~defs=Some(defs))
-      def
-      ->Obj.magic
-      ->Stdlib.Dict.set(key, fn)
+
+      valueOptions->Js.Dict.set(valKey, fn)
+      // Use defineProperty, so the cache keys are not enumerable
+      let _ = X.Object.defineProperty(def, key, valueOptions->Obj.magic)
+
       input->B.embed(fn)
     }
   }
-  let output = input->B.withPathPrepend(~input, (_, ~input) => {
-    let output = input->B.Val.map(recOperation)
-    if def.isAsync === None {
-      let defsMut = defs->X.Dict.copy
-      defsMut->Js.Dict.set(identifier, unknown)
-      let _ = def->isAsyncInternal(~defs=Some(defsMut))
-    }
-    if def.isAsync->X.Option.getUnsafe {
-      output.flag = output.flag->Flag.with(ValFlag.async)
-    }
-    output
-  })
-  // Force rec function execution
-  // for the case when the value is not used
-  let _ = output.var()
+
+  let recInput = input->B.allocateVal(~schema=unknown)
+  recInput.code = `${recInput.inline}=${recOperation}(${input.inline});`
+  recInput.from = None
+  if def.isAsync === None {
+    let defsMut = defs->X.Dict.copy
+    defsMut->Js.Dict.set(identifier, unknown)
+    let _ = def->isAsyncInternal(~defs=Some(defsMut))
+  }
+  if def.isAsync->X.Option.getUnsafe {
+    recInput.flag = recInput.flag->Flag.with(ValFlag.async)
+  }
+
+  let output = input->B.val(recInput.inline, ~schema=selfSchema)
+  output.code = recInput->B.mergeWithPathPrepend(~parent=input)
+
   output
 })
 
@@ -3149,6 +3150,9 @@ module Union = {
           )}(${input.var()}${caught})`
       }
 
+      let output = input->B.Val.cleanValFrom
+      output.from = Some(input)
+
       let getArrItemsCode = (arr: array<unknown>, ~isDeopt) => {
         let typeValidationInput = arr->Js.Array2.unsafe_get(0)->(Obj.magic: unknown => val)
         let typeValidationOutput = arr->Js.Array2.unsafe_get(1)->(Obj.magic: unknown => val)
@@ -3200,7 +3204,7 @@ module Union = {
 
             if itemOutput.inline !== typeValidationInput.inline {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-                typeValidationInput.flag = input.flag->Flag.with(ValFlag.async)
+                output.flag = output.flag->Flag.with(ValFlag.async)
               }
               itemOutput.code =
                 itemOutput.code ++
@@ -3545,12 +3549,11 @@ module Union = {
           }
       }
 
-      let output = input->B.Val.cleanValFrom
-      output.from = Some(input)
       output.code = output.code ++ start.contents ++ end.contents
 
       let o = if output.flag->Flag.unsafeHas(ValFlag.async) {
-        output->B.asyncVal(`Promise.resolve(${output.inline})`)
+        output.inline = `Promise.resolve(${output.inline})`
+        output
       } else if output.var === B._var {
         // TODO: Think how to make it more robust
         // Recreate to not break the logic to determine
@@ -3765,16 +3768,17 @@ module Option = {
 
           mut.parser = Some(
             Builder.make((~input, ~selfSchema) => {
-              input->B.transform(
+              transformVal(
                 ~input,
-                (b, ~input) => {
+                (~input) => {
                   let inputVar = input.var()
-                  b->B.val(
+                  input->B.val(
                     `${inputVar}===void 0?${switch default {
-                      | Value(v) => b->B.inlineConst(Literal.parse(v))
-                      | Callback(cb) => `${b->B.embed(cb)}()`
+                      | Value(v) => input->B.inlineConst(Literal.parse(v))
+                      | Callback(cb) => `${input->B.embed(cb)}()`
                       }}:${inputVar}`,
                     ~schema=selfSchema.to->X.Option.getUnsafe,
+                    ~expected=selfSchema.to->X.Option.getUnsafe,
                   )
                 },
               )
@@ -5016,10 +5020,10 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
     flag: ValFlag.none,
     schema: unknown, // FIXME:
   }
-  let itemOutput = bb->B.withPathPrepend(
+  let itemOutput = B.withPathPrepend(
     ~input=itemInput,
     ~dynamicLocationVar=iteratorVar,
-    ~appendSafe=(bb, ~output) => {
+    ~appendSafe=(~output) => {
       let initialArraysCode = ref("")
       let settingCode = ref("")
       for idx in 0 to items->Js.Array2.length - 1 {
@@ -5034,7 +5038,7 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
       b.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
       bb.code = bb.code ++ settingCode.contents
     },
-    (b, ~input) => {
+    (~input) => {
       // b->parse(~schema, ~input)
       b->parse
     },
@@ -5157,15 +5161,15 @@ let unnest = schema => {
         let outputVar = B.Val.var(output)
 
         let itemInput = itemInput->B.Val.Object.complete
-        let itemOutput = bb->B.withPathPrepend(
+        let itemOutput = B.withPathPrepend(
           ~input=itemInput,
           ~dynamicLocationVar=iteratorVar,
           ~appendSafe=(bb, ~output as itemOutput) => {
             bb.code = bb.code ++ output->B.Val.addKey(iteratorVar, itemOutput) ++ ";"
           },
-          (b, ~input) => {
+          (~input) => {
             // b->parse(~schema, ~input)
-            b->parse
+            input->parse
           },
         )
         let itemCode = bb->B.merge
