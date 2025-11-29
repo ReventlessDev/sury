@@ -415,7 +415,6 @@ test("Recursively transforms nested objects when added transform to the placehol
   )
 })
 
-// FIXME: A good test to continue with
 test("Shallowly transforms object when added transform to the S.recursive result", t => {
   let nodeSchema = S.recursive("Node", nodeSchema => {
     S.object(
@@ -429,6 +428,7 @@ test("Shallowly transforms object when added transform to the S.recursive result
     serializer: node => {...node, id: node.id->String.slice(~start=7)},
   })
 
+  // FIXME: There's a double run of array decoder
   t->Assert.deepEqual(
     {
       "Id": "1",
@@ -460,13 +460,13 @@ test("Shallowly transforms object when added transform to the S.recursive result
     ~schema=nodeSchema,
     ~op=#Parse,
     `i=>{let v0;v0=e[0](i);let v1;try{v1=e[1](v0)}catch(x){e[2](x)}return v1}
-Node: i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[0](v0)}if(!Array.isArray(v1)){e[2](v1)}let v5=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){try{let v3;v3=e[1]["unknown->Node--0"](v1[v2]);v5[v2]=v3}catch(v4){if(v4&&v4.s===s){v4.path="[\\"Children\\"]"+'["'+v2+'"]'+v4.path}throw v4}}return {"id":v0,"children":v5,}}`,
+  Node: i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["Id"],v1=i["Children"];if(typeof v0!=="string"){e[0](v0)}if(!Array.isArray(v1)){e[2](v1)}let v5=new Array(v1.length);for(let v2=0;v2<v1.length;++v2){try{let v3;v3=e[1]["unknown->Node--0"](v1[v2]);v5[v2]=v3}catch(v4){if(v4&&v4.s===s){v4.path="[\\"Children\\"]"+'["'+v2+'"]'+v4.path}throw v4}}return {"id":v0,"children":v5,}}`,
   )
   t->U.assertCompiledCode(
     ~schema=nodeSchema,
     ~op=#ReverseConvert,
-    `i=>{let v0=e[1](e[0](i));return v0}
-  Node: i=>{let v0=i["children"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][0](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"children\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}return {"Id":i["id"],"Children":v5,}}`,
+    `i=>{let v0;try{v0=e[0](i)}catch(x){e[1](x)}let v1;v1=e[2](v0);return v1}
+Node: i=>{let v0=i["children"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][0](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"children\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}return {"Id":i["id"],"Children":v5,}}`,
   )
 })
 

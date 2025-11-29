@@ -356,7 +356,7 @@ module SerializesDeepRecursive = {
     t->U.assertCompiledCode(
       ~schema=bodySchema,
       ~op=#ReverseConvert,
-      `i=>{let v0;try{v0=e[0](i["condition"]);}catch(v1){if(v1&&v1.s===s){v1.path="[\\"condition\\"]"+v1.path}throw v1}return {"condition":v0,}}`,
+      `i=>{let v0;try{v0=e[0](i["condition"]);}catch(v1){v1.path="[\\"condition\\"]"+v1.path;throw v1}return {"condition":v0,}}`,
     )
 
     t->Assert.deepEqual(

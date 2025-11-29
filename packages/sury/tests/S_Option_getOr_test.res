@@ -110,7 +110,7 @@ asyncTest("Compiled async parse code snapshot", async t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i==="boolean"){i=e[0](i)}else if(!(i===void 0)){e[1](i)}return Promise.resolve(i).then(v0=>{return v0===void 0?false:v0})}`,
+    `i=>{if(typeof i==="boolean"){let v0;try{v0=e[0](i).catch(x=>e[1](x))}catch(x){e[1](x)}i=v0}else if(!(i===void 0)){e[2](i)}return Promise.resolve(i).then(v1=>{return v1===void 0?false:v1})}`,
   )
 
   let schema =
@@ -122,7 +122,7 @@ asyncTest("Compiled async parse code snapshot", async t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(!(typeof i==="boolean"||i===void 0)){e[0](i)}return e[1](i===void 0?false:i)}`,
+    `i=>{if(!(typeof i==="boolean"||i===void 0)){e[0](i)}let v0;try{v0=e[1](i===void 0?false:i).catch(x=>e[2](x))}catch(x){e[2](x)}return v0}`,
   )
 })
 

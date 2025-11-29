@@ -409,7 +409,7 @@ test("Array should be checked before object even if it's later item in the union
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(Array.isArray(i)){for(let v0=0;v0<i.length;++v0){try{let v1=i[v0];if(typeof v1!=="string"){e[0](v1)}}catch(v2){if(v2&&v2.s===s){v2.path=\'["\'+v0+\'"]\'+v2.path}throw v2}}}else if(typeof i==="object"&&i&&!Array.isArray(i)){let v3=i["foo"];if(typeof v3!=="string"){e[1](v3)}i=[v3,]}else{e[2](i)}return i}`,
+    `i=>{if(Array.isArray(i)){for(let v0=0;v0<i.length;++v0){try{let v1=i[v0];if(typeof v1!=="string"){e[0](v1)}}catch(v2){v2.path=\'["\'+v0+\'"]\'+v2.path;throw v2}}}else if(typeof i==="object"&&i&&!Array.isArray(i)){let v3=i["foo"];if(typeof v3!=="string"){e[1](v3)}i=[v3,]}else{e[2](i)}return i}`,
   )
 })
 
@@ -709,8 +709,8 @@ module CrazyUnion = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{let v0=e[0](i);return v0}
-Crazy: i=>{if(typeof i==="object"&&i){if(i["type"]==="A"&&Array.isArray(i["nested"])){let v0=i["nested"],v5=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){let v4;try{let v3=e[0][1](v0[v1]);v4=v3}catch(v2){if(v2&&v2.s===s){v2.path="[\\"nested\\"]"+'["'+v1+'"]'+v2.path}throw v2}v5[v1]=v4}i={"TAG":"A","_0":v5,}}else if(i["type"]==="Z"&&Array.isArray(i["nested"])){let v6=i["nested"],v11=new Array(v6.length);for(let v7=0;v7<v6.length;++v7){let v10;try{let v9=e[1][1](v6[v7]);v10=v9}catch(v8){if(v8&&v8.s===s){v8.path="[\\"nested\\"]"+'["'+v7+'"]'+v8.path}throw v8}v11[v7]=v10}i={"TAG":"Z","_0":v11,}}else{e[2](i)}}else if(!(typeof i==="string"&&(i==="B"||i==="C"||i==="D"||i==="E"||i==="F"||i==="G"||i==="H"||i==="I"||i==="J"||i==="K"||i==="L"||i==="M"||i==="N"||i==="O"||i==="P"||i==="Q"||i==="R"||i==="S"||i==="T"||i==="U"||i==="V"||i==="W"||i==="X"||i==="Y"))){e[3](i)}return i}`,
+      `i=>{let v0;v0=e[0](i);return v0}
+Crazy: i=>{if(typeof i==="object"&&i&&!Array.isArray(i)){if(i["type"]==="A"){let v0=i["nested"];if(!Array.isArray(v0)){e[1](v0)}let v4=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){try{let v2;v2=e[0]["unknown->Crazy--0"](v0[v1]);v4[v1]=v2}catch(v3){v3.path="[\\"nested\\"]"+'["'+v1+'"]'+v3.path;throw v3}}i={"TAG":"A","_0":v4,}}else if(i["type"]==="Z"){let v5=i["nested"];if(!Array.isArray(v5)){e[3](v5)}let v9=new Array(v5.length);for(let v6=0;v6<v5.length;++v6){try{let v7;v7=e[2]["unknown->Crazy--0"](v5[v6]);v9[v6]=v7}catch(v8){v8.path="[\\"nested\\"]"+'["'+v6+'"]'+v8.path;throw v8}}i={"TAG":"Z","_0":v9,}}else{e[4](i)}}else if(!(typeof i==="string"&&(i==="B"||i==="C"||i==="D"||i==="E"||i==="F"||i==="G"||i==="H"||i==="I"||i==="J"||i==="K"||i==="L"||i==="M"||i==="N"||i==="O"||i==="P"||i==="Q"||i==="R"||i==="S"||i==="T"||i==="U"||i==="V"||i==="W"||i==="X"||i==="Y"))){e[5](i)}return i}`,
     )
   })
 

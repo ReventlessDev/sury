@@ -17,6 +17,7 @@
 - All errors thrown in transform/refine are wrapped in `SuryError`
 - TS: Updated `S.Error` type to use variants instead of code property
 - ReScript: `S.null` -> `S.nullAsOption`
+- Updated union conversion logic - it now always performs exhaustive validation
 
 ### TS
 

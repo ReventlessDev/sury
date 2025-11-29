@@ -37,21 +37,25 @@ module Common = {
     )
   })
 
-  // Undefined check should be first
+  // Undefined check should be first ?
   test("Compiled async parse code snapshot", t => {
     let schema = S.option(S.unknown->S.transform(_ => {asyncParser: i => Promise.resolve(i)}))
 
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ParseAsync,
-      `i=>{try{i=e[0](i)}catch(e0){if(!(i===void 0)){e[1](i,e0)}}return Promise.resolve(i)}`,
+      `i=>{try{let v0;try{v0=e[0](i).catch(x=>e[1](x))}catch(x){e[1](x)}i=v0}catch(e0){if(!(i===void 0)){e[2](i,e0)}}return Promise.resolve(i)}`,
     )
   })
 
   test("Compiled serialize code snapshot", t => {
     let schema = factory()
 
-    t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
+    t->U.assertCompiledCode(
+      ~schema,
+      ~op=#ReverseConvert,
+      `i=>{if(!(typeof i==="string"||i===void 0)){e[0](i)}return i}`,
+    )
   })
 
   test("Reverse to self", t => {
@@ -219,7 +223,11 @@ test("Doesn't apply valFromOption for non-undefined literals in option", t => {
   t->Assert.deepEqual(Some(%raw(`null`))->S.reverseConvertOrThrow(schema), %raw(`null`))
   t->Assert.deepEqual(None->S.reverseConvertOrThrow(schema), %raw(`undefined`))
 
-  t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{if(!(i===null||i===void 0)){e[0](i)}return i}`,
+  )
 })
 
 test("Option with unknown", t => {

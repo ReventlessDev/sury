@@ -249,7 +249,7 @@ test("Parses JSON string to dict", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[2](v0)}for(let v1 in v0){try{let v2=v0[v1];if(typeof v2!=="boolean"){e[1](v2)}}catch(v3){if(v3&&v3.s===s){v3.path=\'["\'+v1+\'"]\'+v3.path}throw v3}}return v0}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="object"||!v0||Array.isArray(v0)){e[2](v0)}for(let v1 in v0){try{let v2=v0[v1];if(typeof v2!=="boolean"){e[1](v2)}}catch(v3){v3.path=\'["\'+v1+\'"]\'+v3.path;throw v3}}return v0}`,
   )
 
   t->Assert.deepEqual(value->S.reverseConvertOrThrow(schema), `{"foo":true}`->Obj.magic)
@@ -266,7 +266,7 @@ test("Parses JSON string to array", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(!Array.isArray(v0)){e[2](v0)}for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(typeof v2!=="boolean"){e[1](v2)}}catch(v3){if(v3&&v3.s===s){v3.path=\'["\'+v1+\'"]\'+v3.path}throw v3}}return v0}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(!Array.isArray(v0)){e[2](v0)}for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(typeof v2!=="boolean"){e[1](v2)}}catch(v3){v3.path=\'["\'+v1+\'"]\'+v3.path;throw v3}}return v0}`,
   )
 
   t->Assert.deepEqual(value->S.reverseConvertOrThrow(schema), `[true,false]`->Obj.magic)
@@ -400,13 +400,13 @@ test("Converts JSON string to object with unknown field", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ReverseConvert,
-    `i=>{let v1;try{v1=e[0](i)}catch(v0){if(v0&&v0.s===s){v0.path="[\\"foo\\"]"+v0.path}throw v0}return JSON.stringify({"foo":v1,})}`,
+    `i=>{let v0;v0=e[0](i);return JSON.stringify({"foo":v0,})}`,
   )
 
   t->Assert.deepEqual(%raw(`"foo"`)->S.reverseConvertOrThrow(schema), %raw(`'{"foo":"foo"}'`))
   t->U.assertThrowsMessage(() => {
     %raw(`123n`)->S.reverseConvertOrThrow(schema)
-  }, `Failed at ["foo"]: Expected JSON, received 123n`)
+  }, `Expected JSON, received 123n`)
 })
 
 test("Compiled async parse code snapshot", t => {
@@ -415,7 +415,7 @@ test("Compiled async parse code snapshot", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#ParseAsync,
-    `i=>{if(typeof i!=="string"){e[3](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="boolean"){e[2](v0)}return e[1](v0)}`,
+    `i=>{if(typeof i!=="string"){e[4](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="boolean"){e[3](v0)}let v1;try{v1=e[1](v0).catch(x=>e[2](x))}catch(x){e[2](x)}return v1}`,
   )
 })
 

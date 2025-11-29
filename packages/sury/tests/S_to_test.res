@@ -577,7 +577,7 @@ test("Coerce from JSON to array of bigint", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(!Array.isArray(i)){e[2](i)}let v4=new Array(i.length);for(let v0=0;v0<i.length;++v0){try{let v2=i[v0];if(typeof v2!=="string"){e[1](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[0](v2)}v4[v0]=v1}catch(v3){if(v3&&v3.s===s){v3.path=\'["\'+v0+\'"]\'+v3.path}throw v3}}return v4}`,
+    `i=>{if(!Array.isArray(i)){e[2](i)}let v4=new Array(i.length);for(let v0=0;v0<i.length;++v0){try{let v2=i[v0];if(typeof v2!=="string"){e[1](v2)}let v1;try{v1=BigInt(v2)}catch(_){e[0](v2)}v4[v0]=v1}catch(v3){v3.path=\'["\'+v0+\'"]\'+v3.path;throw v3}}return v4}`,
   )
   t->U.assertCompiledCode(
     ~schema,

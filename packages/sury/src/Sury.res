@@ -223,7 +223,7 @@ module Path = {
 }
 
 let vendor = "sury"
-// Internal symbol to easily identify the error
+// Internal symbol to easily identify SuryError
 let s = X.Symbol.make(vendor)
 // Internal symbol to identify item proxy
 let itemSymbol = X.Symbol.make(vendor ++ ":item")
@@ -933,7 +933,7 @@ let shakenTraps: X.Proxy.traps<internal> = {
 }
 
 let shaken = (apiName: string) => {
-  let mut = base(neverTag, ~selfReverse=false)
+  let mut = base(neverTag, ~selfReverse=true)
   mut->Obj.magic->Js.Dict.set(shakenRef, apiName)
   mut->X.Proxy.make(shakenTraps)
 }
@@ -1540,11 +1540,6 @@ module Builder = {
       }
     }
 
-    @inline
-    let isInternalError = (_b: val, var) => {
-      `${var}&&${var}.s===s`
-    }
-
     let embedTransformation = (~input: val, ~fn: 'input => 'output, ~isAsync) => {
       let output = input->allocateVal(~schema=unknown)
       if isAsync {
@@ -1613,9 +1608,7 @@ module Builder = {
       } else {
         let errorVar = val.global->varWithoutAllocation
 
-        let catchCode = `if(${val->isInternalError(errorVar)}){${catch(
-            ~errorVar,
-          )}}throw ${errorVar}`
+        let catchCode = `${catch(~errorVar)};throw ${errorVar}`
 
         if val.flag->Flag.unsafeHas(ValFlag.async) {
           val.inline = `${val.inline}.catch(${errorVar}=>{${catchCode}})`
@@ -1970,36 +1963,53 @@ let rec parse = (input: val) => {
     input.global.defs = input.expected.defs
   }
 
-  let output = ref(
-    switch input.schema.encoder {
-    | Some(encoder) => encoder(~input, ~selfSchema=expected)
-    | None => input
-    },
-  )
+  if input.flag->Flag.unsafeHas(ValFlag.async) {
+    let operationInputVar = input.var()
+    let operationInput =
+      input->B.val(operationInputVar, ~schema=input.schema, ~expected=input.expected)
+    operationInput.var = B._var
+    operationInput.from = None
 
-  // FIXME: Should the check be here?
-  if output.contents.skipTo !== Some(true) {
-    output := expected.decoder(~input=output.contents, ~selfSchema=expected)
-
-    switch output.contents.expected.to {
-    | Some(to) =>
-      switch output.contents.expected {
-      | {parser} => output := parser(~input=output.contents, ~selfSchema=output.contents.expected)
-      | _ => ()
-      }
-
-      if output.contents.skipTo !== Some(true) {
-        let next = output.contents->B.Val.cleanValFrom
-        next.from = Some(output.contents)
-        next.expected = to
-        output := parse(next)
-      }
-
-    | None => ()
+    let operationOutput = operationInput->parse
+    let operationCode = operationOutput->B.merge
+    if operationInput.inline !== operationOutput.inline || operationCode !== "" {
+      input.inline = `${input.inline}.then(${operationInputVar}=>{${operationCode}return ${operationOutput.inline}})`
     }
-  }
+    input.schema = operationOutput.schema
+    input.expected = operationOutput.expected
+    input
+  } else {
+    let output = ref(
+      switch input.schema.encoder {
+      | Some(encoder) if expected.tag !== unknownTag => encoder(~input, ~selfSchema=expected)
+      | _ => input
+      },
+    )
 
-  output.contents
+    // FIXME: Should the check be here?
+    if output.contents.skipTo !== Some(true) {
+      output := expected.decoder(~input=output.contents, ~selfSchema=expected)
+
+      switch output.contents.expected.to {
+      | Some(to) =>
+        switch output.contents.expected {
+        | {parser} => output := parser(~input=output.contents, ~selfSchema=output.contents.expected)
+        | _ => ()
+        }
+
+        if output.contents.skipTo !== Some(true) {
+          let next = output.contents->B.Val.cleanValFrom
+          next.from = Some(output.contents)
+          next.expected = to
+          output := parse(next)
+        }
+
+      | None => ()
+      }
+    }
+
+    output.contents
+  }
 }
 and parseDynamic = input => {
   try input->parse catch {
@@ -2016,6 +2026,7 @@ and parseDynamic = input => {
     X.Exn.throwAny(error)
   }
 }
+// FIXME: It can be removed in favor better parse fn logic
 and transformVal = (~input: val, operation) => {
   if input.flag->Flag.unsafeHas(ValFlag.async) {
     let operationInputVar = input.global->B.varWithoutAllocation
@@ -2082,6 +2093,7 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
 
+    // Js.log2(schema.seq->Obj.magic, expected.seq->Obj.magic)
     // Js.log(inlinedFunction)
 
     X.Function.make2(
@@ -2628,7 +2640,14 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
   let identifier = ref->Js.String2.sliceToEnd(~from=8)
   let def = defs->Js.Dict.unsafeGet(identifier)
   let flag = input.global.flag
-  let key = `${input.schema.seq->Obj.magic}-${def.seq->Obj.magic}--${flag->Obj.magic}`
+
+  let inputSchema = if input.schema.seq === selfSchema.seq {
+    def
+  } else {
+    input.schema
+  }
+
+  let key = `${inputSchema.seq->Obj.magic}-${def.seq->Obj.magic}--${flag->Obj.magic}`
   let recOperation = switch def->Obj.magic->X.Dict.getUnsafeOption(key) {
   | Some(fn) =>
     // A hacky way to prevent infinite recursion
@@ -2642,7 +2661,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
       // Use defineProperty, so the cache keys are not enumerable
       let _ = X.Object.defineProperty(def, key, configurableValueOptions->Obj.magic)
 
-      let fn = compileDecoder(~schema=input.schema, ~expected=def, ~flag, ~defs=Some(defs))
+      let fn = compileDecoder(~schema=inputSchema, ~expected=def, ~flag, ~defs=Some(defs))
 
       valueOptions->Js.Dict.set(valKey, fn)
       // Use defineProperty, so the cache keys are not enumerable
