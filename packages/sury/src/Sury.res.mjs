@@ -670,19 +670,6 @@ function asyncVal(from, initial) {
   return v;
 }
 
-function copy$1(val) {
-  let $$new = copy(val);
-  if (val.v !== _var) {
-    $$new.v = () => {
-      let v = val.v();
-      $$new.i = v;
-      $$new.v = _var;
-      return v;
-    };
-  }
-  return $$new;
-}
-
 function objectJoin(inlinedLocation, value) {
   return inlinedLocation + ":" + value + ",";
 }
@@ -2335,10 +2322,11 @@ function unionDecoder(input, selfSchema) {
     start = start + tmp;
   }
   output.c = output.c + start + end;
+  if (input.i !== output.i) {
+    output.i = input.i;
+  }
   let o = output.f & 1 ? (output.i = "Promise.resolve(" + output.i + ")", output) : (
-      output.v === _var ? (
-          input.c === "" && output.c === "" && (output.l === output.i + "=" + initialInline || initialInline === "i") ? (input.l = "", input.a = initialAllocate, input.v = _notVar, input.i = initialInline, input) : copy$1(output)
-        ) : output
+      output.v === _var && input.c === "" && output.c === "" && (output.l === output.i + "=" + initialInline || initialInline === "i") ? (input.l = "", input.a = initialAllocate, input.v = _notVar, input.i = initialInline, input) : output
     );
   o.s = toPerCase !== undefined ? (o.t = true, getOutputSchema(toPerCase)) : selfSchema;
   return o;

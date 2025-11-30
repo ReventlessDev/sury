@@ -16,19 +16,10 @@ module CommonWithNested = {
   test("Fails to parse", t => {
     let schema = factory()
 
-    switch invalidAny->S.parseOrThrow(schema) {
-    | _ => t->Assert.fail("Unexpected result.")
-    | exception S.Exn(e) => {
-        t->Assert.deepEqual(e.path, S.Path.empty)
-        switch e->S.Error.classify {
-        | InvalidInput({expected, received}) => {
-            t->Assert.deepEqual(received, invalidAny)
-            t->U.unsafeAssertEqualSchemas(expected, schema)
-          }
-        | _ => t->Assert.fail("Unexpected code.")
-        }
-      }
-    }
+    t->U.assertThrowsMessage(
+      () => invalidAny->S.parseOrThrow(schema),
+      `Expected string[], received true`,
+    )
   })
 
   test("Fails to parse nested", t => {

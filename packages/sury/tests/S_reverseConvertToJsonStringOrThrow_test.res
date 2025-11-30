@@ -1,6 +1,6 @@
 open Ava
 
-S.enableJson()
+S.enableJsonString()
 
 test("Successfully parses", t => {
   let schema = S.bool

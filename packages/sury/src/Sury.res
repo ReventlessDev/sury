@@ -2093,7 +2093,6 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
 
-    // Js.log2(schema.seq->Obj.magic, expected.seq->Obj.magic)
     // Js.log(inlinedFunction)
 
     X.Function.make2(
@@ -3567,6 +3566,11 @@ module Union = {
 
       output.code = output.code ++ start.contents ++ end.contents
 
+      // In case if input.var was called, but output.var wasn't
+      if input.inline !== output.inline {
+        output.inline = input.inline
+      }
+
       let o = if output.flag->Flag.unsafeHas(ValFlag.async) {
         output.inline = `Promise.resolve(${output.inline})`
         output
@@ -3590,7 +3594,7 @@ module Union = {
           input.inline = initialInline
           input
         } else {
-          output->B.Val.copy
+          output
         }
       } else {
         output
