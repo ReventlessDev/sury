@@ -1,6 +1,6 @@
 {
   "name": "rescript-schema",
-  "version": "9.3.0",
+  "version": "9.3.1",
   "private": true,
   "description": "🧬 The fastest parser in the entire JavaScript ecosystem with a focus on small bundle size and top-notch DX",
   "keywords": [
@@ -33,6 +33,12 @@
   "main": "./src/S.js",
   "module": "./src/S.mjs",
   "types": "./src/S.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/S.mjs",
+      "require": "./src/S.js"
+    }
+  },
   "files": [
     "src/S_Core.res",
     "src/S_Core.res.js",
