@@ -1960,7 +1960,14 @@ let rec parse = (input: val) => {
   let expected = input.expected
 
   if input.expected.defs->Obj.magic {
-    input.global.defs = input.expected.defs
+    if input.global.defs->Obj.magic {
+      let _ =
+        input.global.defs
+        ->Stdlib.Option.getUnsafe
+        ->Stdlib.Dict.assign(input.expected.defs->Stdlib.Option.getUnsafe)
+    } else {
+      input.global.defs = input.expected.defs
+    }
   }
 
   if input.flag->Flag.unsafeHas(ValFlag.async) {
@@ -2093,6 +2100,8 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
 
+    // Js.log2(schema->castToPublic->toExpression, expected->castToPublic->toExpression)
+    // Js.log2(schema.seq->Obj.magic, expected.seq->Obj.magic)
     // Js.log(inlinedFunction)
 
     X.Function.make2(
@@ -2676,6 +2685,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
   if def.isAsync === None {
     let defsMut = defs->X.Dict.copy
     defsMut->Js.Dict.set(identifier, unknown)
+    // FIXME: Can it be done better?
     let _ = def->isAsyncInternal(~defs=Some(defsMut))
   }
 
@@ -3998,7 +4008,7 @@ let jsonEncoder = Builder.make((~input, ~selfSchema as to) => {
   }
 })
 
-let jsonDecoder = Builder.make((~input, ~selfSchema) => {
+let jsonDecoder = (~input, ~selfSchema) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
 
   if (
@@ -4045,6 +4055,9 @@ let jsonDecoder = Builder.make((~input, ~selfSchema) => {
       },
     )
     objectDecoder(~input, ~selfSchema=mut)
+  } else if inputTagFlag->Flag.unsafeHas(TagFlag.ref) {
+    // FIXME: Should be a unified solution for ref inputs
+    recursiveDecoder(~input, ~selfSchema)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
     let to = selfSchema.to->X.Option.getUnsafe
     // Whether we can optimize encoding during decoding
@@ -4061,7 +4074,7 @@ let jsonDecoder = Builder.make((~input, ~selfSchema) => {
   } else {
     input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
   }
-})
+}
 
 let enableJson = () => {
   if json->Obj.magic->Js.Dict.unsafeGet(shakenRef)->Obj.magic {
