@@ -1,6 +1,6 @@
 {
   "name": "rescript-schema",
-  "version": "9.3.1",
+  "version": "9.3.4",
   "private": true,
   "description": "🧬 The fastest parser in the entire JavaScript ecosystem with a focus on small bundle size and top-notch DX",
   "keywords": [
@@ -36,7 +36,12 @@
   "exports": {
     ".": {
       "import": "./src/S.mjs",
-      "require": "./src/S.js"
+      "require": "./src/S.js",
+      "types": "./src/S.d.ts"
+    },
+    "./src/*": "./src/*",
+    "./RescriptSchema.gen.js": {
+      "types": "./RescriptSchema.gen.d.ts"
     }
   },
   "files": [
