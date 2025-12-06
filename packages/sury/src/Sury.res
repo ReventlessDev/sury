@@ -1846,6 +1846,22 @@ let bigintDecoder = Builder.make((~input, ~selfSchema) => {
 
 bigint.decoder = bigintDecoder
 
+let symbolDecoder = Builder.make((~input, ~selfSchema) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+  if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
+    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+      `typeof ${inputVar}${B.eq(~negative)}"${(symbolTag :> string)}"`
+    })
+    input
+  } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.symbol)) {
+    input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
+  } else {
+    input
+  }
+})
+
+symbol.decoder = symbolDecoder
+
 let setHas = (has, tag: tag) => {
   has->Js.Dict.set(
     tag->TagFlag.get->Flag.unsafeHas(TagFlag.union->Flag.with(TagFlag.ref))

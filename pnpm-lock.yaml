@@ -88,7 +88,7 @@ importers:
     dependencies:
       sury:
         specifier: ^11.0.0-alpha.2
-        version: 11.0.0-alpha.2(rescript@11.1.4)
+        version: 11.0.0-alpha.2(rescript@12.0.0-beta.5)
 
 packages:
 
@@ -807,11 +807,6 @@ packages:
 
   rescript@11.0.1:
     resolution: {integrity: sha512-7T4PRp/d0+CBNnY6PYKffFqo9tGZlvnZpboF/n+8SKS+JZ6VvXJO7W538VPZXf3EYx1COGAWWvkF9e/HgSAqHg==}
-    engines: {node: '>=10'}
-    hasBin: true
-
-  rescript@11.1.4:
-    resolution: {integrity: sha512-0bGU0bocihjSC6MsE3TMjHjY0EUpchyrREquLS8VsZ3ohSMD+VHUEwimEfB3kpBI1vYkw3UFZ3WD8R28guz/Vw==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1697,9 +1692,6 @@ snapshots:
 
   rescript@11.0.1: {}
 
-  rescript@11.1.4:
-    optional: true
-
   rescript@12.0.0-beta.5:
     optionalDependencies:
       '@rescript/darwin-arm64': 12.0.0-beta.5
@@ -1804,9 +1796,9 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  sury@11.0.0-alpha.2(rescript@11.1.4):
+  sury@11.0.0-alpha.2(rescript@12.0.0-beta.5):
     optionalDependencies:
-      rescript: 11.1.4
+      rescript: 12.0.0-beta.5
 
   temp-dir@3.0.0: {}
 
