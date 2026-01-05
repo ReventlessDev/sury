@@ -3290,7 +3290,7 @@ function shapedSerializer(input, selfSchema) {
   let targetSchema = selfSchema.to;
   let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
   output.from = input;
-  output.t = targetSchema.to === undefined;
+  output.t = getOutputSchema(targetSchema).to === undefined;
   return output;
 }
 

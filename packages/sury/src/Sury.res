@@ -4955,7 +4955,9 @@ module Schema = {
     )
 
     output.from = Some(input)
-    output.skipTo = Some(targetSchema.to === None)
+    // Use getOutputSchema to follow the .to chain - the nested parse calls in
+    // getShapedSerializerOutput already handle the entire transformation chain
+    output.skipTo = Some((targetSchema->getOutputSchema).to === None)
 
     output
   }

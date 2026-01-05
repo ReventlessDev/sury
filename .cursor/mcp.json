@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wallaby": {
+      "command": "npx",
+      "args": ["-y", "-c", "node ~/.wallaby/mcp"]
+    }
+  }
+}
