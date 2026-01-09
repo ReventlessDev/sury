@@ -5240,6 +5240,7 @@ let unnest = schema => {
     let to = base(arrayTag, ~selfReverse=false)
     to.items = Some(X.Array.immutableEmpty)
     to.additionalItems = Some(Schema(schema->castToPublic))
+    to.decoder = (~input, ~selfSchema as _) => input
     to.serializer = Some(unnestSerializer)
 
     mut.unnest = Some(true)

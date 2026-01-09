@@ -3554,6 +3554,7 @@ function unnest(schema) {
     let to = base(arrayTag, false);
     to.items = immutableEmpty$1;
     to.additionalItems = schema;
+    to.decoder = (input, param) => input;
     to.serializer = unnestSerializer;
     mut.unnest = true;
     mut.to = to;
