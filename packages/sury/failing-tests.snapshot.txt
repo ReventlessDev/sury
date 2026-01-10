@@ -1,216 +1,72 @@
 # Failing Tests Baseline Snapshot
-# Generated from Wallaby MCP on Monday Jan 5, 2026
-# Total: 70 failing tests
-# Coverage: 88.99%
-
-## Example_test.res.mjs
-- Example
-  Error: Failed at ["tags"]: Unsupported conversion from string[] | undefined to string[]
-
-- Compiled serialize code snapshot
-  Error: Failed at ["tags"]: Unsupported conversion from string[] | undefined to string[]
-
-## S_String_pattern_test.res.mjs
-- Successfully parses valid data
-  Error: Compiled code mismatch
-
-## S_array_test.res.mjs
-- Compiled serialize code snapshot with transform
-  Error: Compiled code mismatch (v3[v0]=v1 vs v3[v0]=i[v0])
-
-## S_json_test.res.mjs
-- Compiled parse code snapshot
-  Error: Compiled code mismatch (let v0; vs let v0=)
-
-- Compiled serialize code snapshot
-  Error: Compiled code mismatch (let v0; vs let v0=)
-
-## S_jsonString_test.res.mjs
-- Parses JSON string to bigint
-  Error: Expected bigint, received 123 (got: Expected string, received 123)
-
-- Nested JSON string
-  Error: Compiled code mismatch
-
-- Can apply refinement to JSON string with S.to after
-  Error: Compiled code mismatch
-
-## S_literal_Object_test.res.mjs
-- Compiled parse code snapshot
-  Error: Compiled code mismatch
-
-- Compiled parse code snapshot of empty dict literal schema
-  Error: Compiled code mismatch (e[0] vs e[1] order)
-
-## S_noValidation_test.res.mjs
-- Successfully parses
-  Error: Expected string, received 1
-
-## S_null_test.res.mjs
-- Record schema with optional nullable field
-  Error: S.jsonString is not enabled
-
-## S_object_discriminant_test.res.mjs
-- Successfully serializes object with discriminant "{ nestedDiscriminant: "abc"; nestedField: false; }"
-  Error: Missing nestedDiscriminant in output
-
-- Successfully serializes object with discriminant "{ "'`: ""'`"; nestedField: false; }" and values needed to be escaped
-  Error: Missing escaped discriminant in output
-
-- Fails to serialize object with discriminant that we don't know how to serialize "true | null"
-  Error: Wrong error message (undefined vs null)
-
-- Fails to serialize object with discriminant that we don't know how to serialize "true[]"
-  Error: Did not throw expected error
-
-- Fails to serialize object with discriminant that we don't know how to serialize "{ [key: string]: true; }"
-  Error: Did not throw expected error
-
-## S_object_flatten_test.res.mjs
-- Can flatten transformed object schema
-  Error: Compiled code mismatch (v2 undefined)
-
-## S_object_nested_test.res.mjs
-- Object with a single nested field with S.nullAsOption
-  Error: Compiled code mismatch (extra validation)
-
-- Object with a single nested field with S.transform
-  Error: Compiled code mismatch
-
-- Object with a nested tag and optional field
-  Error: Unsupported conversion from string | undefined to string
-
-- Nested preprocessed tags on reverse convert
-  Error: Compiled code mismatch
-
-## S_object_test.res.mjs
-- Compiled code snapshot for refined nested object
-  Error: Compiled code mismatch (extra e[1] call)
-
-## S_object_withoutDeclaredFields_test.res.mjs
-- Successfully parses object with excess keys and returns transformed value
-  Error: Got schema object instead of boolean value
-
-## S_parseAsync_test.res.mjs
-- [Union] Passes with Parse operation. Async item should fail
-  Error: Did not throw expected async error
-
-## S_parseJsonStringWith_test.res.mjs
-- Successfully parses unknown
-  Error: Got "true" string instead of true boolean
-
-- Fails to parse JSON
-  Error: Invalid reason
-
-## S_recursive_test.res.mjs
-- Successfully parses recursive object using S.parseAsyncOrThrow
-  Error: Compiled code mismatch
-
-- Successfully serializes recursive object
-  Error: Compiled code mismatch
-
-- Fails to serialise nested recursive object
-  Error: Empty error
-
-- Recursively transforms all objects when added transform to the recursive's function returned schema
-  Error: Compiled code mismatch
-
-- Recursively transforms nested objects when added transform to the placeholder schema
-  Error: Cannot read properties of undefined (reading 'length')
-
-- Shallowly transforms object when added transform to the S.recursive result
-  Error: Cannot read properties of undefined (reading 'length')
-
-- Parses recursive object with async fields in parallel
-  Error: Compiled code mismatch
-
-## S_refine_test.res.mjs
-- Compiled parse code snapshot for simple object with refine
-  Error: Compiled code mismatch (missing refine call)
-
-- Successfully parses
-  Error: Compiled code mismatch (missing refine call)
-
-## S_reverseConvertToJsonStringOrThrow_test.res.mjs
-- Successfully serializes unknown schema
-  Error: Expected JSON string, received 123
-
-## S_reverseConvertToJsonWith_test.res.mjs
-- Allows to convert to JSON with option as an object field
-  Error: Unsupported conversion from boolean | undefined to JSON
-
-- Allows to convert to JSON with optional S.json as an object field
-  Error: Unsupported conversion from JSON | undefined to JSON
-
-- Allows to convert to JSON with option as dict field
-  Error: Unsupported conversion from boolean | undefined to JSON
-
-- Serializes deeply recursive schema
-  Error: Compiled code mismatch
-
-## S_schema_test.res.mjs
-- Object with embeded transformed schema
-  Error: Compiled code mismatch (extra validation)
-
-- Strict object with embeded returns input without object recreation
-  Error: Compiled code mismatch (v2 declaration)
-
-- Tuple with embeded schema
-  Error: Compiled code mismatch
-
-- Tuple with embeded transformed schema
-  Error: Compiled code mismatch (extra validation)
-
-- Nested object with embeded schema
-  Error: Schema missing 'to' property
-
-- Object schema with nested object field containing only literal
-  Error: Compiled code mismatch
-
-- https://github.com/DZakh/sury/issues/131
-  Error: Compiled code mismatch (v4[v1]=v2 vs v4[v1]=v0[v1])
-
-## S_shape_test.res.mjs
-- Parses with wrapping async schema in variant
-  Error: Compiled code mismatch
-
-- Successfully parses when transformed object schema is destructured - it does create an object and extracts a field from it afterwards
-  Error: Compiled code mismatch
-
-- Compiled code snapshot of variant applied to object
-  Error: Unsupported conversion from { foo: string; } to string
-
-- Works with variant schema used multiple times as a child schema
-  Error: Compiled code mismatch
-
-- S.json shaped to literal should keep validation
-  Error: Compiled code mismatch
-
-## S_test.ts
-- Unnest schema
-  Error: expected.decoder is not a function
-
-- ArkType pattern matching
-  Error: Got "5" string instead of 5n bigint
-
-## S_to_test.res.mjs
-- Coerce string to custom JSON schema
-  Error: Wrong error message
-
-- Coerce from union to bigint with refinement on union
-  Error: Compiled code mismatch
-
-- Coerce from union to bigint with refinement on union (with an item transformed to)
-  Error: Compiled code mismatch
-
-- Coerce from union to wider union should keep the original value type
-  Error: Got "123" string instead of 123 number
-
-- Transform from union to wider union with different items order (applies decoder to both one at a time)
-  Error: Compiled code mismatch
-
-## S_union_test.res.mjs
-- Compiled serialize code snapshot of crazy union
-  Error: Compiled code mismatch
-
-
+# 
+# To reproduce this list after making changes, run:
+#   cd packages/sury && pnpm exec ava --no-worker-threads 2>&1 | grep "✘ \[fail\]" | sort
+#
+# Compare with this file to see new failures:
+#   cd packages/sury && pnpm exec ava --no-worker-threads 2>&1 | grep "✘ \[fail\]" | sort > /tmp/after.txt
+#   diff failing-tests.snapshot.txt /tmp/after.txt
+#
+# Total: 61 failing tests
+
+  ✘ [fail]: S_jsonString_test.res › Can apply refinement to JSON string with S.to after
+  ✘ [fail]: S_jsonString_test.res › Converts JSON string to object with unknown field
+  ✘ [fail]: S_jsonString_test.res › Nested JSON string
+  ✘ [fail]: S_jsonString_test.res › Parses JSON string to bigint
+  ✘ [fail]: S_json_test.res › Compiled parse code snapshot
+  ✘ [fail]: S_json_test.res › Compiled serialize code snapshot
+  ✘ [fail]: S_literal_Object_test.res › Compiled parse code snapshot
+  ✘ [fail]: S_noValidation_test.res › Successfully parses Error thrown in test
+  ✘ [fail]: S_null_test.res › Record schema with optional nullable field Error thrown in test
+  ✘ [fail]: S_object_discriminant_test.res › Fails to serialize object with discriminant that we don't know how to serialize "true | null"
+  ✘ [fail]: S_object_discriminant_test.res › Fails to serialize object with discriminant that we don't know how to serialize "true[]" Asserted result is not S.Exn "Missing input for true[] at ["discriminant"]". Instead got: {"discriminant":[],"field":"bar"}
+  ✘ [fail]: S_object_discriminant_test.res › Fails to serialize object with discriminant that we don't know how to serialize "{ [key: string]: true; }" Asserted result is not S.Exn "Missing input for { [key: string]: true; } at ["discriminant"]". Instead got: {"discriminant":{},"field":"bar"}
+  ✘ [fail]: S_object_discriminant_test.res › Successfully serializes object with discriminant "{ "'`: ""'`"; nestedField: false; }" and values needed to be escaped
+  ✘ [fail]: S_object_discriminant_test.res › Successfully serializes object with discriminant "{ nestedDiscriminant: "abc"; nestedField: false; }"
+  ✘ [fail]: S_object_flatten_test.res › Can flatten transformed object schema
+  ✘ [fail]: S_object_nested_test.res › Nested preprocessed tags on reverse convert
+  ✘ [fail]: S_object_nested_test.res › Object with a single nested field with S.nullAsOption
+  ✘ [fail]: S_object_nested_test.res › Object with a single nested field with S.transform
+  ✘ [fail]: S_object_test.res › Compiled code snapshot for refined nested object
+  ✘ [fail]: S_object_withoutDeclaredFields_test.res › Successfully parses object with excess keys and returns transformed value
+  ✘ [fail]: S_parseAsync_test.res › [Union] Passes with Parse operation. Async item should fail Asserted result is not S.Exn "Encountered unexpected async transform or refine. Use parseAsyncOrThrow operation instead". Instead got: 2
+  ✘ [fail]: S_parseJsonStringWith_test.res › Fails to parse JSON Invalid reason
+  ✘ [fail]: S_parseJsonStringWith_test.res › Successfully parses unknown
+  ✘ [fail]: S_recursive_test.res › Fails to serialise nested recursive object Error thrown in test
+  ✘ [fail]: S_recursive_test.res › Parses recursive object with async fields in parallel
+  ✘ [fail]: S_recursive_test.res › Recursively transforms all objects when added transform to the recursive's function returned schema
+  ✘ [fail]: S_recursive_test.res › Recursively transforms nested objects when added transform to the placeholder schema Error thrown in test
+  ✘ [fail]: S_recursive_test.res › Shallowly transforms object when added transform to the S.recursive result Error thrown in test
+  ✘ [fail]: S_recursive_test.res › Successfully parses recursive object using S.parseAsyncOrThrow
+  ✘ [fail]: S_recursive_test.res › Successfully serializes recursive object
+  ✘ [fail]: S_refine_test.res › Compiled parse code snapshot for simple object with refine
+  ✘ [fail]: S_refine_test.res › Successfully parses
+  ✘ [fail]: S_reverseConvertToJsonStringOrThrow_test.res › Successfully parses object
+  ✘ [fail]: S_reverseConvertToJsonStringOrThrow_test.res › Successfully parses object with space
+  ✘ [fail]: S_reverseConvertToJsonStringOrThrow_test.res › Successfully serializes unknown schema Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Allows to convert to JSON with option as an object field Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Allows to convert to JSON with option as dict field Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Allows to convert to JSON with optional S.json as an object field Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Doesn't allow to encode tuple with optional item to JSON Asserted result is not S.Exn "Unsupported conversion from boolean | undefined to JSON". Instead got: [null]
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Encodes object with unknown schema to JSON Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Encodes tuple with unknown item to JSON Error thrown in test
+  ✘ [fail]: S_reverseConvertToJsonWith_test.res › Serializes deeply recursive schema
+  ✘ [fail]: S_schema_test.res › Nested object with embeded schema
+  ✘ [fail]: S_schema_test.res › Object schema with nested object field containing only literal
+  ✘ [fail]: S_schema_test.res › Object with embeded transformed schema
+  ✘ [fail]: S_schema_test.res › Strict object with embeded returns input without object recreation
+  ✘ [fail]: S_schema_test.res › Tuple with embeded schema
+  ✘ [fail]: S_schema_test.res › Tuple with embeded transformed schema
+  ✘ [fail]: S_shape_test.res › Can destructure object value passed to S.shape
+  ✘ [fail]: S_shape_test.res › Parses with wrapping async schema in variant
+  ✘ [fail]: S_shape_test.res › S.json shaped to literal should keep validation
+  ✘ [fail]: S_shape_test.res › Successfully parses when transformed object schema is destructured - it does create an object and extracts a field from it afterwards
+  ✘ [fail]: S_shape_test.res › Works with variant schema used multiple times as a child schema
+  ✘ [fail]: S_test › Parse JSON string, extract a field, and serialize it back to JSON string
+  ✘ [fail]: S_to_test.res › Coerce from union to bigint with refinement on union
+  ✘ [fail]: S_to_test.res › Coerce from union to bigint with refinement on union (with an item transformed to) Should apply refinement after the item transformation
+  ✘ [fail]: S_to_test.res › Coerce from union to wider union should keep the original value type
+  ✘ [fail]: S_to_test.res › Coerce string to custom JSON schema I don't know what we expect here, but currently it works this way
+  ✘ [fail]: S_to_test.res › Transform from union to wider union with different items order (applies decoder to both one at a time)
+  ✘ [fail]: S_union_test.res › Compiled serialize code snapshot of crazy union
+  ✘ [fail]: S_union_test.res › json-rpc response

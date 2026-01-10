@@ -289,6 +289,6 @@ test("https://github.com/DZakh/sury/issues/131", t => {
   t->U.assertCompiledCode(
     ~schema=testSchema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}let v4=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}v4[v1]=v0[v1]}catch(v3){v3.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v3.path;throw v3}}return {"foobar":v4,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}let v4=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}v4[v1]=v2}catch(v3){v3.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v3.path;throw v3}}return {"foobar":v4,}}`,
   )
 })
