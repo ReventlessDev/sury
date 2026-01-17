@@ -21,51 +21,50 @@ When responding:
 
 # Sury Architecture
 
-## Val Type - Critical Fields
+A schema is a representation of TWO types. Input and output
 
-- `schema`: What the value currently IS (its actual type)
-- `expected`: What we're trying to parse/convert INTO (target type)
-- `skipTo`: When `Some(true)`, prevents `parse` from following the `.to` chain
+1. S.string - Sometimes input and output are the same
 
-These must be compatible - decoder of `expected` must handle `schema`.
+   - Input: string
+   - Output: string
 
-## Parse Flow
+2. S.schema({
+   foo: S.string.with(S.to, S.number)
+   }) - In this case, the input and output are different, even though the S.schema won't have .to property itself
+   - Input: { foo: string }
+   - Output: { foo: number }
 
+When we modify a schema, we modify the output type.
+
+```ts
+S.schema({
+  foo: S.string.with(S.to, S.number)
+}).with(S.refine, () => {...})
 ```
-parse(val) → encoder → decoder → parser → if expected.to exists: recursive parse
-```
 
-The `skipTo` check happens twice:
+Since the case doesn't have .to, we MUST deffirentiate between input and output refines to support `S.reverse` - Every schema should be able to be reversed from Input->Output to Output->Input, unless it's explicitly prevented.
 
-1. Before decoder - if `Some(true)`, skips entire block
-2. Before recursive `.to` parse - if `Some(true)`, stops recursion
+We should also try to store every data-point on schema to be able to use them to compile a decode function.
 
-## Shaped Schemas (S.shape, S.object)
+The decode function should be created from a single schema and must transform schema input to output. For multiple schemas it automatically joins them by .to property and turns into a single one.
 
-### proxifyShapedSchema
+This makes schema to have the following properties and run them in order:
 
-- Wraps schema in Proxy to track field access
-- Sets `from` array on each accessed field (path to value in input)
-- Uses `getOutputSchema` to follow `.to` chain before copying
+- inputRefiner - Custom validations to the input part of the schema value
+- innerDecoder - Decoding of inner items like object fields
+- outputRefiner - Custom validations to the output part of the schema value
 
-### Serialization Flow (shapedSerializer)
+If schema has .to property:
 
-1. `prepareShapedSerializerAcc`: Builds acc mapping `from` paths to input vals
-2. `getShapedSerializerOutput`: Traverses target schema, looks up vals from acc
+- parser - Custom transformation logic to the .to schema (serializer is a reverse of parser)
 
-### Key Issue Pattern
+And if there's no .parser:
 
-When `acc.val` exists in `getShapedSerializerOutput`:
+- encoder - Transformation logic from the current schema to the .to schema
+- decoder - Transformation logic of the .to schema from any other schema
 
-- `val.schema` must match what `targetSchema` decoder expects
-- If `val.schema` is wrong (e.g., parent object instead of field), get "Unsupported conversion" error
+After the step either finish the decode function or continue with the inputRefiner.
 
-## Reversal
+Additionally for async support we should be aware of that every transformation might return an async value, so to continue the transformation chain we need to append .then and continue the logic in the callback function. For innerDecoder it should create a promise which collects all inner items.
 
-`reverse(schema)` swaps:
-
-- `parser` ↔ `serializer`
-- `to` chain is reversed (head becomes tail)
-- Properties/items are recursively reversed
-
-During reverse convert: what was `serializer` becomes `parser`.
+Every transformation point is connected by a val
