@@ -21,50 +21,98 @@ When responding:
 
 # Sury Architecture
 
-A schema is a representation of TWO types. Input and output
+## Schema Input and Output Types
 
-1. S.string - Sometimes input and output are the same
+A schema represents two types: Input and Output.
 
-   - Input: string
-   - Output: string
+### Example 1: Same Input and Output
 
-2. S.schema({
-   foo: S.string.with(S.to, S.number)
-   }) - In this case, the input and output are different, even though the S.schema won't have .to property itself
-   - Input: { foo: string }
-   - Output: { foo: number }
+```typescript
+S.string
+// Input: string
+// Output: string
+```
 
-When we modify a schema, we modify the output type.
+### Example 2: Different Input and Output
 
-```ts
+```typescript
+S.schema({
+  foo: S.string.with(S.to, S.number)
+})
+// Input: { foo: string }
+// Output: { foo: number }
+```
+
+The input and output differ because nested items have transformations, even though the schema itself does not have a `.to` property.
+
+## Modifying a Schema
+
+When modifying a schema, the modification applies to the output type.
+
+```typescript
 S.schema({
   foo: S.string.with(S.to, S.number)
 }).with(S.refine, () => {...})
 ```
 
-Since the case doesn't have .to, we MUST deffirentiate between input and output refines to support `S.reverse` - Every schema should be able to be reversed from Input->Output to Output->Input, unless it's explicitly prevented.
+Since this schema does not have `.to`, input and output refiners must be stored separately to support `S.reverse`. Every schema should be reversible from Input→Output to Output→Input, unless explicitly prevented.
 
-We should also try to store every data-point on schema to be able to use them to compile a decode function.
+For modifications like `name` or built-in refinements that do not affect nested items, they apply to both input and output without differentiation.
 
-The decode function should be created from a single schema and must transform schema input to output. For multiple schemas it automatically joins them by .to property and turns into a single one.
+## Decode Function
 
-This makes schema to have the following properties and run them in order:
+The decode function is created from a single schema and transforms the schema's Input to Output. When multiple schemas are joined by the `.to` property, they are automatically combined into a single transformation pipeline.
 
-- inputRefiner - Custom validations to the input part of the schema value
-- innerDecoder - Decoding of inner items like object fields
-- outputRefiner - Custom validations to the output part of the schema value
+## Schema Properties and Execution Order
 
-If schema has .to property:
+Schema properties are executed in the following order:
 
-- parser - Custom transformation logic to the .to schema (serializer is a reverse of parser)
+1. **decoder** - If input val differs from the schema, decode it to the schema's input type. May skip directly to schema output if there is no inputRefiner.
 
-And if there's no .parser:
+2. **inputRefiner** - Custom validations on the input part of the schema value.
 
-- encoder - Transformation logic from the current schema to the .to schema
-- decoder - Transformation logic of the .to schema from any other schema
+3. **decoder** - Decodes input to output for the current schema. Typically required to decode nested items such as object fields.
 
-After the step either finish the decode function or continue with the inputRefiner.
+4. **outputRefiner** - Custom validations on the output part of the schema value.
 
-Additionally for async support we should be aware of that every transformation might return an async value, so to continue the transformation chain we need to append .then and continue the logic in the callback function. For innerDecoder it should create a promise which collects all inner items.
+### If Schema Has `.to` Property
 
-Every transformation point is connected by a val
+5. **parser** - Custom transformation logic to the `.to` schema. The serializer is the reverse of parser.
+
+### If There Is No Parser
+
+5. **encoder** - Transformation logic from the current schema's output to the `.to` schema's input.
+
+6. **.to.decoder** - Starts the cycle from the beginning with the `.to` schema.
+
+## Reversal with S.reverse
+
+`S.reverse` swaps:
+
+- `inputRefiner` ↔ `outputRefiner`
+- `parser` ↔ `serializer`
+- Reverses the `.to` chain direction
+
+## Async Support
+
+Every transformation may return an async value. To continue the transformation chain:
+
+1. Append `.then()` and continue the logic in the callback function.
+2. For nested items (e.g., object fields, array items), create a promise that collects all inner items with `Promise.all()`.
+
+## Val
+
+The `val` represents a value at a specific point in the transformation pipeline during code generation.
+
+Key properties:
+
+- `schema` - The actual type of the value
+- `expected` - The schema of decoder
+- `var` - Returns the variable name in generated code
+- `inline` - The value as an inline code expression
+- `code` - Accumulated generated code (used by all transformation steps)
+- `validation` - Built-in type check condition for the decoder (e.g., `typeof x === "string"`). Different from custom refiners.
+- `from` - The previous val in the chain (tracks transformation history)
+- `path` - Current location in the data structure (for error messages)
+
+The decoder uses `schema` vs `expected` to skip unnecessary validations when the actual type is already compatible.
