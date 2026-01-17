@@ -55,7 +55,7 @@ S.schema({
 }).with(S.refine, () => {...})
 ```
 
-Since this schema does not have `.to`, input and output refiners must be stored separately to support `S.reverse`. Every schema should be reversible from Input→Output to Output→Input, unless explicitly prevented.
+Since this schema does not have `.to`, `inputRefiner` and `refiner` must be stored separately to support `S.reverse`. Every schema should be reversible from Input→Output to Output→Input, unless explicitly prevented.
 
 For modifications like `name` or built-in refinements that do not affect nested items, they apply to both input and output without differentiation.
 
@@ -73,7 +73,7 @@ Schema properties are executed in the following order:
 
 3. **decoder** - Decodes input to output for the current schema. Typically required to decode nested items such as object fields.
 
-4. **outputRefiner** - Custom validations on the output part of the schema value.
+4. **refiner** - Custom validations on the output part of the schema value.
 
 ### If Schema Has `.to` Property
 
@@ -89,7 +89,7 @@ Schema properties are executed in the following order:
 
 `S.reverse` swaps:
 
-- `inputRefiner` ↔ `outputRefiner`
+- `inputRefiner` ↔ `refiner`
 - `parser` ↔ `serializer`
 - Reverses the `.to` chain direction
 

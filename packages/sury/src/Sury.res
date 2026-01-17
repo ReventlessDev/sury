@@ -454,6 +454,10 @@ and internal = {
   mutable decoder: builder,
   // Logic for built-in encoding from the schema type
   mutable encoder?: builder,
+  // Custom validations on input (before decoder)
+  mutable inputRefiner?: builder,
+  // Custom validations on output (after decoder)
+  mutable refiner?: builder,
   // A schema we transform to
   mutable to?: internal,
   // When transforming with changing shape,
@@ -2013,6 +2017,17 @@ let rec parse = (input: val) => {
     if output.contents.skipTo !== Some(true) {
       output := expected.decoder(~input=output.contents, ~selfSchema=expected)
 
+      // FIXME: inputRefiner should correctly be run for schema input (before decoder)
+      switch expected.inputRefiner {
+      | Some(inputRefiner) => output := inputRefiner(~input=output.contents, ~selfSchema=expected)
+      | None => ()
+      }
+      // Call refiner after decoder
+      switch expected.refiner {
+      | Some(refiner) => output := refiner(~input=output.contents, ~selfSchema=expected)
+      | None => ()
+      }
+
       switch output.contents.expected.to {
       | Some(to) =>
         switch output.contents.expected {
@@ -2158,6 +2173,16 @@ and reverse = (schema: internal) => {
       switch parser {
       | Some(parser) => mut.serializer = Some(parser)
       | None => %raw(`delete mut.serializer`)
+      }
+      // Swap inputRefiner and refiner
+      let refiner = mut.refiner
+      switch mut.inputRefiner {
+      | Some(inputRefiner) => mut.refiner = Some(inputRefiner)
+      | None => %raw(`delete mut.refiner`)
+      }
+      switch refiner {
+      | Some(refiner) => mut.inputRefiner = Some(refiner)
+      | None => %raw(`delete mut.inputRefiner`)
       }
       let fromDefault = mut.fromDefault
       switch mut.default {
