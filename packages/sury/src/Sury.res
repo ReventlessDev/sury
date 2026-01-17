@@ -566,6 +566,8 @@ and val = {
   mutable expected: internal,
   @as("t")
   mutable skipTo?: bool,
+  @as("h")
+  mutable hasTransform?: bool,
   @as("d")
   mutable vals?: dict<val>,
   @as("fv")
@@ -1333,6 +1335,7 @@ module Builder = {
         validation: None,
         path: from.path,
         global: from.global,
+        ?hasTransform: from.hasTransform,
       }
     }
 
@@ -1546,6 +1549,7 @@ module Builder = {
 
     let embedTransformation = (~input: val, ~fn: 'input => 'output, ~isAsync) => {
       let output = input->allocateVal(~schema=unknown)
+      output.hasTransform = Some(true)
       if isAsync {
         if !(input.global.flag->Flag.unsafeHas(Flag.async)) {
           input->throw(
@@ -2432,7 +2436,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
 
         let itemInput = input->B.dynamicScope(~locationVar=iteratorVar)
         let itemOutput = itemInput->parseDynamic
-        let isTransformed = itemInput !== itemOutput
+        let isTransformed = itemOutput.hasTransform === Some(true)
         let output = isTransformed
           ? input->B.val(`new Array(${inputVar}.length)`, ~schema=selfSchema)
           : input // FIXME: schema
@@ -2499,7 +2503,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
 
       objectVal->B.Val.Object.add(~location=key, itemOutput)
       if !shouldRecreateInput.contents {
-        shouldRecreateInput := itemOutput !== itemInput
+        shouldRecreateInput := itemOutput.hasTransform === Some(true)
       }
     }
 
@@ -2556,7 +2560,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
         let itemInput = input->B.dynamicScope(~locationVar=keyVar)
         let itemOutput = itemInput->parseDynamic
 
-        let isTransformed = itemInput !== itemOutput
+        let isTransformed = itemOutput.hasTransform === Some(true)
         let output = isTransformed ? input->B.val("{}", ~schema=selfSchema) : input
         output.schema = selfSchema
 
@@ -2635,7 +2639,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
 
         objectVal->B.Val.Object.add(~location=key, itemOutput)
         if !shouldRecreateInput.contents {
-          shouldRecreateInput := itemOutput !== itemInput
+          shouldRecreateInput := itemOutput.hasTransform === Some(true)
         }
       }
 
