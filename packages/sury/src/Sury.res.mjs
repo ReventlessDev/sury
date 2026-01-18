@@ -1607,7 +1607,7 @@ function objectDecoder(unknownInput, param) {
       mut.additionalItems = unknown;
       schema = mut;
     }
-    if (expectedSchema.additionalItems !== "strip") {
+    if (!isObjectInput && expectedSchema.additionalItems !== "strip") {
       validation = appendValidation(validation, (inputVar, negative) => (
         negative ? "" : "!"
       ) + "Array.isArray(" + inputVar + ")");
