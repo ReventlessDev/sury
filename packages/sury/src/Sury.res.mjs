@@ -485,7 +485,7 @@ function _notVarAtParent() {
 function _notVar() {
   let val = this;
   let v = varWithoutAllocation(val.g);
-  let from = val.from;
+  let from = val.prev;
   let target = from !== undefined ? from : val;
   let i = val.i;
   if (i === "") {
@@ -593,7 +593,7 @@ function merge(val) {
   let code = "";
   while (current !== undefined) {
     let val$1 = current;
-    current = val$1.from;
+    current = val$1.prev;
     let itemCode = "";
     let validation = val$1.validation;
     if (validation !== undefined) {
@@ -624,10 +624,10 @@ function refineInPlace(val, schema, validation) {
   val.s = schema;
 }
 
-function val(from, initial, schema, expectedOpt) {
-  let expected = expectedOpt !== undefined ? expectedOpt : from.e;
+function val(prev, initial, schema, expectedOpt) {
+  let expected = expectedOpt !== undefined ? expectedOpt : prev.e;
   return {
-    from: from,
+    prev: prev,
     v: _notVar,
     i: initial,
     f: 0,
@@ -637,14 +637,14 @@ function val(from, initial, schema, expectedOpt) {
     l: "",
     a: initialAllocate,
     validation: undefined,
-    path: from.path,
-    g: from.g
+    path: prev.path,
+    g: prev.g
   };
 }
 
 function dynamicScope(from, locationVar) {
   let v = val(from, from.v() + "[" + locationVar + "]", from.s.additionalItems, from.e.additionalItems);
-  v.from = undefined;
+  v.prev = undefined;
   v.p = from;
   v.path = "";
   v.v = _notVarBeforeValidation;
@@ -718,7 +718,7 @@ function cleanValFrom(val) {
   newrecord.c = "";
   newrecord.v = val.v === _var ? _var : _bondVar;
   newrecord.b = val;
-  newrecord.from = undefined;
+  newrecord.prev = undefined;
   return newrecord;
 }
 
@@ -754,7 +754,7 @@ function get(parent, location) {
   let inlinedLocation = inlineLocation(parent.g, location);
   let pathAppend = "[" + inlinedLocation + "]";
   let item = val(parent, constField in schema ? inlineConst(parent, schema) : parent.v() + pathAppend, schema, undefined);
-  item.from = undefined;
+  item.prev = undefined;
   item.p = parent;
   item.path = parent.path + pathAppend;
   item.v = _notVarAtParent;
@@ -928,7 +928,7 @@ function numberDecoder(input, selfSchema) {
     }
   }
   let tmpInput = cleanValFrom(input);
-  tmpInput.from = input;
+  tmpInput.prev = input;
   let outputVar = varWithoutAllocation(input.g);
   input.a(outputVar + "=+" + input.v());
   let output = val(tmpInput, outputVar, selfSchema, undefined);
@@ -1143,7 +1143,7 @@ function parse$1(input) {
     let operationInputVar = input.v();
     let operationInput = val(input, operationInputVar, input.s, input.e);
     operationInput.v = _var;
-    operationInput.from = undefined;
+    operationInput.prev = undefined;
     let operationOutput = parse$1(operationInput);
     let operationCode = merge(operationOutput);
     if (operationInput.i !== operationOutput.i || operationCode !== "") {
@@ -1174,7 +1174,7 @@ function parse$1(input) {
       }
       if (output.t !== true) {
         let next = cleanValFrom(output);
-        next.from = output;
+        next.prev = output;
         next.e = to;
         output = parse$1(next);
       }
@@ -1396,9 +1396,9 @@ function getDecoder(param, param$1) {
   throw new Error("[Sury] No schema provided for decoder.");
 }
 
-function makeObjectVal(from, schema) {
+function makeObjectVal(prev, schema) {
   return {
-    from: from,
+    prev: prev,
     v: _notVar,
     i: "",
     f: 0,
@@ -1413,14 +1413,14 @@ function makeObjectVal(from, schema) {
         additionalItems: "strict",
         properties: {}
       }),
-    e: from.e,
+    e: prev.e,
     d: {},
     c: "",
     l: "",
     a: initialAllocate,
     validation: undefined,
-    path: from.path,
-    g: from.g,
+    path: prev.path,
+    g: prev.g,
     j: schema.type === arrayTag ? arrayJoin : objectJoin,
     ac: 0,
     r: ""
@@ -1703,7 +1703,7 @@ function recursiveDecoder(input, selfSchema) {
   }
   let recInput = allocateVal(input, unknown, undefined);
   recInput.c = recInput.i + "=" + recOperation + "(" + input.i + ");";
-  recInput.from = undefined;
+  recInput.prev = undefined;
   if (def.isAsync === undefined) {
     let defsMut = copy(defs);
     defsMut[identifier] = unknown;
@@ -2078,7 +2078,7 @@ function unionDecoder(input, selfSchema) {
     throw new SuryError(errorDetails);
   }) + "(" + input.v() + caught + ")";
   let output = cleanValFrom(input);
-  output.from = input;
+  output.prev = input;
   let getArrItemsCode = (arr, isDeopt) => {
     let typeValidationInput = arr[0];
     let typeValidationOutput = arr[1];
@@ -2524,7 +2524,7 @@ function getWithDefault(schema, $$default) {
         let operationInputVar = varWithoutAllocation(input.g);
         let operationInput = val(input, operationInputVar, input.s, input.e);
         operationInput.v = _var;
-        operationInput.from = undefined;
+        operationInput.prev = undefined;
         let operationOutputVal = operation(operationInput);
         let output = parse$1(operationOutputVal);
         let operationCode = merge(output);
@@ -3019,12 +3019,12 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema, path) {
   }
   if (constField in targetSchema) {
     let v$1 = newConst(cleanRootInput, targetSchema);
-    v$1.from = undefined;
+    v$1.prev = undefined;
     v$1.e = targetSchema;
     return parse$1(v$1);
   }
   let output = makeObjectVal(cleanRootInput, targetSchema);
-  output.from = undefined;
+  output.prev = undefined;
   let flattened = targetSchema.flattened;
   let items = targetSchema.items;
   if (items !== undefined) {
@@ -3131,7 +3131,7 @@ function getShapedParserOutput(input, targetSchema) {
     }
     v = complete(output);
   }
-  v.from = undefined;
+  v.prev = undefined;
   return v;
 }
 
@@ -3309,7 +3309,7 @@ function shapedSerializer(input, selfSchema) {
   prepareShapedSerializerAcc(acc, input);
   let targetSchema = selfSchema.to;
   let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
-  output.from = input;
+  output.prev = input;
   output.t = getOutputSchema(targetSchema).to === undefined;
   return output;
 }
@@ -3334,7 +3334,7 @@ function shapedParser(input, selfSchema) {
   }
   let targetSchema = selfSchema.to;
   let output = getShapedParserOutput(input, targetSchema);
-  output.from = input;
+  output.prev = input;
   output.t = targetSchema.to === undefined;
   return output;
 }

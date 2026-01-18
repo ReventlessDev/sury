@@ -545,7 +545,7 @@ and has = {
 }
 and builder = (~input: val, ~selfSchema: internal) => val
 and val = {
-  mutable from?: val,
+  mutable prev?: val,
   // We might have the same value, but different instances of the val object
   // Use the bond field, to connect the var call
   @as("b")
@@ -1094,7 +1094,7 @@ module Builder = {
     let _notVar = () => {
       let val: val = %raw(`this`)
       let v = val.global->varWithoutAllocation
-      let target = switch val.from {
+      let target = switch val.prev {
       | Some(from) => from
       | None => val // FIXME: Validate that this never happens
       }
@@ -1249,7 +1249,7 @@ module Builder = {
 
       while current.contents !== None {
         let val = current.contents->X.Option.getUnsafe
-        current := val.from
+        current := val.prev
 
         let itemCode = ref("")
 
@@ -1287,7 +1287,7 @@ module Builder = {
     }
 
     let refineInPlace = (val: val, ~schema, ~validation) => {
-      // if val.from !== None {
+      // if val.prev !== None {
       //   let inputVar = val.var()
       //   if val.varsAllocation !== "" {
       //     val.code = val.code ++ `let ${val.varsAllocation};`
@@ -1319,9 +1319,9 @@ module Builder = {
       val.schema = schema
     }
 
-    let val = (from: val, initial: string, ~schema, ~expected=from.expected): val => {
+    let val = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
       {
-        from,
+        prev,
         var: _notVar,
         inline: initial,
         flag: ValFlag.none,
@@ -1331,8 +1331,8 @@ module Builder = {
         varsAllocation: "",
         allocate: initialAllocate,
         validation: None,
-        path: from.path,
-        global: from.global,
+        path: prev.path,
+        global: prev.global,
       }
     }
 
@@ -1343,7 +1343,7 @@ module Builder = {
           ~schema=from.schema.additionalItems->(Obj.magic: option<additionalItems> => internal),
           ~expected=from.expected.additionalItems->(Obj.magic: option<additionalItems> => internal),
         )
-      v.from = None
+      v.prev = None
       v.parent = Some(from)
       v.path = Path.empty
       v.var = _notVarBeforeValidation
@@ -1477,7 +1477,7 @@ module Builder = {
           ...val,
           var: val.var === _var ? _var : _bondVar,
           bond: val,
-          from: ?None,
+          prev: ?None,
           code: "",
           codeBeforeValidation: ?None,
           isUnion: false,
@@ -1525,7 +1525,7 @@ module Builder = {
               },
               ~schema,
             )
-            item.from = None
+            item.prev = None
             item.parent = Some(parent)
             item.path = parent.path->Path.concat(pathAppend)
             item.var = _notVarAtParent
@@ -1731,7 +1731,7 @@ let numberDecoder = Builder.make((~input, ~selfSchema) => {
     // This weird solution is needed only to make sure that
     // received value in error message is input string instead of NaN
     let tmpInput = input->B.Val.cleanValFrom
-    tmpInput.from = Some(input)
+    tmpInput.prev = Some(input)
 
     let outputVar = input.global->B.varWithoutAllocation
     input.allocate(`${outputVar}=+${input.var()}`)
@@ -1995,7 +1995,7 @@ let rec parse = (input: val) => {
     let operationInput =
       input->B.val(operationInputVar, ~schema=input.schema, ~expected=input.expected)
     operationInput.var = B._var
-    operationInput.from = None
+    operationInput.prev = None
 
     let operationOutput = operationInput->parse
     let operationCode = operationOutput->B.merge
@@ -2037,7 +2037,7 @@ let rec parse = (input: val) => {
 
         if output.contents.skipTo !== Some(true) {
           let next = output.contents->B.Val.cleanValFrom
-          next.from = Some(output.contents)
+          next.prev = Some(output.contents)
           next.expected = to
           output := parse(next)
         }
@@ -2071,7 +2071,7 @@ and transformVal = (~input: val, operation) => {
     let operationInput =
       input->B.val(operationInputVar, ~schema=input.schema, ~expected=input.expected)
     operationInput.var = B._var
-    operationInput.from = None
+    operationInput.prev = None
 
     let operationOutputVal = operation(~input=operationInput)
     let output = operationOutputVal->parse
@@ -2338,9 +2338,9 @@ external getDecoder2: (~s1: internal, ~s2: internal, ~flag: flag=?) => 'a => 'b 
 external getDecoder3: (~s1: internal, ~s2: internal, ~s3: internal, ~flag: flag=?) => 'a => 'b =
   "getDecoder"
 
-let rec makeObjectVal = (from: val, ~schema): B.Val.Object.t => {
+let rec makeObjectVal = (prev: val, ~schema): B.Val.Object.t => {
   {
-    from,
+    prev,
     var: B._notVar,
     inline: "",
     flag: ValFlag.none,
@@ -2361,15 +2361,15 @@ let rec makeObjectVal = (from: val, ~schema): B.Val.Object.t => {
             decoder: objectDecoder,
           }
         },
-    expected: from.expected,
+    expected: prev.expected,
     vals: Js.Dict.empty(),
     code: "",
     varsAllocation: "",
     asyncCount: 0,
     allocate: B.initialAllocate,
     validation: None,
-    path: from.path,
-    global: from.global,
+    path: prev.path,
+    global: prev.global,
   }
 }
 and array = item => {
@@ -2722,7 +2722,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
 
   let recInput = input->B.allocateVal(~schema=unknown)
   recInput.code = `${recInput.inline}=${recOperation}(${input.inline});`
-  recInput.from = None
+  recInput.prev = None
   if def.isAsync === None {
     let defsMut = defs->X.Dict.copy
     defsMut->Js.Dict.set(identifier, unknown)
@@ -3217,7 +3217,7 @@ module Union = {
       }
 
       let output = input->B.Val.cleanValFrom
-      output.from = Some(input)
+      output.prev = Some(input)
 
       let getArrItemsCode = (arr: array<unknown>, ~isDeopt) => {
         let typeValidationInput = arr->Js.Array2.unsafe_get(0)->(Obj.magic: unknown => val)
@@ -4789,7 +4789,7 @@ module Schema = {
         output->B.Val.Object.complete
       }
     }
-    v.from = None
+    v.prev = None
     v
   }
   and shapedParser = (~input, ~selfSchema) => {
@@ -4808,7 +4808,7 @@ module Schema = {
 
     let targetSchema = selfSchema.to->X.Option.getUnsafe
     let output = getShapedParserOutput(~input, ~targetSchema)
-    output.from = Some(input)
+    output.prev = Some(input)
     output.skipTo = Some(targetSchema.to === None)
     output
   }
@@ -4884,12 +4884,12 @@ module Schema = {
     | _ =>
       if targetSchema->isLiteral {
         let v = cleanRootInput->B.newConst(~schema=targetSchema)
-        v.from = None
+        v.prev = None
         v.expected = targetSchema // FIXME: Is this line needed?
         v->parse
       } else {
         let output = makeObjectVal(cleanRootInput, ~schema=targetSchema)
-        output.from = None
+        output.prev = None
         switch targetSchema {
         | {items} =>
           for idx in 0 to items->Js.Array2.length - 1 {
@@ -4979,7 +4979,7 @@ module Schema = {
       ~path=Path.empty,
     )
 
-    output.from = Some(input)
+    output.prev = Some(input)
 
     // Use getOutputSchema to follow the .to chain - the nested parse calls in
     // getShapedSerializerOutput already handle the entire transformation chain
