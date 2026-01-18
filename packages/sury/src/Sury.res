@@ -572,8 +572,8 @@ and val = {
   mutable flattenedVals?: array<val>,
   @as("c")
   mutable codeAfterValidation: string,
-  @as("cb")
-  mutable code?: string,
+  @as("cp")
+  mutable codeFromPrev: string,
   @as("l")
   mutable varsAllocation: string,
   @as("a")
@@ -1079,7 +1079,7 @@ module Builder = {
     let _notVarBeforeValidation = () => {
       let val = %raw(`this`)
       let v = val.global->varWithoutAllocation
-      val.code = Some(`let ${v}=${val.inline};`)
+      val.codeFromPrev = `let ${v}=${val.inline};`
       val.inline = v
       val.var = _var
       v
@@ -1116,6 +1116,7 @@ module Builder = {
     let operationArg = (~schema, ~expected, ~flag, ~defs): val => {
       {
         codeAfterValidation: "",
+        codeFromPrev: "",
         var: _var,
         inline: operationArgVar,
         allocate: initialAllocate,
@@ -1230,7 +1231,7 @@ module Builder = {
       details
     }
 
-    let embedInvalidInput = (~input: val, ~expected) => {
+    let embedInvalidInput = (~input: val, ~expected=input.expected) => {
       let received = input.schema->castToPublic
 
       input->failWithArg(
@@ -1254,20 +1255,20 @@ module Builder = {
         let val = current.contents->X.Option.getUnsafe
         current := val.prev
 
-        let itemCode = ref("")
+        let currentCode = ref("")
 
         switch val.validation {
-        | Some(validation) => {
+        | Some(validation) if val.expected.noValidation !== Some(true) => {
             let inputVar = val.var()
             let validationCode = validation(~inputVar, ~negative=true)
-            itemCode :=
+            currentCode :=
               `if(${validationCode}){${embedInvalidInput(~input=val, ~expected=val.expected)}}`
           }
-        | None => ()
+        | _ => ()
         }
 
         if val.varsAllocation !== "" {
-          itemCode := itemCode.contents ++ `let ${val.varsAllocation};`
+          currentCode := currentCode.contents ++ `let ${val.varsAllocation};`
         }
 
         // Delete allocate,
@@ -1275,15 +1276,9 @@ module Builder = {
         // linked to allocated scopes
         let _ = %raw(`delete val$1.a`)
 
-        itemCode := itemCode.contents ++ val.codeAfterValidation
+        currentCode := val.codeFromPrev ++ currentCode.contents ++ val.codeAfterValidation
 
-        code :=
-          switch val.code {
-          | Some(code) => code
-          | None => ""
-          } ++
-          itemCode.contents ++
-          code.contents
+        code := currentCode.contents ++ code.contents
       }
 
       code.contents
@@ -1322,6 +1317,76 @@ module Builder = {
       val.schema = schema
     }
 
+    let next = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
+      {
+        prev,
+        var: _notVar,
+        inline: initial,
+        flag: ValFlag.none,
+        schema,
+        expected,
+        codeFromPrev: "",
+        codeAfterValidation: "",
+        varsAllocation: "",
+        allocate: initialAllocate,
+        validation: None,
+        path: prev.path,
+        global: prev.global,
+        hasTransform: true,
+      }
+    }
+
+    let refine = (val: val, ~schema, ~validation) => {
+      // if val.prev !== None {
+      //   let inputVar = val.var()
+      //   if val.varsAllocation !== "" {
+      //     val.codeAfterValidation = val.codeAfterValidation ++ `let ${val.varsAllocation};`
+      //     val.varsAllocation = ""
+      //     val.allocate = initialAllocate
+      //   }
+      //   val.codeAfterValidation =
+      //     val.codeAfterValidation ++
+      //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidInput(
+      //         ~input=val,
+      //         ~expected=val.expected,
+      //       )}}`
+      // } else {
+
+      // let prevValidation = val.validation
+      // val.validation = Some(
+      //   (~inputVar, ~negative) => {
+      //     {
+      //       switch prevValidation {
+      //       | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
+      //       | None => ""
+      //       }
+      //     } ++
+      //     validation(~inputVar, ~negative)
+      //   },
+      // )
+
+      // // }
+      // val.schema = schema
+
+      {
+        prev: val,
+        inline: val.inline,
+        var: val.var === _var ? _var : _bondVar,
+        bond: val,
+        flag: val.flag,
+        schema,
+        expected: val.expected,
+        codeFromPrev: "",
+        codeAfterValidation: "",
+        varsAllocation: "",
+        allocate: initialAllocate,
+        validation: Some(validation),
+        path: val.path,
+        global: val.global,
+        hasTransform: ?val.hasTransform,
+      }
+    }
+
     let val = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
       {
         prev,
@@ -1330,6 +1395,7 @@ module Builder = {
         flag: ValFlag.none,
         schema,
         expected,
+        codeFromPrev: "",
         codeAfterValidation: "",
         varsAllocation: "",
         allocate: initialAllocate,
@@ -1482,7 +1548,7 @@ module Builder = {
           bond: val,
           prev: ?None,
           codeAfterValidation: "",
-          code: ?None,
+          codeFromPrev: "",
           isUnion: false,
           varsAllocation: "",
           allocate: initialAllocate,
@@ -1801,23 +1867,26 @@ let stringDecoder = Builder.make((~input, ~selfSchema) => {
 
 string.decoder = stringDecoder
 
-let booleanDecoder = Builder.make((~input, ~selfSchema) => {
+let booleanDecoder = Builder.make((~input, ~selfSchema as _) => {
   let inputTagFlag = input.schema.tag->TagFlag.get
   if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-    input->B.refineInPlace(~schema=selfSchema, ~validation=(~inputVar, ~negative) => {
+    input->B.refine(~schema=input.expected, ~validation=(~inputVar, ~negative) => {
       `typeof ${inputVar}${B.eq(~negative)}"${(booleanTag :> string)}"`
     })
-    input
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-    let output = input->B.allocateVal(~schema=selfSchema)
+    let outputVar = input.global->B.varWithoutAllocation
+    input.allocate(outputVar)
+
+    let output = input->B.next(outputVar, ~schema=input.expected)
+    output.var = B._var
+
     let inputVar = input.var()
-    output.codeAfterValidation = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${B.embedInvalidInput(
+    output.codeFromPrev = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${B.embedInvalidInput(
         ~input,
-        ~expected=selfSchema,
       )};`
     output
   } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.boolean)) {
-    input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
+    input->B.unsupportedConversion(~from=input.schema, ~target=input.expected)
   } else {
     input
   }
@@ -2366,6 +2435,7 @@ let rec makeObjectVal = (prev: val, ~schema): B.Val.Object.t => {
         },
     expected: prev.expected,
     vals: Js.Dict.empty(),
+    codeFromPrev: "",
     codeAfterValidation: "",
     varsAllocation: "",
     asyncCount: 0,
@@ -3268,25 +3338,63 @@ module Union = {
           let itemCond = ref("")
           try {
             let itemOutput = input->parse
-            switch input.validation {
-            | Some(validation) => {
-                itemCond := validation(~inputVar=input.var(), ~negative=false)
-                input.validation = None
+
+            // This is a copy of the S.merge function
+            let current = ref(Some(itemOutput))
+
+            while current.contents !== None {
+              let val = current.contents->X.Option.getUnsafe
+              current := val.prev
+
+              let currentCode = ref("")
+
+              switch val.validation {
+              | Some(validation) =>
+                if val.hasTransform !== Some(true) {
+                  let inputVar = val.var()
+                  let condCode = validation(~inputVar, ~negative=false)
+                  if itemCond.contents->X.String.unsafeToBool {
+                    itemCond := `${condCode}&&${itemCond.contents}`
+                  } else {
+                    itemCond := condCode
+                  }
+                } else if val.expected.noValidation !== Some(true) {
+                  let inputVar = val.var()
+                  let validationCode = validation(~inputVar, ~negative=true)
+                  currentCode :=
+                    `if(${validationCode}){${B.embedInvalidInput(
+                        ~input=val,
+                        ~expected=val.expected,
+                      )}}`
+                } else {
+                  ()
+                }
+              | _ => ()
               }
-            | None => ()
+
+              if val.varsAllocation !== "" {
+                currentCode := currentCode.contents ++ `let ${val.varsAllocation};`
+              }
+
+              // Delete allocate,
+              // this is used to handle Val.var
+              // linked to allocated scopes
+              let _ = %raw(`delete val.a`)
+
+              currentCode := val.codeFromPrev ++ currentCode.contents ++ val.codeAfterValidation
+
+              itemCode := currentCode.contents ++ itemCode.contents
             }
 
             if itemOutput.inline !== typeValidationInput.inline {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
                 output.flag = output.flag->Flag.with(ValFlag.async)
               }
-              itemOutput.codeAfterValidation =
-                itemOutput.codeAfterValidation ++
+              itemCode :=
+                itemCode.contents ++
                 // Need to allocate a var here, so we don't mutate the input object field
                 `${typeValidationInput.var()}=${itemOutput.inline}`
             }
-
-            itemCode := itemOutput->B.merge
           } catch {
           | _ => {
               let errorVar = input->B.embed(%raw(`exn`)->InternalError.getOrRethrow)
@@ -3541,32 +3649,36 @@ module Union = {
               ],
             )
 
-            switch typeValidationInput.validation {
-            | Some(_) => ()
-            | None => {
-                for keyIdx in 0 to keys.contents->Stdlib.Array.length - 1 {
-                  let key = keys.contents->Stdlib.Array.getUnsafe(keyIdx)
-                  if !exit.contents {
-                    let arr = byKey.contents->Stdlib.Dict.getUnsafe(key)
-                    let typeValidationOutput =
-                      arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
-                    let itemsCode = getArrItemsCode(arr, ~isDeopt=true)
-                    let blockCode = typeValidationOutput->B.merge ++ itemsCode
+            if (
+              typeValidationInput.validation !== None ||
+                (typeValidationOutput.prev === Some(typeValidationInput) &&
+                typeValidationOutput.hasTransform !== Some(true) &&
+                typeValidationOutput.validation !== None)
+            ) {
+              ()
+            } else {
+              for keyIdx in 0 to keys.contents->Stdlib.Array.length - 1 {
+                let key = keys.contents->Stdlib.Array.getUnsafe(keyIdx)
+                if !exit.contents {
+                  let arr = byKey.contents->Stdlib.Dict.getUnsafe(key)
+                  let typeValidationOutput =
+                    arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
+                  let itemsCode = getArrItemsCode(arr, ~isDeopt=true)
+                  let blockCode = typeValidationOutput->B.merge ++ itemsCode
 
-                    if blockCode->X.String.unsafeToBool {
-                      let errorVar = `e` ++ (idx + keyIdx)->X.Int.unsafeToString
-                      start := start.contents ++ `try{${blockCode}}catch(${errorVar}){`
-                      end := "}" ++ end.contents
-                      caught := `${caught.contents},${errorVar}`
-                    } else {
-                      exit := true
-                    }
+                  if blockCode->X.String.unsafeToBool {
+                    let errorVar = `e` ++ (idx + keyIdx)->X.Int.unsafeToString
+                    start := start.contents ++ `try{${blockCode}}catch(${errorVar}){`
+                    end := "}" ++ end.contents
+                    caught := `${caught.contents},${errorVar}`
+                  } else {
+                    exit := true
                   }
                 }
-
-                byKey := Js.Dict.empty()
-                keys := []
               }
+
+              byKey := Js.Dict.empty()
+              keys := []
             }
           }
         }
@@ -3581,33 +3693,72 @@ module Union = {
 
         for idx in 0 to keys->Js.Array2.length - 1 {
           let arr = byKey->Js.Dict.unsafeGet(keys->Js.Array2.unsafe_get(idx))
-          let typeValidationInput = arr->Stdlib.Array.getUnsafe(0)->(Obj.magic: unknown => val)
           let typeValidationOutput = arr->Stdlib.Array.getUnsafe(1)->(Obj.magic: unknown => val)
           let firstSchema = arr->Stdlib.Array.getUnsafe(2)->(Obj.magic: unknown => internal)
 
           let itemsCode = getArrItemsCode(arr, ~isDeopt=false)
 
-          // Make cond as a weird callback, to prevent input.var call until it's needed
-          let cond = ref(
-            switch typeValidationInput.validation {
-            | None => InternalError.panic("No validation") // This shouldn't happen, but I didn't test it 100%
-            | Some(validation) =>
-              (~input as _) => {
-                validation(~inputVar=input.var(), ~negative=false)
-              }
-            },
-          )
-          typeValidationInput.validation = None
+          let blockCode = ref("")
+          let blockCond = ref("")
 
-          let blockCode = typeValidationOutput->B.merge ++ itemsCode
+          // This is a copy of the S.merge function
+          let current = ref(Some(typeValidationOutput))
+
+          while current.contents !== None {
+            let val = current.contents->X.Option.getUnsafe
+            current := val.prev
+
+            let currentCode = ref("")
+
+            switch val.validation {
+            | Some(validation) =>
+              if val.hasTransform !== Some(true) {
+                let inputVar = val.var()
+                let condCode = validation(~inputVar, ~negative=false)
+                if blockCond.contents->X.String.unsafeToBool {
+                  blockCond := `${condCode}&&${blockCond.contents}`
+                } else {
+                  blockCond := condCode
+                }
+              } else if val.expected.noValidation !== Some(true) {
+                let inputVar = val.var()
+                let validationCode = validation(~inputVar, ~negative=true)
+                currentCode :=
+                  `if(${validationCode}){${B.embedInvalidInput(
+                      ~input=val,
+                      ~expected=val.expected,
+                    )}}`
+              } else {
+                ()
+              }
+            | _ => ()
+            }
+
+            if val.varsAllocation !== "" {
+              currentCode := currentCode.contents ++ `let ${val.varsAllocation};`
+            }
+
+            // Delete allocate,
+            // this is used to handle Val.var
+            // linked to allocated scopes
+            let _ = %raw(`delete val.a`)
+
+            currentCode := val.codeFromPrev ++ currentCode.contents ++ val.codeAfterValidation
+
+            blockCode := currentCode.contents ++ blockCode.contents
+          }
+
+          let blockCode = blockCode.contents ++ itemsCode
+          let blockCond = blockCond.contents
 
           if blockCode->X.String.unsafeToBool || isPriority(firstSchema.tag->TagFlag.get, byKey) {
             let if_ = nextElse.contents ? "else if" : "if"
-            start := start.contents ++ if_ ++ `(${cond.contents(~input)}){${blockCode}}`
+            start := start.contents ++ if_ ++ `(${blockCond}){${blockCode}}`
             nextElse := true
           } else {
-            let cond = cond.contents(~input)
-            noop := (noop.contents->X.String.unsafeToBool ? `${noop.contents}||${cond}` : cond)
+            noop := (
+                noop.contents->X.String.unsafeToBool ? `${noop.contents}||${blockCond}` : blockCond
+              )
           }
         }
 

@@ -12,10 +12,7 @@ test("Works for literals", t => {
   let schema = S.literal("foo")
   let schemaWithoutTypeValidation = schema->S.noValidation(true)
 
-  t->U.assertThrowsMessage(
-    () => 1->S.parseOrThrow(schema),
-    `Expected "foo", received 1`,
-  )
+  t->U.assertThrowsMessage(() => 1->S.parseOrThrow(schema), `Expected "foo", received 1`)
   t->Assert.deepEqual(1->S.parseOrThrow(schemaWithoutTypeValidation), "foo")
   t->U.assertCompiledCode(~schema=schemaWithoutTypeValidation, ~op=#Parse, `i=>{return "foo"}`)
 })
