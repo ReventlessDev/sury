@@ -573,7 +573,7 @@ and val = {
   @as("c")
   mutable codeAfterValidation: string,
   @as("cb")
-  mutable codeBeforeValidation?: string,
+  mutable code?: string,
   @as("l")
   mutable varsAllocation: string,
   @as("a")
@@ -1076,7 +1076,7 @@ module Builder = {
     let _notVarBeforeValidation = () => {
       let val = %raw(`this`)
       let v = val.global->varWithoutAllocation
-      val.codeBeforeValidation = Some(`let ${v}=${val.inline};`)
+      val.code = Some(`let ${v}=${val.inline};`)
       val.inline = v
       val.var = _var
       v
@@ -1275,8 +1275,8 @@ module Builder = {
         itemCode := itemCode.contents ++ val.codeAfterValidation
 
         code :=
-          switch val.codeBeforeValidation {
-          | Some(codeBeforeValidation) => codeBeforeValidation
+          switch val.code {
+          | Some(code) => code
           | None => ""
           } ++
           itemCode.contents ++
@@ -1479,7 +1479,7 @@ module Builder = {
           bond: val,
           prev: ?None,
           codeAfterValidation: "",
-          codeBeforeValidation: ?None,
+          code: ?None,
           isUnion: false,
           varsAllocation: "",
           allocate: initialAllocate,

@@ -606,9 +606,9 @@ function merge(val) {
     }
     ((delete val$1.a));
     itemCode = itemCode + val$1.c;
-    let codeBeforeValidation = val$1.cb;
+    let code$1 = val$1.cb;
     code = (
-      codeBeforeValidation !== undefined ? codeBeforeValidation : ""
+      code$1 !== undefined ? code$1 : ""
     ) + itemCode + code;
   };
   return code;
