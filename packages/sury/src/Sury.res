@@ -1300,39 +1300,6 @@ module Builder = {
       )
     }
 
-    let refineInPlace = (val: val, ~schema, ~validation) => {
-      // if val.prev !== None {
-      //   let inputVar = val.var()
-      //   if val.varsAllocation !== "" {
-      //     val.codeAfterValidation = val.codeAfterValidation ++ `let ${val.varsAllocation};`
-      //     val.varsAllocation = ""
-      //     val.allocate = initialAllocate
-      //   }
-      //   val.codeAfterValidation =
-      //     val.codeAfterValidation ++
-      //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidInput(
-      //         ~input=val,
-      //         ~expected=val.expected,
-      //       )}}`
-      // } else {
-
-      let prevValidation = val.validation
-      val.validation = Some(
-        (~inputVar, ~negative) => {
-          {
-            switch prevValidation {
-            | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
-            | None => ""
-            }
-          } ++
-          validation(~inputVar, ~negative)
-        },
-      )
-
-      // }
-      val.schema = schema
-    }
-
     let next = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
       {
         prev,
@@ -2559,6 +2526,8 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
       },
     )
 
+    let inputRef = ref(input)
+
     for idx in 0 to expectedLength - 1 {
       let schema = expectedItems->Js.Array2.unsafe_get(idx)
       let key = idx->Js.Int.toString
@@ -2569,12 +2538,16 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
 
       switch itemOutput.validation {
       | Some(validation) if isUnion && schema->isLiteral =>
-        let _ = input->B.refineInPlace(~schema=input.schema, ~validation=(~inputVar, ~negative) => {
-          validation(
-            ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+        inputRef :=
+          inputRef.contents->B.refine(~schema=inputRef.contents.schema, ~validation=(
+            ~inputVar,
             ~negative,
-          )
-        })
+          ) => {
+            validation(
+              ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+              ~negative,
+            )
+          })
         itemOutput.validation = None
       | _ => ()
       }
@@ -2588,12 +2561,17 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
     // After input.schema was used, set it to selfSchema
     // so it has a more accurate name in error messages
 
+    let refinedInput = inputRef.contents
+    if refinedInput !== input {
+      objectVal.prev = Some(refinedInput)
+    }
+
     if shouldRecreateInput.contents {
       objectVal->B.Val.Object.complete
     } else {
-      input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
-      input.vals = objectVal.vals
-      input
+      refinedInput.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
+      refinedInput.vals = objectVal.vals
+      refinedInput
     }
   }
 }
@@ -2703,6 +2681,8 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
         },
       )
 
+      let inputRef = ref(input)
+
       for idx in 0 to keysCount - 1 {
         let key = keys->Js.Array2.unsafe_get(idx)
         let schema = properties->Js.Dict.unsafeGet(key)
@@ -2713,15 +2693,16 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
 
         switch itemOutput.validation {
         | Some(validation) if isUnion && schema->isLiteral =>
-          let _ = input->B.refineInPlace(~schema=input.schema, ~validation=(
-            ~inputVar,
-            ~negative,
-          ) => {
-            validation(
-              ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+          inputRef :=
+            inputRef.contents->B.refine(~schema=inputRef.contents.schema, ~validation=(
+              ~inputVar,
               ~negative,
-            )
-          })
+            ) => {
+              validation(
+                ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+                ~negative,
+              )
+            })
           itemOutput.validation = None
         | _ => ()
         }
@@ -2767,12 +2748,17 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
       // After input.schema was used, set it to selfSchema
       // so it has a more accurate name in error messages
 
+      let refinedInput = inputRef.contents
+      if refinedInput !== input {
+        objectVal.prev = Some(refinedInput)
+      }
+
       if shouldRecreateInput.contents {
         objectVal->B.Val.Object.complete
       } else {
-        input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
-        input.vals = objectVal.vals
-        input
+        refinedInput.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
+        refinedInput.vals = objectVal.vals
+        refinedInput
       }
     }
   }
@@ -3528,12 +3514,13 @@ module Union = {
                 itemStart :=
                   itemStart.contents ++ if_ ++ `(!(${itemNoop.contents})){${fail(caught.contents)}}`
               } else {
-                let _ = typeValidationOutput->B.refineInPlace(
+                let refinedVal = typeValidationOutput->B.refine(
                   ~schema=typeValidationOutput.schema,
                   ~validation=(~inputVar as _, ~negative) => {
                     `${B.exp(~negative)}(${itemNoop.contents})`
                   },
                 )
+                arr->Js.Array2.unsafe_set(1, refinedVal->(Obj.magic: val => unknown))
               }
             } else if withExhaustiveCheck.contents {
               let errorCode = fail(caught.contents)
