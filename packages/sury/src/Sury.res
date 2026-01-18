@@ -571,7 +571,7 @@ and val = {
   @as("fv")
   mutable flattenedVals?: array<val>,
   @as("c")
-  mutable code: string,
+  mutable codeAfterValidation: string,
   @as("cb")
   mutable codeBeforeValidation?: string,
   @as("l")
@@ -1112,7 +1112,7 @@ module Builder = {
 
     let operationArg = (~schema, ~expected, ~flag, ~defs): val => {
       {
-        code: "",
+        codeAfterValidation: "",
         var: _var,
         inline: operationArgVar,
         allocate: initialAllocate,
@@ -1272,7 +1272,7 @@ module Builder = {
         // linked to allocated scopes
         let _ = %raw(`delete val$1.a`)
 
-        itemCode := itemCode.contents ++ val.code
+        itemCode := itemCode.contents ++ val.codeAfterValidation
 
         code :=
           switch val.codeBeforeValidation {
@@ -1290,12 +1290,12 @@ module Builder = {
       // if val.prev !== None {
       //   let inputVar = val.var()
       //   if val.varsAllocation !== "" {
-      //     val.code = val.code ++ `let ${val.varsAllocation};`
+      //     val.codeAfterValidation = val.codeAfterValidation ++ `let ${val.varsAllocation};`
       //     val.varsAllocation = ""
       //     val.allocate = initialAllocate
       //   }
-      //   val.code =
-      //     val.code ++
+      //   val.codeAfterValidation =
+      //     val.codeAfterValidation ++
       //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidInput(
       //         ~input=val,
       //         ~expected=val.expected,
@@ -1327,7 +1327,7 @@ module Builder = {
         flag: ValFlag.none,
         schema,
         expected,
-        code: "",
+        codeAfterValidation: "",
         varsAllocation: "",
         allocate: initialAllocate,
         validation: None,
@@ -1352,7 +1352,7 @@ module Builder = {
 
     let allocateVal = (from: val, ~schema, ~expected=from.expected): val => {
       let var = from.global->varWithoutAllocation
-      from.code = from.code ++ `let ${var};`
+      from.codeAfterValidation = from.codeAfterValidation ++ `let ${var};`
       let v = from->val(var, ~schema, ~expected)
       v.var = _var
       v
@@ -1407,7 +1407,7 @@ module Builder = {
           } else {
             objectVal.schema.properties->X.Option.getUnsafe->Stdlib.Dict.set(location, val.schema)
           }
-          objectVal.code = objectVal.code ++ val->merge
+          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ val->merge
           let inlinedLocation = objectVal.global->inlineLocation(location)
           objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
           if val.flag->Flag.unsafeHas(ValFlag.async) {
@@ -1478,7 +1478,7 @@ module Builder = {
           var: val.var === _var ? _var : _bondVar,
           bond: val,
           prev: ?None,
-          code: "",
+          codeAfterValidation: "",
           codeBeforeValidation: ?None,
           isUnion: false,
           varsAllocation: "",
@@ -1562,7 +1562,7 @@ module Builder = {
           e => makeInvalidConversionDetails(~input, ~to=unknown, ~cause=e),
           `x`,
         )}`
-      output.code = `try{${output.inline}=${embededFn}(${input.inline})${isAsync
+      output.codeAfterValidation = `try{${output.inline}=${embededFn}(${input.inline})${isAsync
           ? `.catch(x=>${failure})`
           : ""}}catch(x){${failure}}`
       output
@@ -1655,7 +1655,7 @@ module Builder = {
         //   ~path=Path.empty,
         //   ~input,
         //   ~catch=(b, ~errorVar) => {
-        // b.code = `${errorVar}.path=${b.path->X.Inlined.Value.fromString}+${switch maybeDynamicLocationVar {
+        // b.codeAfterValidation = `${errorVar}.path=${b.path->X.Inlined.Value.fromString}+${switch maybeDynamicLocationVar {
         //   | Some(var) => `'["'+${var}+'"]'+`
         //   | _ => ""
         //   }}${errorVar}.path`
@@ -1671,7 +1671,7 @@ module Builder = {
         //   X.Exn.throwAny(
         //     InternalError.make(
         //       ~path=b.path->Path.concat(Path.dynamic)->Path.concat(error.path),
-        //       ~code=error.code,
+        //       ~code=error.codeAfterValidation,
         //       ~flag=error.flag,
         //     ),
         //   )
@@ -1808,7 +1808,7 @@ let booleanDecoder = Builder.make((~input, ~selfSchema) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
     let output = input->B.allocateVal(~schema=selfSchema)
     let inputVar = input.var()
-    output.code = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${B.embedInvalidInput(
+    output.codeAfterValidation = `(${output.inline}=${inputVar}==="true")||${inputVar}==="false"||${B.embedInvalidInput(
         ~input,
         ~expected=selfSchema,
       )};`
@@ -1834,7 +1834,7 @@ let bigintDecoder = Builder.make((~input, ~selfSchema) => {
   else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
     let output = input->B.allocateVal(~schema=selfSchema)
     let inputVar = input.var()
-    output.code = `try{${output.inline}=BigInt(${inputVar})}catch(_){${B.embedInvalidInput(
+    output.codeAfterValidation = `try{${output.inline}=BigInt(${inputVar})}catch(_){${B.embedInvalidInput(
         ~input,
         ~expected=selfSchema,
       )}}`
@@ -2363,7 +2363,7 @@ let rec makeObjectVal = (prev: val, ~schema): B.Val.Object.t => {
         },
     expected: prev.expected,
     vals: Js.Dict.empty(),
-    code: "",
+    codeAfterValidation: "",
     varsAllocation: "",
     asyncCount: 0,
     allocate: B.initialAllocate,
@@ -2448,8 +2448,8 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
           )
 
         if isTransformed || itemCode !== "" {
-          output.code =
-            output.code ++
+          output.codeAfterValidation =
+            output.codeAfterValidation ++
             `for(let ${iteratorVar}=${length->X.Int.unsafeToString};${iteratorVar}<${inputVar}.length;++${iteratorVar}){${itemCode}}`
         }
 
@@ -2509,7 +2509,7 @@ and arrayDecoder: builder = (~input, ~selfSchema) => {
     if shouldRecreateInput.contents {
       objectVal->B.Val.Object.complete
     } else {
-      input.code = objectVal.code // FIXME: Delete from and merge?
+      input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
       input.vals = objectVal.vals
       input
     }
@@ -2570,7 +2570,8 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
           )
 
         if isTransformed || itemCode !== "" {
-          output.code = output.code ++ `for(let ${keyVar} in ${inputVar}){${itemCode}}`
+          output.codeAfterValidation =
+            output.codeAfterValidation ++ `for(let ${keyVar} in ${inputVar}){${itemCode}}`
         }
 
         if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
@@ -2648,20 +2649,23 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
       ) {
         let keyVar = objectVal.global->B.varWithoutAllocation
         input.allocate(keyVar)
-        objectVal.code = objectVal.code ++ `for(${keyVar} in ${input.var()}){if(`
+        objectVal.codeAfterValidation =
+          objectVal.codeAfterValidation ++ `for(${keyVar} in ${input.var()}){if(`
         switch keys {
-        | [] => objectVal.code = objectVal.code ++ "true"
+        | [] => objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ "true"
         | _ =>
           for idx in 0 to keys->Js.Array2.length - 1 {
             let key = keys->Js.Array2.unsafe_get(idx)
             if idx !== 0 {
-              objectVal.code = objectVal.code ++ "&&"
+              objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ "&&"
             }
-            objectVal.code = objectVal.code ++ `${keyVar}!==${input.global->B.inlineLocation(key)}`
+            objectVal.codeAfterValidation =
+              objectVal.codeAfterValidation ++ `${keyVar}!==${input.global->B.inlineLocation(key)}`
           }
         }
-        objectVal.code =
-          objectVal.code ++ `){${input->B.failWithArg(exccessFieldName => UnrecognizedKeys({
+        objectVal.codeAfterValidation =
+          objectVal.codeAfterValidation ++
+          `){${input->B.failWithArg(exccessFieldName => UnrecognizedKeys({
               path: objectVal.path,
               reason: `Unrecognized key "${exccessFieldName}"`,
               keys: [exccessFieldName],
@@ -2674,7 +2678,7 @@ and objectDecoder: Builder.t = (~input, ~selfSchema) => {
       if shouldRecreateInput.contents {
         objectVal->B.Val.Object.complete
       } else {
-        input.code = objectVal.code // FIXME: Delete from and merge?
+        input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
         input.vals = objectVal.vals
         input
       }
@@ -2721,7 +2725,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
   }
 
   let recInput = input->B.allocateVal(~schema=unknown)
-  recInput.code = `${recInput.inline}=${recOperation}(${input.inline});`
+  recInput.codeAfterValidation = `${recInput.inline}=${recOperation}(${input.inline});`
   recInput.prev = None
   if def.isAsync === None {
     let defsMut = defs->X.Dict.copy
@@ -2735,7 +2739,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
     output.flag = output.flag->Flag.with(ValFlag.async)
   }
 
-  output.code = recInput->B.mergeWithPathPrepend(~parent=input)
+  output.codeAfterValidation = recInput->B.mergeWithPathPrepend(~parent=input)
 
   output
 })
@@ -2997,7 +3001,7 @@ let noValidation = (schema, value) => {
 let appendRefiner = (~existingDecoder: builder, refiner) => {
   (~input, ~selfSchema) => {
     let output = existingDecoder(~input, ~selfSchema)
-    output.code = output.code ++ refiner(~input=output, ~selfSchema)
+    output.codeAfterValidation = output.codeAfterValidation ++ refiner(~input=output, ~selfSchema)
     output
   }
 }
@@ -3088,7 +3092,8 @@ nullAsUnit.decoder = Literal.literalDecoder
 let nullAsUnit = nullAsUnit->castToPublic
 
 let neverBuilder = Builder.make((~input, ~selfSchema) => {
-  input.code = input.code ++ B.embedInvalidInput(~input, ~expected=selfSchema) ++ ";"
+  input.codeAfterValidation =
+    input.codeAfterValidation ++ B.embedInvalidInput(~input, ~expected=selfSchema) ++ ";"
   input.skipTo = Some(true)
   input
 })
@@ -3272,8 +3277,8 @@ module Union = {
               if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
                 output.flag = output.flag->Flag.with(ValFlag.async)
               }
-              itemOutput.code =
-                itemOutput.code ++
+              itemOutput.codeAfterValidation =
+                itemOutput.codeAfterValidation ++
                 // Need to allocate a var here, so we don't mutate the input object field
                 `${typeValidationInput.var()}=${itemOutput.inline}`
             }
@@ -3615,7 +3620,7 @@ module Union = {
           }
       }
 
-      output.code = output.code ++ start.contents ++ end.contents
+      output.codeAfterValidation = output.codeAfterValidation ++ start.contents ++ end.contents
 
       // In case if input.var was called, but output.var wasn't
       if input.inline !== output.inline {
@@ -3634,8 +3639,8 @@ module Union = {
         // Should refactor mergeWithCatch to make it simpler
         // All of this is a hack to make mergeWithCatch think that there are no changes. eg S.array(S.option(item))
         if (
-          input.code === "" &&
-          output.code === "" &&
+          input.codeAfterValidation === "" &&
+          output.codeAfterValidation === "" &&
           (output.varsAllocation === `${output.inline}=${initialInline}` || initialInline === "i")
         ) {
           // FIXME: Might not be not needed
@@ -4192,8 +4197,8 @@ let enableJsonString = {
       } else {
         let inputVar = input.var()
         let output = input->B.allocateVal(~schema=json, ~expected=to)
-        input.code =
-          input.code ++
+        input.codeAfterValidation =
+          input.codeAfterValidation ++
           `try{${output.inline}=JSON.parse(${inputVar})}catch(t){${B.embedInvalidInput(
               ~input,
               ~expected=input.expected,
@@ -4229,8 +4234,8 @@ let enableJsonString = {
           if preEncode {
             jsonStringEncoder(~input, ~selfSchema=to)
           } else {
-            input.code =
-              input.code ++
+            input.codeAfterValidation =
+              input.codeAfterValidation ++
               `try{JSON.parse(${input.var()})}catch(t){${B.embedInvalidInput(
                   ~input,
                   ~expected=input.expected,
@@ -5113,7 +5118,7 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
             ).inline};`
       }
       b.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
-      bb.code = bb.code ++ settingCode.contents
+      bb.codeAfterValidation = bb.codeAfterValidation ++ settingCode.contents
     },
     (~input) => {
       // b->parse(~schema, ~input)
@@ -5122,8 +5127,8 @@ let unnestSerializer = Builder.make((~input, ~selfSchema) => {
   )
   let itemCode = bb->B.merge
 
-  b.code =
-    b.code ++
+  b.codeAfterValidation =
+    b.codeAfterValidation ++
     `for(let ${iteratorVar}=0;${iteratorVar}<${inputVar}.length;++${iteratorVar}){${itemCode}}`
 
   if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
@@ -5242,7 +5247,8 @@ let unnest = schema => {
           ~input=itemInput,
           ~dynamicLocationVar=iteratorVar,
           ~appendSafe=(bb, ~output as itemOutput) => {
-            bb.code = bb.code ++ output->B.Val.addKey(iteratorVar, itemOutput) ++ ";"
+            bb.codeAfterValidation =
+              bb.codeAfterValidation ++ output->B.Val.addKey(iteratorVar, itemOutput) ++ ";"
           },
           (~input) => {
             // b->parse(~schema, ~input)
@@ -5251,8 +5257,8 @@ let unnest = schema => {
         )
         let itemCode = bb->B.merge
 
-        b.code =
-          b.code ++
+        b.codeAfterValidation =
+          b.codeAfterValidation ++
           `for(let ${iteratorVar}=0;${iteratorVar}<${outputVar}.length;++${iteratorVar}){${itemCode}}`
 
         if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
@@ -5840,7 +5846,7 @@ let js_to = {
   let customBuilder = (~target, ~fn) => {
     Builder.make((~input, ~selfSchema as _) => {
       let output = input->B.allocateVal(~schema=target)
-      output.code = `try{${output.inline}=${input->B.embed(
+      output.codeAfterValidation = `try{${output.inline}=${input->B.embed(
           fn,
         )}(${input.inline})}catch(x){${output->B.failWithArg(
           e => B.makeInvalidConversionDetails(~input, ~to=target, ~cause=e),
