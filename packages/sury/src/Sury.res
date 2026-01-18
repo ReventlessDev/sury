@@ -564,7 +564,7 @@ and val = {
   // The schema of the value that we expect to parse into
   @as("e")
   mutable expected: internal,
-  @as("t")
+  @as("k")
   mutable skipTo?: bool,
   @as("d")
   mutable vals?: dict<val>,
@@ -581,6 +581,9 @@ and val = {
   mutable validation: option<(~inputVar: string, ~negative: bool) => string>,
   @as("u")
   mutable isUnion?: bool,
+  // Whether the chain starting from the root prev has a transformation
+  @as("t")
+  hasTransform?: bool,
   mutable path: Path.t,
   @as("g")
   global: bGlobal,
