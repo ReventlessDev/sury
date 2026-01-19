@@ -2621,7 +2621,7 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
       unknownInput.schema
     }
 
-    if expectedSchema.additionalItems->X.Option.getUnsafe !== Strip {
+    if !isObjectInput && expectedSchema.additionalItems->X.Option.getUnsafe !== Strip {
       // For strip case we recreate the value
       // For other cases we might optimize it,
       // this is why the check is a must have
