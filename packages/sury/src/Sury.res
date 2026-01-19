@@ -1358,38 +1358,7 @@ module Builder = {
       }
     }
 
-    let refine = (val: val, ~schema, ~validation) => {
-      // if val.prev !== None {
-      //   let inputVar = val.var()
-      //   if val.varsAllocation !== "" {
-      //     val.codeAfterValidation = val.codeAfterValidation ++ `let ${val.varsAllocation};`
-      //     val.varsAllocation = ""
-      //     val.allocate = initialAllocate
-      //   }
-      //   val.codeAfterValidation =
-      //     val.codeAfterValidation ++
-      //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidInput(
-      //         ~input=val,
-      //         ~expected=val.expected,
-      //       )}}`
-      // } else {
-
-      // let prevValidation = val.validation
-      // val.validation = Some(
-      //   (~inputVar, ~negative) => {
-      //     {
-      //       switch prevValidation {
-      //       | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
-      //       | None => ""
-      //       }
-      //     } ++
-      //     validation(~inputVar, ~negative)
-      //   },
-      // )
-
-      // // }
-      // val.schema = schema
-
+    let refine = (val: val, ~schema=val.schema, ~validation=?, ~expected=val.expected) => {
       let shouldLink = val.var !== _var
       let nextVal = {
         prev: val,
@@ -1397,12 +1366,12 @@ module Builder = {
         var: shouldLink ? _prevVar : _var,
         flag: val.flag,
         schema,
-        expected: val.expected,
+        expected,
         codeFromPrev: "",
         codeAfterValidation: "",
         varsAllocation: "",
         allocate: initialAllocate,
-        validation: Some(validation),
+        validation,
         path: val.path,
         global: val.global,
         hasTransform: ?val.hasTransform,
@@ -1459,8 +1428,8 @@ module Builder = {
       v
     }
 
-    let nextConst = (from: val, ~schema): val => {
-      from->next(from->inlineConst(schema), ~schema)
+    let nextConst = (from: val, ~schema, ~expected=?): val => {
+      from->next(from->inlineConst(schema), ~schema, ~expected?)
     }
 
     let asyncVal = (from: val, initial: string): val => {
@@ -1508,11 +1477,7 @@ module Builder = {
           } else {
             objectVal.schema.properties->X.Option.getUnsafe->Stdlib.Dict.set(location, val.schema)
           }
-          Js.log(val)
-          let a = val->merge
-          Js.log(a)
-          Js.log(val)
-          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ a
+          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ val->merge
           let inlinedLocation = objectVal.global->inlineLocation(location)
           objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
           if val.flag->Flag.unsafeHas(ValFlag.async) {
@@ -1834,11 +1799,11 @@ let numberDecoder = Builder.make((~input, ~selfSchema as _) => {
     })
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
     let outputVar = input.global->B.varWithoutAllocation
-    input.allocate(outputVar)
+    input.allocate(`${outputVar}=+${input.var()}`)
 
     let output = input->B.next(outputVar, ~schema=input.expected)
     output.var = B._var
-    output.codeFromPrev = `${outputVar}=+${input.var()};`
+
     output.validation = Some(
       (~inputVar as _, ~negative) => {
         switch input.expected.format {
@@ -2016,10 +1981,13 @@ module Literal = {
             ),
           )
       ) {
+        // This is to have a nicer error message
         let stringConstSchema = base(stringTag, ~selfReverse=true)
         stringConstSchema.const = %raw(`"" + expectedSchema.const`)
+        stringConstSchema.to = Some(expectedSchema)
 
-        let stringConstVal = input->B.nextConst(~schema=stringConstSchema)
+        let stringConstVal =
+          input->B.nextConst(~schema=stringConstSchema, ~expected=stringConstSchema)
 
         // FIXME: Test, that when from item has a refinement
         // and we need to keep existing validation
@@ -2134,10 +2102,7 @@ let rec parse = (input: val) => {
         }
 
         if output.contents.skipTo !== Some(true) {
-          let next = output.contents->B.Val.cleanValFrom
-          next.prev = Some(output.contents)
-          next.expected = to
-          output := parse(next)
+          output := parse(output.contents->B.refine(~expected=to))
         }
 
       | None => ()
@@ -4218,33 +4183,28 @@ let jsonEncoder = Builder.make((~input, ~selfSchema as to) => {
       ->Flag.with(TagFlag.null),
     )
   ) {
-    input.schema = unknown
-    input
+    input->B.refine(~schema=unknown, ~expected=to)->parse
   } else if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-    let expected = string->copySchema
-    expected.to = Some(to)
-    input.schema = unknown
-    input.expected = expected
-    stringDecoder(~input, ~selfSchema=expected)
+    let jsonExpected = string->copySchema
+    jsonExpected.to = Some(to)
+    input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
   } else if toTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
-    input.schema = unknown
-    input.expected = nullLiteral
-    Literal.literalDecoder(~input, ~selfSchema=nullLiteral)
+    let jsonExpected = nullLiteral->copySchema
+    jsonExpected.to = Some(to)
+    input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
   } else if toTagFlag->Flag.unsafeHas(TagFlag.array) {
     // Validate that the input is an array
     // and then update the schema to be an array of json instead of array of unknown
-    input.schema = unknown
-    input.expected = array(unknown->castToPublic)->castToInternal
-    let output = arrayDecoder(~input, ~selfSchema=input.expected)
+    let jsonExpected = array(unknown->castToPublic)->castToInternal
+    let output = input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
     output.schema.additionalItems = Some(Schema(json->castToPublic))
     output.expected = to
     output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.object) {
     // Validate that the input is an object
     // and then update the schema to be an object of json instead of object of unknown
-    input.schema = unknown
-    input.expected = Dict.factory(unknown->castToPublic)->castToInternal
-    let output = objectDecoder(~input, ~selfSchema=input.expected)
+    let jsonExpected = Dict.factory(unknown->castToPublic)->castToInternal
+    let output = input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
     output.schema.additionalItems = Some(Schema(json->castToPublic))
     output.expected = to
     output
@@ -4270,19 +4230,22 @@ let jsonDecoder = (~input, ~selfSchema as _) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
     input->inputToString
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.array) {
-    let mut = base(arrayTag, ~selfReverse=false)
-    mut.items = Some(
+    let expected = base(arrayTag, ~selfReverse=false)
+    expected.items = Some(
       input.schema.items
       ->X.Option.getUnsafe
       ->Js.Array2.map(_ => json),
     )
-    mut.additionalItems = Some(
+    expected.decoder = arrayDecoder
+    expected.additionalItems = Some(
       switch input.schema.additionalItems->X.Option.getUnsafe {
       | Schema(_) => Schema(json->castToPublic)
       | v => v
       },
     )
-    arrayDecoder(~input, ~selfSchema=mut)
+    expected.to = input.expected.to
+
+    input->B.refine(~expected)->parse
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
     let mut = base(objectTag, ~selfReverse=false)
     let properties = Js.Dict.empty()
