@@ -119,3 +119,7 @@ Transformation tracking (relative to `.prev`):
 - `validation` - Type check condition from `.prev` (e.g., `typeof x === "string"`). Different from custom refiners.
 
 This design allows tracing back through the transformation history, where each step records what code was generated and what validations were applied to get from the previous state to the current one.
+
+- `B.refine` allows to modify the value, by cloning, while keeping the var allocation link.
+
+- `skipTo` is used to abort the parse after finishing current decoder. Ideally to get rid of it and use `val.expected` instead.

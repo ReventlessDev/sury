@@ -2079,7 +2079,6 @@ let rec parse = (input: val) => {
       },
     )
 
-    // FIXME: Should the check be here?
     if output.contents.skipTo !== Some(true) {
       output := expected.decoder(~input=output.contents, ~selfSchema=expected)
 
@@ -4183,15 +4182,21 @@ let jsonEncoder = Builder.make((~input, ~selfSchema as to) => {
       ->Flag.with(TagFlag.null),
     )
   ) {
-    input->B.refine(~schema=unknown, ~expected=to)->parse
+    let output = input->B.refine(~schema=unknown, ~expected=to)->parse
+    output.skipTo = Some(true)
+    output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.bigint) {
     let jsonExpected = string->copySchema
     jsonExpected.to = Some(to)
-    input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
+    let output = input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
+    output.skipTo = Some(true)
+    output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
     let jsonExpected = nullLiteral->copySchema
     jsonExpected.to = Some(to)
-    input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
+    let output = input->B.refine(~schema=unknown, ~expected=jsonExpected)->parse
+    output.skipTo = Some(true)
+    output
   } else if toTagFlag->Flag.unsafeHas(TagFlag.array) {
     // Validate that the input is an array
     // and then update the schema to be an array of json instead of array of unknown
@@ -4245,9 +4250,11 @@ let jsonDecoder = (~input, ~selfSchema as _) => {
     )
     expected.to = input.expected.to
 
-    input->B.refine(~expected)->parse
+    let output = input->B.refine(~expected)->parse
+    output.skipTo = Some(true)
+    output
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.object) {
-    let mut = base(objectTag, ~selfReverse=false)
+    let expected = base(objectTag, ~selfReverse=false)
     let properties = Js.Dict.empty()
     input.schema.properties
     ->X.Option.getUnsafe
@@ -4255,14 +4262,19 @@ let jsonDecoder = (~input, ~selfSchema as _) => {
     ->Stdlib.Array.forEach(key => {
       properties->Stdlib.Dict.set(key, json)
     })
-    mut.properties = Some(properties)
-    mut.additionalItems = Some(
+    expected.properties = Some(properties)
+    expected.additionalItems = Some(
       switch input.schema.additionalItems->X.Option.getUnsafe {
       | Schema(_) => Schema(json->castToPublic)
       | v => v
       },
     )
-    objectDecoder(~input, ~selfSchema=mut)
+    expected.decoder = objectDecoder
+    expected.to = input.expected.to
+
+    let output = input->B.refine(~expected)->parse
+    output.skipTo = Some(true)
+    output
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.ref) {
     // FIXME: Should be a unified solution for ref inputs
     recursiveDecoder(~input, ~selfSchema=input.expected)
