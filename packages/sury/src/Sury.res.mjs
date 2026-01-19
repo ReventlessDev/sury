@@ -458,6 +458,12 @@ function _bondVar() {
   return v;
 }
 
+function _prevVar() {
+  let val = this;
+  let prev = val.prev;
+  return prev.v();
+}
+
 function varWithoutAllocation(global) {
   let newCounter = global.v + 1;
   global.v = newCounter;
@@ -653,10 +659,10 @@ function next(prev, initial, schema, expectedOpt) {
 }
 
 function refine(val, schema, validation) {
-  return {
+  let shouldLink = val.v !== _var;
+  let nextVal = {
     prev: val,
-    b: val,
-    v: val.v === _var ? _var : _bondVar,
+    v: shouldLink ? _prevVar : _var,
     i: val.i,
     f: val.f,
     s: schema,
@@ -670,6 +676,16 @@ function refine(val, schema, validation) {
     path: val.path,
     g: val.g
   };
+  if (shouldLink) {
+    let valVar = (val.v.bind(val));
+    val.v = () => {
+      let v = valVar();
+      nextVal.i = v;
+      nextVal.v = _var;
+      return v;
+    };
+  }
+  return nextVal;
 }
 
 function val(prev, initial, schema, expectedOpt) {
@@ -733,7 +749,11 @@ function add(objectVal, location, val) {
   } else {
     objectVal.s.properties[location] = val.s;
   }
-  objectVal.c = objectVal.c + merge(val);
+  console.log(val);
+  let a = merge(val);
+  console.log(a);
+  console.log(val);
+  objectVal.c = objectVal.c + a;
   let inlinedLocation = inlineLocation(objectVal.g, location);
   objectVal.d[location] = val;
   if (val.f & 1) {
@@ -3140,6 +3160,47 @@ function getShapedParserOutput(input, targetSchema) {
   return v;
 }
 
+function traverseDefinition(definition, onNode) {
+  if (typeof definition !== "object" || definition === null) {
+    return parse(definition);
+  }
+  let s = onNode(definition);
+  if (s !== undefined) {
+    return s;
+  }
+  if (Array.isArray(definition)) {
+    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
+      let schema = traverseDefinition(definition[idx], onNode);
+      definition[idx] = schema;
+    }
+    let mut = base(arrayTag, false);
+    mut.items = definition;
+    mut.additionalItems = "strict";
+    mut.decoder = arrayDecoder;
+    return mut;
+  }
+  let cnstr = definition.constructor;
+  if (cnstr && cnstr !== Object) {
+    let mut$1 = base(instanceTag, true);
+    mut$1.class = cnstr;
+    mut$1.const = definition;
+    mut$1.decoder = literalDecoder;
+    return mut$1;
+  }
+  let fieldNames = Object.keys(definition);
+  let length = fieldNames.length;
+  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
+    let location = fieldNames[idx$1];
+    let schema$1 = traverseDefinition(definition[location], onNode);
+    definition[location] = schema$1;
+  }
+  let mut$2 = base(objectTag, false);
+  mut$2.properties = definition;
+  mut$2.additionalItems = globalConfig.a;
+  mut$2.decoder = objectDecoder;
+  return mut$2;
+}
+
 function getValByFrom(_input, from, _idx) {
   while (true) {
     let idx = _idx;
@@ -3208,47 +3269,6 @@ function prepareShapedSerializerAcc(acc, input) {
   for (let idx$1 = 0, idx_finish$1 = keys.length; idx$1 < idx_finish$1; ++idx$1) {
     prepareShapedSerializerAcc(acc, vals[keys[idx$1]]);
   }
-}
-
-function traverseDefinition(definition, onNode) {
-  if (typeof definition !== "object" || definition === null) {
-    return parse(definition);
-  }
-  let s = onNode(definition);
-  if (s !== undefined) {
-    return s;
-  }
-  if (Array.isArray(definition)) {
-    for (let idx = 0, idx_finish = definition.length; idx < idx_finish; ++idx) {
-      let schema = traverseDefinition(definition[idx], onNode);
-      definition[idx] = schema;
-    }
-    let mut = base(arrayTag, false);
-    mut.items = definition;
-    mut.additionalItems = "strict";
-    mut.decoder = arrayDecoder;
-    return mut;
-  }
-  let cnstr = definition.constructor;
-  if (cnstr && cnstr !== Object) {
-    let mut$1 = base(instanceTag, true);
-    mut$1.class = cnstr;
-    mut$1.const = definition;
-    mut$1.decoder = literalDecoder;
-    return mut$1;
-  }
-  let fieldNames = Object.keys(definition);
-  let length = fieldNames.length;
-  for (let idx$1 = 0; idx$1 < length; ++idx$1) {
-    let location = fieldNames[idx$1];
-    let schema$1 = traverseDefinition(definition[location], onNode);
-    definition[location] = schema$1;
-  }
-  let mut$2 = base(objectTag, false);
-  mut$2.properties = definition;
-  mut$2.additionalItems = globalConfig.a;
-  mut$2.decoder = objectDecoder;
-  return mut$2;
 }
 
 function getShapedSerializerOutput(cleanRootInput, acc, targetSchema, path) {
@@ -3328,25 +3348,6 @@ function getShapedSerializerOutput(cleanRootInput, acc, targetSchema, path) {
   return complete(output);
 }
 
-function shapedSerializer(input, selfSchema) {
-  let acc = {};
-  prepareShapedSerializerAcc(acc, input);
-  let targetSchema = selfSchema.to;
-  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
-  output.prev = input;
-  output.k = getOutputSchema(targetSchema).to === undefined;
-  return output;
-}
-
-function definitionToSchema(definition) {
-  return traverseDefinition(definition, node => {
-    if (node["~standard"]) {
-      return node;
-    }
-    
-  });
-}
-
 function nested(fieldName) {
   let parentCtx = this;
   let cacheId = "~" + fieldName;
@@ -3408,6 +3409,25 @@ function nested(fieldName) {
   };
   parentCtx[cacheId] = ctx$1;
   return ctx$1;
+}
+
+function definitionToSchema(definition) {
+  return traverseDefinition(definition, node => {
+    if (node["~standard"]) {
+      return node;
+    }
+    
+  });
+}
+
+function shapedSerializer(input, selfSchema) {
+  let acc = {};
+  prepareShapedSerializerAcc(acc, input);
+  let targetSchema = selfSchema.to;
+  let output = getShapedSerializerOutput(cleanValFrom(input), acc, targetSchema, "");
+  output.prev = input;
+  output.k = getOutputSchema(targetSchema).to === undefined;
+  return output;
 }
 
 function shapedParser(input, selfSchema) {

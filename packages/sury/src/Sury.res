@@ -1070,6 +1070,12 @@ module Builder = {
       v
     }
 
+    let _prevVar = () => {
+      let val = %raw(`this`)
+      let prev = val.prev->X.Option.getUnsafe
+      prev.var()
+    }
+
     let varWithoutAllocation = (global: bGlobal) => {
       let newCounter = global.varCounter->X.Int.plus(1)
       global.varCounter = newCounter
@@ -1384,11 +1390,11 @@ module Builder = {
       // // }
       // val.schema = schema
 
-      {
+      let shouldLink = val.var !== _var
+      let nextVal = {
         prev: val,
         inline: val.inline,
-        var: val.var === _var ? _var : _bondVar,
-        bond: val,
+        var: shouldLink ? _prevVar : _var,
         flag: val.flag,
         schema,
         expected: val.expected,
@@ -1401,6 +1407,16 @@ module Builder = {
         global: val.global,
         hasTransform: ?val.hasTransform,
       }
+      if shouldLink {
+        let valVar: unit => string = %raw(`val.v.bind(val)`)
+        val.var = () => {
+          let v = valVar()
+          nextVal.inline = v
+          nextVal.var = _var
+          v
+        }
+      }
+      nextVal
     }
 
     let val = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
@@ -1492,7 +1508,11 @@ module Builder = {
           } else {
             objectVal.schema.properties->X.Option.getUnsafe->Stdlib.Dict.set(location, val.schema)
           }
-          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ val->merge
+          Js.log(val)
+          let a = val->merge
+          Js.log(a)
+          Js.log(val)
+          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ a
           let inlinedLocation = objectVal.global->inlineLocation(location)
           objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
           if val.flag->Flag.unsafeHas(ValFlag.async) {

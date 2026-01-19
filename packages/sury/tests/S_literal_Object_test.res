@@ -65,7 +65,7 @@ module Common = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{if(typeof i!=="object"||!i||i["foo"]!=="bar"){e[0](i)}return {"foo":"bar",}}`,
+      `i=>{if(typeof i!=="object"||!i){e[1](i)}let v0=i["foo"];if(v0!=="bar"){e[0](v0)}return {"foo":v0,}}`,
     )
   })
 
