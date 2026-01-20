@@ -1341,6 +1341,7 @@ module Builder = {
 
     let next = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
       {
+        // FIXME: vals and other object.val fields should be copied
         prev,
         var: _notVar,
         inline: initial,
@@ -3294,8 +3295,9 @@ module Union = {
           )}(${input.var()}${caught})`
       }
 
-      let output = input->B.Val.cleanValFrom
-      output.prev = Some(input)
+      // Create a copy of the input val, so we can mutate it
+      // It's still the same value though, until mutated
+      let output = input->B.refine
 
       let getArrItemsCode = (arr: array<unknown>, ~isDeopt) => {
         let typeValidationInput = arr->Js.Array2.unsafe_get(0)->(Obj.magic: unknown => val)
@@ -3636,7 +3638,6 @@ module Union = {
               }
             }
 
-            typeValidationInput.expected = schema
             if isPriority(tagFlag, byKey.contents) {
               // Not the fastest way, but it's the simplest way
               // to make sure NaN is checked before number

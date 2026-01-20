@@ -2145,8 +2145,7 @@ function unionDecoder(input, selfSchema) {
     let errorDetails = makeInvalidInputDetails(selfSchema, unknown, input.path, args[0], true, args.length > 1 ? Array.from(args).slice(1) : undefined);
     throw new SuryError(errorDetails);
   }) + "(" + input.v() + caught + ")";
-  let output = cleanValFrom(input);
-  output.prev = input;
+  let output = refine(input, undefined, undefined, undefined);
   let getArrItemsCode = (arr, isDeopt) => {
     let typeValidationInput = arr[0];
     let typeValidationOutput = arr[1];
@@ -2374,7 +2373,6 @@ function unionDecoder(input, selfSchema) {
           typeValidationInput.validation = undefined;
           typeValidationOutput = typeValidationInput;
         }
-        typeValidationInput.e = schema;
         if (isPriority(tagFlag, byKey)) {
           keys.unshift(key);
         } else {
