@@ -3636,7 +3636,9 @@ module Union = {
               }
             }
 
-            typeValidationInput.expected = schema
+            // Note: Don't mutate typeValidationInput.expected here as it would affect
+            // validation closures created during parse. The actual schema is already
+            // stored separately in the byKey array at index 2.
             if isPriority(tagFlag, byKey.contents) {
               // Not the fastest way, but it's the simplest way
               // to make sure NaN is checked before number

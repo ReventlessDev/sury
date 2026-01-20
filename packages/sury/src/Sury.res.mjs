@@ -2374,7 +2374,6 @@ function unionDecoder(input, selfSchema) {
           typeValidationInput.validation = undefined;
           typeValidationOutput = typeValidationInput;
         }
-        typeValidationInput.e = schema;
         if (isPriority(tagFlag, byKey)) {
           keys.unshift(key);
         } else {
