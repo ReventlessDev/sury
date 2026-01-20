@@ -147,7 +147,7 @@ test("Parses JSON string to bool literal", t => {
 test("Parses JSON string to bigint", t => {
   let schema = S.jsonString->S.to(S.bigint)
 
-  t->U.assertThrowsMessage(() => `123`->S.parseOrThrow(schema), `Expected bigint, received 123`)
+  t->U.assertThrowsMessage(() => `123`->S.parseOrThrow(schema), `Expected string, received 123`)
 
   t->Assert.deepEqual(`"123"`->S.parseOrThrow(schema), 123n)
 
@@ -286,28 +286,21 @@ test("A chain of JSON string schemas should do nothing", t => {
   )
 
   t->Assert.deepEqual(true->S.reverseConvertOrThrow(schema), %raw(`"true"`))
-
   t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
 })
 
-test("Nested JSON string", t => {
+test("A S.unknown in the S.jsonString chain should do nothing", t => {
   let schema = S.jsonString->S.to(S.unknown)->S.to(S.jsonString)->S.to(S.bool)
 
-  t->Assert.deepEqual(`"true"`->S.parseOrThrow(schema), true)
-
+  t->Assert.deepEqual("true"->S.parseOrThrow(schema), true)
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="string"){e[4](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[0](i)}if(typeof v0!=="string"){e[3](v0)}let v1;try{v1=JSON.parse(v0)}catch(t){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}return v1}`,
+    `i=>{if(typeof i!=="string"){e[3](i)}try{JSON.parse(i)}catch(t){e[0](i)}let v0;try{v0=JSON.parse(i)}catch(t){e[1](i)}if(typeof v0!=="boolean"){e[2](v0)}return v0}`,
   )
 
-  // t->Assert.deepEqual(true->S.reverseConvertOrThrow(schema), %raw(`'"true"'`))
-  // FIXME: This is incorrect
-  t->U.assertCompiledCode(
-    ~schema,
-    ~op=#ReverseConvert,
-    `i=>{let v0=""+i;let v1;try{v1=JSON.parse(v0)}catch(t){e[0](v0)}if(typeof v1!=="string"){e[2](v1)}try{JSON.parse(v1)}catch(t){e[1](v1)}return v1}`,
-  )
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvert, `i=>{return ""+i}`)
+  t->Assert.deepEqual(true->S.reverseConvertOrThrow(schema), %raw(`"true"`))
 })
 
 test("Parses JSON string to object with bigint", t => {

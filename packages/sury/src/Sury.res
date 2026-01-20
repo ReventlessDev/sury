@@ -2073,13 +2073,9 @@ let rec parse = (input: val) => {
     input.expected = operationOutput.expected
     input
   } else {
-    let output = ref(
-      switch input.schema.encoder {
-      | Some(encoder) if expected.tag !== unknownTag => encoder(~input, ~selfSchema=expected)
-      | _ => input
-      },
-    )
+    let output = ref(input)
 
+    // FIXME: Is this check needed?
     if output.contents.skipTo !== Some(true) {
       output := expected.decoder(~input=output.contents, ~selfSchema=expected)
 
@@ -2098,7 +2094,12 @@ let rec parse = (input: val) => {
       | Some(to) =>
         switch output.contents.expected {
         | {parser} => output := parser(~input=output.contents, ~selfSchema=output.contents.expected)
-        | _ => ()
+        | _ =>
+          switch output.contents.expected.encoder {
+          | Some(encoder) if to.tag !== unknownTag =>
+            output := encoder(~input=output.contents, ~selfSchema=to)
+          | _ => ()
+          }
         }
 
         if output.contents.skipTo !== Some(true) {
@@ -2193,10 +2194,6 @@ and compileDecoder = (~schema, ~expected, ~flag, ~defs) => {
     }
 
     let inlinedFunction = `${B.operationArgVar}=>{${code}return ${inlinedOutput.contents}}`
-
-    // Js.log2(schema->castToPublic->toExpression, expected->castToPublic->toExpression)
-    // Js.log2(schema.seq->Obj.magic, expected.seq->Obj.magic)
-    // Js.log(inlinedFunction)
 
     X.Function.make2(
       ~ctxVarName1="e",
@@ -4234,6 +4231,7 @@ let jsonDecoder = (~input, ~selfSchema as _) => {
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.undefined->Flag.with(TagFlag.nan)) {
     input->B.nextConst(~schema=nullLiteral)
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
+    // FIXME: Support number here
     input->inputToString
   } else if inputTagFlag->Flag.unsafeHas(TagFlag.array) {
     let expected = base(arrayTag, ~selfReverse=false)
@@ -4370,14 +4368,19 @@ let enableJsonString = {
 
         input->B.nextConst(~schema=to)
       } else {
+        let outputVar = input.global->B.varWithoutAllocation
+        input.allocate(outputVar)
+
+        let nextSchema = json->copySchema
+        nextSchema.to = Some(to)
+
+        let output = input->B.next(outputVar, ~schema=nextSchema, ~expected=nextSchema)
+        output.var = B._var
+
         let inputVar = input.var()
-        let output = input->B.allocateVal(~schema=json, ~expected=to)
-        input.codeAfterValidation =
-          input.codeAfterValidation ++
-          `try{${output.inline}=JSON.parse(${inputVar})}catch(t){${B.embedInvalidInput(
-              ~input,
-              ~expected=input.expected,
-            )}}`
+        output.codeFromPrev = `try{${outputVar}=JSON.parse(${inputVar})}catch(t){${B.embedInvalidInput(
+            ~input,
+          )}}`
         let v = output->parse
         v.skipTo = Some(true)
         v
@@ -4396,53 +4399,56 @@ let enableJsonString = {
       jsonString.format = Some(JSON)
       jsonString.name = Some(`${jsonName} string`)
       jsonString.encoder = Some(jsonStringEncoder)
-      jsonString.decoder = Builder.make((~input, ~selfSchema) => {
+      jsonString.decoder = Builder.make((~input, ~selfSchema as _) => {
         let inputTagFlag = input.schema.tag->TagFlag.get
+        let expectedSchema = input.expected
 
         if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-          let to = selfSchema.to->X.Option.getUnsafe
+          let to = expectedSchema.to->X.Option.getUnsafe
           // Whether we can optimize encoding during decoding
-          let preEncode: bool = to->Obj.magic && !(selfSchema.parser->Obj.magic) // && !(selfSchema.refiner->Obj.magic) FIXME:
+          let preEncode: bool =
+            to->Obj.magic && to.tag !== unknownTag && !(expectedSchema.parser->Obj.magic) // && !(selfSchema.refiner->Obj.magic) FIXME:
 
-          let input = stringDecoder(~input, ~selfSchema)
+          let stringVal = stringDecoder(~input, ~selfSchema=%raw(`null`))
+          stringVal.schema = string
+          stringVal.expected = expectedSchema
 
           if preEncode {
-            jsonStringEncoder(~input, ~selfSchema=to)
+            jsonStringEncoder(~input=stringVal, ~selfSchema=to)
           } else {
-            input.codeAfterValidation =
-              input.codeAfterValidation ++
-              `try{JSON.parse(${input.var()})}catch(t){${B.embedInvalidInput(
-                  ~input,
-                  ~expected=input.expected,
-                )}}`
-            input
+            let stringVar = stringVal.var()
+            let output = stringVal->B.refine(~schema=expectedSchema)
+            output.codeFromPrev = `try{JSON.parse(${stringVar})}catch(t){${B.embedInvalidInput(
+                ~input=stringVal,
+              )}}`
+            output
           }
         } else if input.schema.format === Some(JSON) {
           input
         } else if input.schema->isLiteral {
-          input->B.val(input->inlineJsonString(~schema=input.schema), ~schema=selfSchema)
+          input->B.val(input->inlineJsonString(~schema=input.schema), ~schema=expectedSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.string) {
-          input->B.val(`JSON.stringify(${input.inline})`, ~schema=selfSchema)
+          input->B.val(`JSON.stringify(${input.inline})`, ~schema=expectedSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.number->Flag.with(TagFlag.boolean)) {
-          let o = input->inputToString
-          o.schema = selfSchema
-          o
+          let output = input->inputToString
+          output.schema = expectedSchema
+          output
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
-          input->B.val(`"\\""+${input.inline}+"\\""`, ~schema=selfSchema)
+          input->B.val(`"\\""+${input.inline}+"\\""`, ~schema=expectedSchema)
         } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
           input.expected = json
           let jsonVal = jsonDecoder(~input, ~selfSchema=input.expected)
-          jsonVal.expected = selfSchema
+          jsonVal.expected = expectedSchema
           jsonVal->B.val(
-            `JSON.stringify(${jsonVal.inline}${switch selfSchema.space {
+            `JSON.stringify(${jsonVal.inline}${switch expectedSchema.space {
               | Some(0)
               | None => ""
               | Some(v) => `,null,${v->X.Int.unsafeToString}`
               }})`,
-            ~schema=selfSchema,
+            ~schema=expectedSchema,
           )
         } else {
-          input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
+          input->B.unsupportedConversion(~from=input.schema, ~target=expectedSchema)
         }
       })
     }
