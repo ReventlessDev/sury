@@ -1391,17 +1391,21 @@ module Builder = {
     }
 
     let dynamicScope = (from: val, ~locationVar): val => {
-      let v =
-        from->next(
-          `${from.var()}[${locationVar}]`,
-          ~schema=from.schema.additionalItems->(Obj.magic: option<additionalItems> => internal),
-          ~expected=from.expected.additionalItems->(Obj.magic: option<additionalItems> => internal),
-        )
-      v.prev = None
-      v.parent = Some(from)
-      v.path = Path.empty
-      v.var = _notVarBeforeValidation
-      v
+      {
+        var: _notVarBeforeValidation,
+        inline: `${from.var()}[${locationVar}]`,
+        flag: from.flag,
+        schema: from.schema.additionalItems->(Obj.magic: option<additionalItems> => internal),
+        expected: from.expected.additionalItems->(Obj.magic: option<additionalItems> => internal),
+        codeFromPrev: "",
+        codeAfterValidation: "",
+        varsAllocation: "",
+        parent: from,
+        allocate: initialAllocate,
+        validation: None,
+        path: Path.empty,
+        global: from.global,
+      }
     }
 
     let allocateVal = (from: val, ~schema, ~expected=from.expected): val => {
