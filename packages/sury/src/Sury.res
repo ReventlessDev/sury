@@ -545,7 +545,6 @@ and has = {
 }
 and builder = (~input: val, ~selfSchema: internal) => val
 and val = {
-  mutable prev?: val,
   // We might have the same value, but different instances of the val object
   // Use the bond field, to connect the var call
   @as("b")
@@ -556,14 +555,15 @@ and val = {
   mutable var: unit => string,
   @as("i")
   mutable inline: string,
-  @as("f")
-  mutable flag: flag,
   // The schema of the value that is being parsed
   @as("s")
   mutable schema: internal,
   // The schema of the value that we expect to parse into
   @as("e")
   mutable expected: internal,
+  mutable prev?: val,
+  @as("f")
+  mutable flag: flag,
   @as("k")
   mutable skipTo?: bool,
   @as("d")
@@ -1304,39 +1304,6 @@ module Builder = {
           validation2(~inputVar, ~negative)
         },
       )
-    }
-
-    let refineInPlace = (val: val, ~schema, ~validation) => {
-      // if val.prev !== None {
-      //   let inputVar = val.var()
-      //   if val.varsAllocation !== "" {
-      //     val.codeAfterValidation = val.codeAfterValidation ++ `let ${val.varsAllocation};`
-      //     val.varsAllocation = ""
-      //     val.allocate = initialAllocate
-      //   }
-      //   val.codeAfterValidation =
-      //     val.codeAfterValidation ++
-      //     `if(${validation(~inputVar, ~negative=true)}){${embedInvalidInput(
-      //         ~input=val,
-      //         ~expected=val.expected,
-      //       )}}`
-      // } else {
-
-      let prevValidation = val.validation
-      val.validation = Some(
-        (~inputVar, ~negative) => {
-          {
-            switch prevValidation {
-            | Some(prevValidation) => prevValidation(~inputVar, ~negative) ++ and_(~negative)
-            | None => ""
-            }
-          } ++
-          validation(~inputVar, ~negative)
-        },
-      )
-
-      // }
-      val.schema = schema
     }
 
     let next = (prev: val, initial: string, ~schema, ~expected=prev.expected): val => {
@@ -2091,7 +2058,7 @@ let rec parse = (input: val, ~withEncoder: bool=false) => {
         switch output.contents.expected {
         | {parser} => output := parser(~input=output.contents, ~selfSchema=output.contents.expected)
         | _ =>
-          switch output.contents.expected.encoder {
+          switch output.contents.schema.encoder {
           | Some(encoder) if to.tag !== unknownTag =>
             output := encoder(~input=output.contents, ~selfSchema=to)
           | _ => ()
@@ -2421,6 +2388,7 @@ let rec makeObjectVal = (prev: val, ~schema): B.Val.Object.t => {
         },
     expected: prev.expected,
     vals: Js.Dict.empty(),
+    hasTransform: true,
     codeFromPrev: "",
     codeAfterValidation: "",
     varsAllocation: "",
@@ -2439,6 +2407,7 @@ and array = item => {
   mut->castToPublic
 }
 and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
+  let isUnion = unknownInput.isUnion->X.Option.getUnsafe
   let expectedSchema = unknownInput.expected
   let unknownInputTagFlag = unknownInput.schema.tag->TagFlag.get
   let expectedItems = expectedSchema.items->X.Option.getUnsafe
@@ -2477,7 +2446,9 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
     }
     switch validation.contents {
     | Some(validation) => unknownInput->B.refine(~schema, ~validation)
-    | None => unknownInput
+    // Apply refine also here,
+    // so literals for union cases don't mutate input
+    | None => unknownInput->B.refine
     }
   } else {
     unknownInput->B.unsupportedConversion(~from=unknownInput.schema, ~target=expectedSchema)
@@ -2523,8 +2494,6 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
       }
     }
   | _ =>
-    let isUnion = input.isUnion->X.Option.getUnsafe
-
     let objectVal = input->makeObjectVal(~schema=expectedSchema)
     let shouldRecreateInput = ref(
       switch expectedSchema.additionalItems->X.Option.getUnsafe {
@@ -2549,19 +2518,20 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
 
       switch itemOutput.validation {
       | Some(validation) if isUnion && schema->isLiteral =>
-        let _ = input->B.refineInPlace(~schema=input.schema, ~validation=(~inputVar, ~negative) => {
-          validation(
-            ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
-            ~negative,
-          )
-        })
+        input.validation =
+          input.validation->B.appendValidation((~inputVar, ~negative) => {
+            validation(
+              ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+              ~negative,
+            )
+          })
         itemOutput.validation = None
       | _ => ()
       }
 
       objectVal->B.Val.Object.add(~location=key, itemOutput)
       if !shouldRecreateInput.contents {
-        shouldRecreateInput := itemOutput !== itemInput
+        shouldRecreateInput := itemOutput.hasTransform->X.Option.getUnsafe
       }
     }
 
@@ -2578,6 +2548,7 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
   }
 }
 and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
+  let isUnion = unknownInput.isUnion->X.Option.getUnsafe
   let expectedSchema = unknownInput.expected
   let unknownInputTagFlag = unknownInput.schema.tag->TagFlag.get
 
@@ -2613,7 +2584,9 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
 
     switch validation.contents {
     | Some(validation) => unknownInput->B.refine(~schema, ~validation)
-    | None => unknownInput
+    // Apply refine also here,
+    // so literals for union cases don't mutate input
+    | None => unknownInput->B.refine
     }
   } else {
     unknownInput->B.unsupportedConversion(~from=unknownInput.schema, ~target=expectedSchema)
@@ -2661,8 +2634,6 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
       }
     }
   | _ => {
-      let isUnion = input.isUnion->X.Option.getUnsafe
-
       let properties = expectedSchema.properties->X.Option.getUnsafe
       let keys = Js.Dict.keys(properties)
       let keysCount = keys->Js.Array2.length
@@ -2694,22 +2665,20 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
 
         switch itemOutput.validation {
         | Some(validation) if isUnion && schema->isLiteral =>
-          let _ = input->B.refineInPlace(~schema=input.schema, ~validation=(
-            ~inputVar,
-            ~negative,
-          ) => {
-            validation(
-              ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
-              ~negative,
-            )
-          })
+          input.validation =
+            input.validation->B.appendValidation((~inputVar, ~negative) => {
+              validation(
+                ~inputVar=inputVar ++ input.global->B.inlineLocation(key)->Path.fromInlinedLocation,
+                ~negative,
+              )
+            })
           itemOutput.validation = None
         | _ => ()
         }
 
         objectVal->B.Val.Object.add(~location=key, itemOutput)
         if !shouldRecreateInput.contents {
-          shouldRecreateInput := itemOutput !== itemInput
+          shouldRecreateInput := itemOutput.hasTransform->X.Option.getUnsafe
         }
       }
 
@@ -3349,7 +3318,12 @@ module Union = {
 
               switch val.validation {
               | Some(validation) =>
-                if val.hasTransform !== Some(true) {
+                if (
+                  val.hasTransform === Some(true)
+                    ? (val.prev->X.Option.getUnsafe).hasTransform !== Some(true) &&
+                        val.codeFromPrev === ""
+                    : true
+                ) {
                   // Validation must be used only when there's a prev value
                   let input = current.contents->X.Option.getUnsafe
                   let inputVar = input.var()
@@ -3511,12 +3485,13 @@ module Union = {
                 itemStart :=
                   itemStart.contents ++ if_ ++ `(!(${itemNoop.contents})){${fail(caught.contents)}}`
               } else {
-                let _ = typeValidationOutput->B.refineInPlace(
-                  ~schema=typeValidationOutput.schema,
-                  ~validation=(~inputVar as _, ~negative) => {
+                typeValidationOutput.validation =
+                  typeValidationOutput.validation->B.appendValidation((
+                    ~inputVar as _,
+                    ~negative,
+                  ) => {
                     `${B.exp(~negative)}(${itemNoop.contents})`
-                  },
-                )
+                  })
               }
             } else if withExhaustiveCheck.contents {
               let errorCode = fail(caught.contents)
@@ -3652,16 +3627,23 @@ module Union = {
               ],
             )
 
-            if (
-              typeValidationInput.validation !== None || (
-                  typeValidationOutput.hasTransform === Some(true)
-                    ? typeValidationOutput.codeFromPrev === "" &&
-                        (typeValidationOutput.prev->X.Option.getUnsafe).hasTransform !== Some(true)
-                    : typeValidationOutput.validation !== None
+            let shouldDeopt = ref(true)
+            let valRef = ref(Some(typeValidationOutput))
+            while valRef.contents !== None && shouldDeopt.contents {
+              let v = valRef.contents->X.Option.getUnsafe
+              valRef := v.prev
+              shouldDeopt :=
+                !(
+                  v.validation !== None && (
+                      v.hasTransform === Some(true)
+                        ? (v.prev->X.Option.getUnsafe).hasTransform !== Some(true) &&
+                            v.codeFromPrev === ""
+                        : true
+                    )
                 )
-            ) {
-              ()
-            } else {
+            }
+
+            if shouldDeopt.contents {
               for keyIdx in 0 to keys.contents->Stdlib.Array.length - 1 {
                 let key = keys.contents->Stdlib.Array.getUnsafe(keyIdx)
                 if !exit.contents {
@@ -3717,7 +3699,12 @@ module Union = {
 
             switch val.validation {
             | Some(validation) =>
-              if val.hasTransform !== Some(true) {
+              if (
+                val.hasTransform === Some(true)
+                  ? (val.prev->X.Option.getUnsafe).hasTransform !== Some(true) &&
+                      val.codeFromPrev === ""
+                  : true
+              ) {
                 // Validation must be used only when there's a prev value
                 let input = current.contents->X.Option.getUnsafe
                 let inputVar = input.var()
