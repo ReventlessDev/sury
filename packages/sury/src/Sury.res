@@ -1394,19 +1394,6 @@ module Builder = {
     }
 
     module Val = {
-      let copy = (val: val): val => {
-        let new = val->Obj.magic->X.Dict.copy->Obj.magic
-        if val.var !== _var {
-          new.var = () => {
-            let v = val.var()
-            new.inline = v
-            new.var = _var
-            v
-          }
-        }
-        new
-      }
-
       module Object = {
         type t = {
           ...val,
@@ -1432,7 +1419,8 @@ module Builder = {
           } else {
             objectVal.schema.properties->X.Option.getUnsafe->Stdlib.Dict.set(location, val.schema)
           }
-          objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ val->merge
+
+          objectVal.codeFromPrev = objectVal.codeFromPrev ++ val->merge
           let inlinedLocation = objectVal.global->inlineLocation(location)
           objectVal.vals->X.Option.getUnsafe->Js.Dict.set(location, val)
           if val.flag->Flag.unsafeHas(ValFlag.async) {
@@ -1497,7 +1485,9 @@ module Builder = {
         }
       }
 
-      let cleanValFrom = (val: val) => {
+      let scope = (val: val) => {
+        // TODO: Don't use spread
+        // TODO: Simplify bond
         {
           ...val,
           var: val.var === _var ? _var : _bondVar,
@@ -1509,6 +1499,7 @@ module Builder = {
           varsAllocation: "",
           hasTransform: false,
           allocate: initialAllocate,
+          skipTo: false,
           validation: None,
         }
       }
@@ -1524,7 +1515,7 @@ module Builder = {
         }
 
         switch vals->X.Dict.getUnsafeOption(location) {
-        | Some(v) => v->cleanValFrom
+        | Some(v) => v->scope
         | None => {
             let locationSchema = if parent.schema.tag === objectTag {
               parent.schema.properties->X.Option.getUnsafe->X.Dict.getUnsafeOption(location)
@@ -1551,6 +1542,7 @@ module Builder = {
               },
               ~schema,
             )
+            item.hasTransform = Some(false)
             item.prev = None
             item.parent = Some(parent)
             item.path = parent.path->Path.concat(pathAppend)
@@ -1559,14 +1551,6 @@ module Builder = {
             item
           }
         }
-      }
-
-      let setInlined = (b: val, input: val, inlined) => {
-        `${b->var}=${inlined}`
-      }
-
-      let map = (from: val, inlinedFn) => {
-        from->next(`${inlinedFn}(${from.inline})`, ~schema=unknown)
       }
     }
 
@@ -2448,6 +2432,7 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
     | Some(validation) => unknownInput->B.refine(~schema, ~validation)
     // Apply refine also here,
     // so literals for union cases don't mutate input
+    // FIXME: This should be removed and validation be attached to output
     | None => unknownInput->B.refine
     }
   } else {
@@ -2468,8 +2453,7 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
         let hasTransform = itemOutput.hasTransform->X.Option.getUnsafe
         let output = hasTransform
           ? input->B.next(`new Array(${inputVar}.length)`, ~schema=expectedSchema) // FIXME: schema here should be input.expected output
-          : input // FIXME: schema
-        output.schema = expectedSchema
+          : input->B.refine(~schema=expectedSchema)
 
         let itemCode =
           itemOutput->B.mergeWithPathPrepend(
@@ -2481,8 +2465,8 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
           )
 
         if hasTransform || itemCode !== "" {
-          output.codeAfterValidation =
-            output.codeAfterValidation ++
+          output.codeFromPrev =
+            output.codeFromPrev ++
             `for(let ${iteratorVar}=${expectedLength->X.Int.unsafeToString};${iteratorVar}<${inputVar}.length;++${iteratorVar}){${itemCode}}`
         }
 
@@ -2541,9 +2525,10 @@ and arrayDecoder: builder = (~input as unknownInput, ~selfSchema as _) => {
     if shouldRecreateInput.contents {
       objectVal->B.Val.Object.complete
     } else {
-      input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
-      input.vals = objectVal.vals
-      input
+      let o = input->B.refine
+      o.codeFromPrev = objectVal.codeFromPrev
+      o.vals = objectVal.vals
+      o
     }
   }
 }
@@ -2604,8 +2589,10 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
         let itemOutput = itemInput->parseDynamic
 
         let hasTransform = itemOutput.hasTransform->X.Option.getUnsafe
-        let output = hasTransform ? input->B.next("{}", ~schema=expectedSchema) : input
-        output.schema = expectedSchema
+        let output = hasTransform
+        // FIXME: schema should be expectedSchema output
+          ? input->B.next("{}", ~schema=expectedSchema)
+          : input->B.refine(~schema=expectedSchema)
 
         let itemCode =
           itemOutput->B.mergeWithPathPrepend(
@@ -2615,8 +2602,8 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
           )
 
         if hasTransform || itemCode !== "" {
-          output.codeAfterValidation =
-            output.codeAfterValidation ++ `for(let ${keyVar} in ${inputVar}){${itemCode}}`
+          output.codeFromPrev =
+            output.codeFromPrev ++ `for(let ${keyVar} in ${inputVar}){${itemCode}}`
         }
 
         if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
@@ -2691,23 +2678,21 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
       ) {
         let keyVar = objectVal.global->B.varWithoutAllocation
         input.allocate(keyVar)
-        objectVal.codeAfterValidation =
-          objectVal.codeAfterValidation ++ `for(${keyVar} in ${input.var()}){if(`
+        objectVal.codeFromPrev = objectVal.codeFromPrev ++ `for(${keyVar} in ${input.var()}){if(`
         switch keys {
-        | [] => objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ "true"
+        | [] => objectVal.codeFromPrev = objectVal.codeFromPrev ++ "true"
         | _ =>
           for idx in 0 to keys->Js.Array2.length - 1 {
             let key = keys->Js.Array2.unsafe_get(idx)
             if idx !== 0 {
-              objectVal.codeAfterValidation = objectVal.codeAfterValidation ++ "&&"
+              objectVal.codeFromPrev = objectVal.codeFromPrev ++ "&&"
             }
-            objectVal.codeAfterValidation =
-              objectVal.codeAfterValidation ++ `${keyVar}!==${input.global->B.inlineLocation(key)}`
+            objectVal.codeFromPrev =
+              objectVal.codeFromPrev ++ `${keyVar}!==${input.global->B.inlineLocation(key)}`
           }
         }
-        objectVal.codeAfterValidation =
-          objectVal.codeAfterValidation ++
-          `){${input->B.failWithArg(exccessFieldName => UnrecognizedKeys({
+        objectVal.codeFromPrev =
+          objectVal.codeFromPrev ++ `){${input->B.failWithArg(exccessFieldName => UnrecognizedKeys({
               path: objectVal.path,
               reason: `Unrecognized key "${exccessFieldName}"`,
               keys: [exccessFieldName],
@@ -2720,23 +2705,26 @@ and objectDecoder: Builder.t = (~input as unknownInput, ~selfSchema as _) => {
       if shouldRecreateInput.contents {
         objectVal->B.Val.Object.complete
       } else {
-        input.codeAfterValidation = objectVal.codeAfterValidation // FIXME: Delete from and merge?
-        input.vals = objectVal.vals
-        input
+        let o = input->B.refine
+        o.codeFromPrev = objectVal.codeFromPrev
+        o.vals = objectVal.vals
+        o
       }
     }
   }
 }
 
-let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
-  let ref = selfSchema.ref->X.Option.getUnsafe
+let recursiveDecoder = Builder.make((~input, ~selfSchema as _) => {
+  let expectedSchema = input.expected
+
+  let ref = expectedSchema.ref->X.Option.getUnsafe
   let defs = input.global.defs->X.Option.getUnsafe
   // Ignore #/$defs/
   let identifier = ref->Js.String2.sliceToEnd(~from=8)
   let def = defs->Js.Dict.unsafeGet(identifier)
   let flag = input.global.flag
 
-  let inputSchema = if input.schema.seq === selfSchema.seq {
+  let inputSchema = if input.schema.seq === expectedSchema.seq {
     def
   } else {
     input.schema
@@ -2766,22 +2754,27 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema) => {
     }
   }
 
-  let recInput = input->B.allocateVal(~schema=unknown)
-  recInput.codeAfterValidation = `${recInput.inline}=${recOperation}(${input.inline});`
-  recInput.prev = None
+  let outputVar = input.global->B.varWithoutAllocation
+  input.allocate(outputVar)
+
+  let output = input->B.next(outputVar, ~schema=expectedSchema, ~expected=expectedSchema)
+  output.var = B._var
+  output.prev = None
+
+  output.codeFromPrev = `${outputVar}=${recOperation}(${input.inline});`
+
   if def.isAsync === None {
     let defsMut = defs->X.Dict.copy
     defsMut->Js.Dict.set(identifier, unknown)
     // FIXME: Can it be done better?
     let _ = def->isAsyncInternal(~defs=Some(defsMut))
   }
-
-  let output = input->B.next(recInput.inline, ~schema=selfSchema)
   if def.isAsync->X.Option.getUnsafe {
     output.flag = output.flag->Flag.with(ValFlag.async)
   }
 
-  output.codeAfterValidation = recInput->B.mergeWithPathPrepend(~parent=input)
+  output.codeFromPrev = output->B.mergeWithPathPrepend(~parent=input)
+  output.prev = Some(input)
 
   output
 })
@@ -3292,7 +3285,7 @@ module Union = {
         while itemIdx.contents <= lastIdx {
           // Copy it one more time, since every case decoder
           // might mutate the input
-          let input = typeValidationOutput->B.Val.cleanValFrom
+          let input = typeValidationOutput->B.Val.scope
           input.isUnion = Some(true)
           input.hasTransform = typeValidationOutput.hasTransform
           input.expected =
@@ -3575,7 +3568,7 @@ module Union = {
           | None =>
             // Recreate input val for every schema
             // since we will mutate it
-            let typeValidationInput = input->B.Val.cleanValFrom
+            let typeValidationInput = input->B.Val.scope
             typeValidationInput.expected = if tagFlag->Flag.unsafeHas(TagFlag.null) {
               nullLiteral
             } else if tagFlag->Flag.unsafeHas(TagFlag.undefined) {
@@ -4429,9 +4422,7 @@ let enableJsonString = {
     } else if inputTagFlag->Flag.unsafeHas(TagFlag.bigint) {
       input->B.next(`"\\""+${input.inline}+"\\""`, ~schema=expectedSchema)
     } else if inputTagFlag->Flag.unsafeHas(TagFlag.object->Flag.with(TagFlag.array)) {
-      input.expected = json
-      let jsonVal = jsonDecoder(~input, ~selfSchema=input.expected)
-      jsonVal.expected = expectedSchema
+      let jsonVal = input->B.refine(~expected=json)->parse
       jsonVal->B.next(
         `JSON.stringify(${jsonVal.inline}${switch expectedSchema.space {
           | Some(0)
@@ -4439,6 +4430,7 @@ let enableJsonString = {
           | Some(v) => `,null,${v->X.Int.unsafeToString}`
           }})`,
         ~schema=expectedSchema,
+        ~expected=expectedSchema,
       )
     } else {
       input->B.unsupportedConversion(~from=input.schema, ~target=expectedSchema)
@@ -4939,8 +4931,8 @@ module Schema = {
         ~input=input.flattenedVals->X.Option.getUnsafe->Js.Array2.unsafe_get(fromFlattened),
         ~from=targetSchema.from->X.Option.getUnsafe,
         ~idx=0,
-      )->B.Val.cleanValFrom
-    | {from} => getValByFrom(~input, ~from, ~idx=0)->B.Val.cleanValFrom
+      )->B.Val.scope
+    | {from} => getValByFrom(~input, ~from, ~idx=0)->B.Val.scope
     | _ =>
       if targetSchema->isLiteral {
         input->B.nextConst(~schema=targetSchema)
@@ -4988,7 +4980,7 @@ module Schema = {
       let flattenedVals = []
       for idx in 0 to flattened->Js.Array2.length - 1 {
         let flattenedSchema = flattened->Js.Array2.unsafe_get(idx)
-        let flattenedInput = input->B.Val.cleanValFrom
+        let flattenedInput = input->B.Val.scope
         flattenedInput.expected = flattenedSchema
         flattenedVals->Js.Array2.push(flattenedInput->parse)->ignore
       }
@@ -5059,27 +5051,27 @@ module Schema = {
     }
   }
   and getShapedSerializerOutput = (
-    ~cleanRootInput,
+    ~input,
     ~acc: option<shapedSerializerAcc>,
     ~targetSchema: internal,
     ~path,
   ) => {
-    switch acc {
+    let val = switch acc {
     | Some({val}) => {
-        let v = val->B.Val.cleanValFrom
+        let v = val->B.Val.scope
         v.expected = targetSchema // FIXME: Is this line needed?
-        // Use parse to walk through all possible transformations
-        v->parse
+        v
       }
     | _ =>
       if targetSchema->isLiteral {
-        let v = cleanRootInput->B.nextConst(~schema=targetSchema)
+        let v = input->B.nextConst(~schema=targetSchema, ~expected=targetSchema)
         v.prev = None
-        v.expected = targetSchema // FIXME: Is this line needed?
-        v->parse
+        v
       } else {
-        let output = makeObjectVal(cleanRootInput, ~schema=targetSchema)
+        let output = makeObjectVal(input, ~schema=targetSchema)
+        output.expected = targetSchema
         output.prev = None
+
         switch targetSchema {
         | {items} =>
           for idx in 0 to items->Js.Array2.length - 1 {
@@ -5087,14 +5079,14 @@ module Schema = {
             output->B.Val.Object.add(
               ~location,
               getShapedSerializerOutput(
-                ~cleanRootInput,
+                ~input,
                 ~acc=switch acc {
                 | Some({properties}) => properties->X.Dict.getUnsafeOption(location)
                 | _ => None
                 },
                 ~targetSchema=items->Js.Array2.unsafe_get(idx),
                 ~path=path->Path.concat(
-                  Path.fromInlinedLocation(cleanRootInput.global->B.inlineLocation(location)),
+                  Path.fromInlinedLocation(input.global->B.inlineLocation(location)),
                 ),
               ),
             )
@@ -5104,7 +5096,7 @@ module Schema = {
             | (Some(flattenedSchemas), Some({flattened: flattenedAcc})) =>
               flattenedAcc->Js.Array2.forEachi((acc, idx) => {
                 let flattenedOutput = getShapedSerializerOutput(
-                  ~cleanRootInput,
+                  ~input,
                   ~acc=Some(acc),
                   ~targetSchema=flattenedSchemas->Js.Array2.unsafe_get(idx)->reverse,
                   ~path,
@@ -5123,14 +5115,14 @@ module Schema = {
                 output->B.Val.Object.add(
                   ~location,
                   getShapedSerializerOutput(
-                    ~cleanRootInput,
+                    ~input,
                     ~acc=switch acc {
                     | Some({properties}) => properties->X.Dict.getUnsafeOption(location)
                     | _ => None
                     },
                     ~targetSchema=properties->Js.Dict.unsafeGet(location),
                     ~path=path->Path.concat(
-                      Path.fromInlinedLocation(cleanRootInput.global->B.inlineLocation(location)),
+                      Path.fromInlinedLocation(input.global->B.inlineLocation(location)),
                     ),
                   ),
                 )
@@ -5142,7 +5134,7 @@ module Schema = {
           | Some(from) => path ++ from->Js.Array2.map(item => `["${item}"]`)->Js.Array2.joinWith("")
           | None => path
           }
-          cleanRootInput->B.invalidOperation(
+          input->B.invalidOperation(
             ~description={
               `Missing input for ${targetSchema->castToPublic->toExpression}` ++
               switch path {
@@ -5156,24 +5148,19 @@ module Schema = {
         output->B.Val.Object.complete
       }
     }
+    if path === Path.empty {
+      val.prev = Some(input)
+    }
+    let o = val->parse
+    o.skipTo = Some(true)
+    o
   }
-  and shapedSerializer = (~input, ~selfSchema) => {
+  and shapedSerializer = (~input, ~selfSchema as _) => {
     let acc: shapedSerializerAcc = {}
     prepareShapedSerializerAcc(~acc, ~input)
 
-    let targetSchema = selfSchema.to->X.Option.getUnsafe
-    let output = getShapedSerializerOutput(
-      ~cleanRootInput=input->B.Val.cleanValFrom,
-      ~acc=Some(acc),
-      ~targetSchema,
-      ~path=Path.empty,
-    )
-
-    output.prev = Some(input)
-
-    // Use getOutputSchema to follow the .to chain - the nested parse calls in
-    // getShapedSerializerOutput already handle the entire transformation chain
-    output.skipTo = Some((targetSchema->getOutputSchema).to === None)
+    let targetSchema = input.expected.to->X.Option.getUnsafe
+    let output = getShapedSerializerOutput(~input, ~acc=Some(acc), ~targetSchema, ~path=Path.empty)
 
     output
   }

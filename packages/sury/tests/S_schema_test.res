@@ -268,7 +268,7 @@ test("Object schema with nested object field containing only literal", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"];if(typeof v0!=="object"||!v0||v0["bar"]!=="baz"){e[1](v0)}return {"foo":{"bar":"baz",},}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foo"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["bar"];if(v1!=="baz"){e[0](v1)}return {"foo":{"bar":v1,},}}`,
   )
   t->U.assertCompiledCodeIsNoop(~schema, ~op=#ReverseConvert)
 })
@@ -289,6 +289,6 @@ test("https://github.com/DZakh/sury/issues/131", t => {
   t->U.assertCompiledCode(
     ~schema=testSchema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}let v4=new Array(v0.length);for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}v4[v1]=v2}catch(v3){v3.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v3.path;throw v3}}return {"foobar":v4,}}`,
+    `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["foobar"];if(!Array.isArray(v0)){e[1](v0)}for(let v1=0;v1<v0.length;++v1){try{let v2=v0[v1];if(!(typeof v2==="string"||v2===void 0)){e[0](v2)}}catch(v3){v3.path="[\\"foobar\\"]"+\'["\'+v1+\'"]\'+v3.path;throw v3}}return {"foobar":v0,}}`,
   )
 })

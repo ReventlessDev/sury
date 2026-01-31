@@ -80,10 +80,9 @@ test("Allows to convert to JSON with option as an object field", t => {
       "foo": s.matches(S.option(S.bool)),
     }
   )
-  t->Assert.deepEqual(
-    {"foo": None}->S.reverseConvertToJsonOrThrow(schema),
-    %raw(`{"foo":undefined}`),
-    ~message="Shouldn't have undefined value here. Needs to be fixed in future versions",
+  t->U.assertThrowsMessage(
+    () => {"foo": None}->S.reverseConvertToJsonOrThrow(schema),
+    `Failed at ["foo"]: Unsupported conversion from boolean | undefined to JSON`,
   )
 })
 
@@ -93,10 +92,9 @@ test("Allows to convert to JSON with optional S.json as an object field", t => {
       "foo": s.matches(S.option(S.json)),
     }
   )
-  t->Assert.deepEqual(
-    {"foo": None}->S.reverseConvertToJsonOrThrow(schema),
-    %raw(`{"foo":undefined}`),
-    ~message="Shouldn't have undefined value here. Needs to be fixed in future versions",
+  t->U.assertThrowsMessage(
+    () => {"foo": None}->S.reverseConvertToJsonOrThrow(schema),
+    `Failed at ["foo"]: Unsupported conversion from JSON | undefined to JSON`,
   )
 })
 
@@ -121,10 +119,9 @@ test("Doesn't allow to encode tuple with optional item to JSON", t => {
 test("Allows to convert to JSON with option as dict field", t => {
   let schema = S.dict(S.option(S.bool))
 
-  t->Assert.deepEqual(
-    dict{"foo": None}->S.reverseConvertToJsonOrThrow(schema),
-    %raw(`{foo:undefined}`),
-    ~message="Shouldn't have undefined value here. Needs to be fixed in future versions",
+  t->U.assertThrowsMessage(
+    () => dict{"foo": None}->S.reverseConvertToJsonOrThrow(schema),
+    `Failed at []: Unsupported conversion from boolean | undefined to JSON`,
   )
 })
 
