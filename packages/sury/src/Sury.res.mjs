@@ -902,10 +902,6 @@ function mergeWithPathPrepend(val, parent, locationVar, appendSafe) {
   }
 }
 
-function withPathPrepend(input, maybeDynamicLocationVar, appendSafe, fn) {
-  return fn(input);
-}
-
 function unsupportedConversion(b, from, target) {
   let errorDetails_0 = b.path;
   let errorDetails_1 = "Unsupported conversion from " + toExpression(from) + " to " + toExpression(target);
@@ -3626,117 +3622,89 @@ function $$enum(values) {
   return factory$1(values.map(js_schema));
 }
 
-function unnestSerializer(input, selfSchema) {
-  let schema = selfSchema.additionalItems;
-  let items = schema.items;
+function compactColumnsEncoder(input, selfSchema) {
+  let toSchema = selfSchema.to;
+  let properties = toSchema.properties;
+  if (properties === undefined) {
+    return unsupportedConversion(input, selfSchema, toSchema);
+  }
+  let keys = Object.keys(properties);
   let inputVar = input.v();
   let iteratorVar = varWithoutAllocation(input.g);
   let outputVar = varWithoutAllocation(input.g);
+  let initialArraysCode = "";
+  let settingCode = "";
+  for (let idx = 0, idx_finish = keys.length; idx < idx_finish; ++idx) {
+    let key = keys[idx];
+    initialArraysCode = initialArraysCode + ("new Array(" + inputVar + ".length),");
+    settingCode = settingCode + (outputVar + "[" + idx + "][" + iteratorVar + "]=" + inputVar + "[" + iteratorVar + "][" + fromString(key) + "];");
+  }
+  input.a(outputVar + "=[" + initialArraysCode + "]");
+  input.c = input.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + settingCode + "}");
   let newrecord = {...input};
   newrecord.f = 0;
-  newrecord.s = unknown;
-  newrecord.i = inputVar + "[" + iteratorVar + "]";
+  newrecord.s = base(arrayTag, false);
+  newrecord.i = outputVar;
   newrecord.v = _var;
-  let itemOutput = withPathPrepend(newrecord, iteratorVar, output => {
-    let initialArraysCode = "";
-    let settingCode = "";
-    for (let idx = 0, idx_finish = items.length; idx < idx_finish; ++idx) {
-      initialArraysCode = initialArraysCode + ("new Array(" + inputVar + ".length),");
-      settingCode = settingCode + (outputVar + "[" + idx + "][" + iteratorVar + "]=" + get(output, "toItem.location").i + ";");
-    }
-    input.a(outputVar + "=[" + initialArraysCode + "]");
-    input.c = input.c + settingCode;
-  }, input$1 => parse$1(input, undefined));
-  let itemCode = merge(input);
-  input.c = input.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + inputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
-  if (itemOutput.f & 1) {
-    let newrecord$1 = {...input};
-    newrecord$1.f = 1;
-    newrecord$1.s = base(arrayTag, false);
-    newrecord$1.i = "Promise.all(" + outputVar + ")";
-    newrecord$1.v = _notVar;
-    return newrecord$1;
-  }
-  let newrecord$2 = {...input};
-  newrecord$2.f = 0;
-  newrecord$2.s = base(arrayTag, false);
-  newrecord$2.i = outputVar;
-  newrecord$2.v = _var;
-  return newrecord$2;
+  return newrecord;
 }
 
-function unnest(schema) {
-  if (schema.type === "object") {
-    let properties = schema.properties;
-    let keys = Object.keys(properties);
-    if (keys.length === 0) {
-      throw new Error("[Sury] Invalid empty object for S.unnest schema.");
-    }
-    let mut = base(arrayTag, false);
-    mut.items = keys.map(key => array(properties[key]));
-    mut.additionalItems = "strict";
-    mut.parser = (input, selfSchema) => {
-      let inputTagFlag = flags[input.s.type];
-      if (inputTagFlag & 1) {
-        input.validation = (inputVar, negative) => (
-          negative ? "!" : ""
-        ) + "Array.isArray(" + inputVar + ")" + ((
-          negative ? "||" : "&&"
-        ) + inputVar + ".length" + (
-          negative ? "!==" : "==="
-        ) + keys.length) + keys.map((param, idx) => (
-          negative ? "||" : "&&"
-        ) + (
-          negative ? "!" : ""
-        ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
-        let mut = base(arrayTag, false);
-        let itemSchema = array(unknown);
-        mut.items = keys.map(param => itemSchema);
-        mut.additionalItems = "strict";
-        input.s = mut;
-      } else if (inputTagFlag & 128 && input.s.items.length === keys.length && input.s.items.every(s => {
-          if (s.type !== arrayTag) {
-            return false;
-          }
-          let match = s.additionalItems;
-          return match !== undefined ? match !== "strip" && match !== "strict" : false;
-        })) {
-        
-      } else {
-        unsupportedConversion(input, input.s, selfSchema);
-      }
-      let inputVar = input.v();
-      let iteratorVar = varWithoutAllocation(input.g);
-      let itemInput = makeObjectVal(input, schema);
-      let lengthCode = "";
-      for (let idx = 0, idx_finish = keys.length; idx < idx_finish; ++idx) {
-        let key = keys[idx];
-        add(itemInput, key, next(input, inputVar + "[" + idx + "][" + iteratorVar + "]", input.s.items[idx].additionalItems, undefined));
-        lengthCode = lengthCode + (inputVar + "[" + idx + "].length,");
-      }
-      let output = next(input, "new Array(Math.max(" + lengthCode + "))", selfSchema.to, undefined);
-      let outputVar = output.v();
-      let itemInput$1 = complete(itemInput);
-      let itemOutput = withPathPrepend(itemInput$1, iteratorVar, (bb, itemOutput) => {
-        bb.c = bb.c + addKey(output, iteratorVar, itemOutput) + ";";
-      }, input => parse$1(input, undefined));
-      let itemCode = merge(input);
-      input.c = input.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + outputVar + ".length;++" + iteratorVar + "){" + itemCode + "}");
-      if (itemOutput.f & 1) {
-        return asyncVal(output, "Promise.all(" + output.i + ")");
-      } else {
-        return output;
-      }
-    };
-    let to = base(arrayTag, false);
-    to.items = immutableEmpty$1;
-    to.additionalItems = schema;
-    to.serializer = unnestSerializer;
-    mut.unnest = true;
-    mut.to = to;
-    return mut;
+function compactColumnsDecoder(input, selfSchema) {
+  let inputTagFlag = flags[input.s.type];
+  let toSchema = selfSchema.to;
+  if (toSchema === undefined) {
+    return input;
   }
-  throw new Error("[Sury] S.unnest supports only object schemas.");
+  let properties = toSchema.properties;
+  if (properties === undefined) {
+    return unsupportedConversion(input, input.s, selfSchema);
+  }
+  let keys = Object.keys(properties);
+  if (keys.length === 0) {
+    throw new Error("[Sury] Invalid empty object for S.compactColumns schema.");
+  }
+  if (inputTagFlag & 1) {
+    input.validation = (inputVar, negative) => (
+      negative ? "!" : ""
+    ) + "Array.isArray(" + inputVar + ")" + ((
+      negative ? "||" : "&&"
+    ) + inputVar + ".length" + (
+      negative ? "!==" : "==="
+    ) + keys.length) + keys.map((param, idx) => (
+      negative ? "||" : "&&"
+    ) + (
+      negative ? "!" : ""
+    ) + "Array.isArray(" + inputVar + "[" + idx + "])").join("");
+  } else if (!(inputTagFlag & 128)) {
+    unsupportedConversion(input, input.s, selfSchema);
+  }
+  let inputVar = input.v();
+  let iteratorVar = varWithoutAllocation(input.g);
+  let outputVar = varWithoutAllocation(input.g);
+  let lengthCode = "";
+  let itemBuildCode = "";
+  for (let idx = 0, idx_finish = keys.length; idx < idx_finish; ++idx) {
+    let key = keys[idx];
+    lengthCode = lengthCode + (inputVar + "[" + idx + "].length,");
+    itemBuildCode = itemBuildCode + (fromString(key) + ":" + inputVar + "[" + idx + "][" + iteratorVar + "],");
+  }
+  input.a(outputVar + "=new Array(Math.max(" + lengthCode + "))");
+  input.c = input.c + ("for(let " + iteratorVar + "=0;" + iteratorVar + "<" + outputVar + ".length;++" + iteratorVar + "){" + outputVar + "[" + iteratorVar + "]={" + itemBuildCode + "};}");
+  let newrecord = {...input};
+  newrecord.f = 0;
+  newrecord.s = base(arrayTag, false);
+  newrecord.i = outputVar;
+  newrecord.v = _var;
+  newrecord.k = true;
+  return newrecord;
+}
+
+function compactColumns(_inputSchema) {
+  let mut = base(unknownTag, false);
+  mut.compactColumns = true;
+  mut.decoder = compactColumnsDecoder;
+  mut.encoder = compactColumnsEncoder;
+  return mut;
 }
 
 function nullAsOption(item) {
@@ -4816,7 +4784,7 @@ export {
   enableUint8Array,
   literal,
   array,
-  unnest,
+  compactColumns,
   list,
   instance,
   dict,
