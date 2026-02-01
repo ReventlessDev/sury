@@ -1064,10 +1064,7 @@ module Builder = {
     let _bondVar = () => {
       let val = %raw(`this`)
       let bond = val.bond->X.Option.getUnsafe
-      let v = bond.var()
-      val.inline = v
-      val.var = _var
-      v
+      bond.var()
     }
 
     let _prevVar = () => {
@@ -1486,11 +1483,13 @@ module Builder = {
       }
 
       let scope = (val: val) => {
+        let shouldLink = val.var !== _var
+
         // TODO: Don't use spread
         // TODO: Simplify bond
-        {
+        let nextVal = {
           ...val,
-          var: val.var === _var ? _var : _bondVar,
+          var: shouldLink ? _bondVar : _var,
           bond: val,
           prev: ?None,
           codeAfterValidation: "",
@@ -1502,6 +1501,16 @@ module Builder = {
           skipTo: false,
           validation: None,
         }
+        if shouldLink {
+          let valVar: unit => string = %raw(`val.v.bind(val)`)
+          val.var = () => {
+            let v = valVar()
+            nextVal.inline = v
+            nextVal.var = _var
+            v
+          }
+        }
+        nextVal
       }
 
       let get = (parent: val, location) => {
@@ -5056,27 +5065,27 @@ module Schema = {
     ~targetSchema: internal,
     ~path,
   ) => {
-    let val = switch acc {
-    | Some({val}) => {
-        let v = val->B.Val.scope
-        v.expected = targetSchema // FIXME: Is this line needed?
-        v
-      }
+    switch acc {
+    | Some({val}) => val->B.Val.scope
     | _ =>
       if targetSchema->isLiteral {
         let v = input->B.nextConst(~schema=targetSchema, ~expected=targetSchema)
         v.prev = None
+        v.parent = Some(input)
+        v.var = B._notVarAtParent
         v
       } else {
-        let output = makeObjectVal(input, ~schema=targetSchema)
-        output.expected = targetSchema
-        output.prev = None
+        let v = makeObjectVal(input, ~schema=targetSchema)
+        v.expected = targetSchema
+        v.prev = None
+        v.parent = Some(input)
+        v.var = B._notVarAtParent
 
         switch targetSchema {
         | {items} =>
           for idx in 0 to items->Js.Array2.length - 1 {
             let location = idx->Js.Int.toString
-            output->B.Val.Object.add(
+            v->B.Val.Object.add(
               ~location,
               getShapedSerializerOutput(
                 ~input,
@@ -5101,7 +5110,7 @@ module Schema = {
                   ~targetSchema=flattenedSchemas->Js.Array2.unsafe_get(idx)->reverse,
                   ~path,
                 )
-                output->B.Val.Object.merge(flattenedOutput.vals->X.Option.getUnsafe)
+                v->B.Val.Object.merge(flattenedOutput.vals->X.Option.getUnsafe)
               })
             | _ => ()
             }
@@ -5111,8 +5120,8 @@ module Schema = {
               let location = keys->Js.Array2.unsafe_get(idx)
 
               // Skip fields added by flattened
-              if !(output.vals->X.Option.getUnsafe->Stdlib.Dict.has(location)) {
-                output->B.Val.Object.add(
+              if !(v.vals->X.Option.getUnsafe->Stdlib.Dict.has(location)) {
+                v->B.Val.Object.add(
                   ~location,
                   getShapedSerializerOutput(
                     ~input,
@@ -5145,15 +5154,9 @@ module Schema = {
           )
         }
 
-        output->B.Val.Object.complete
+        v->B.Val.Object.complete
       }
     }
-    if path === Path.empty {
-      val.prev = Some(input)
-    }
-    let o = val->parse
-    o.skipTo = Some(true)
-    o
   }
   and shapedSerializer = (~input, ~selfSchema as _) => {
     let acc: shapedSerializerAcc = {}
@@ -5161,6 +5164,8 @@ module Schema = {
 
     let targetSchema = input.expected.to->X.Option.getUnsafe
     let output = getShapedSerializerOutput(~input, ~acc=Some(acc), ~targetSchema, ~path=Path.empty)
+
+    output.prev = Some(input)
 
     output
   }

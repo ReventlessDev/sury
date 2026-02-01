@@ -45,9 +45,13 @@ test("Successfully parses object with space", t => {
   )
 })
 
-test("Successfully serializes unknown schema", t => {
+test("unknown <-> json string expects unknown to be a json string", t => {
   let schema = S.unknown
 
-  t->Assert.deepEqual(Obj.magic(123)->S.reverseConvertToJsonStringOrThrow(S.unknown), "123")
-  t->U.assertCompiledCode(~schema, ~op=#ReverseConvertToJson, `i=>{let v0=e[0](i);return v0}`)
+  t->U.assertThrowsMessage(
+    () => Obj.magic(123)->S.reverseConvertToJsonStringOrThrow(S.unknown),
+    "Expected JSON string, received 123",
+  )
+  t->Assert.deepEqual(Obj.magic("123")->S.reverseConvertToJsonStringOrThrow(S.unknown), "123")
+  t->U.assertCompiledCode(~schema, ~op=#ReverseConvertToJson, `i=>{let v0;v0=e[0](i);return v0}`)
 })

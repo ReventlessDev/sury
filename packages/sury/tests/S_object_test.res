@@ -1043,9 +1043,10 @@ module Compiled = {
         "bar": s.field(
           "bar",
           S.object(
-            s => {
-              {"baz": s.field("baz", S.string)}
-            },
+            s =>
+              {
+                "baz": s.field("baz", S.string),
+              },
           )->S.refine(_ => _ => ()),
         ),
       }
@@ -1059,7 +1060,7 @@ module Compiled = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#ReverseConvert,
-      `i=>{let v0=i["bar"];e[0](v0);return {"foo":12,"bar":{"baz":v0["baz"],},}}`,
+      `i=>{let v0=i["bar"];e[0](v0);return {"foo":12,"bar":v0,}}`,
     )
   })
 
@@ -1265,6 +1266,18 @@ test("Reverse object with discriminant which is an object transformed to literal
     )
     s.field("field", S.bool)
   })
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#Parse,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["kind"],v2=i["field"];if(typeof v0!=="object"||!v0){e[1](v0)}let v1=v0["nestedKind"];if(v1!=="test"){e[0](v1)}if(typeof v2!=="boolean"){e[2](v2)}return v2}`,
+  )
+
+  t->U.assertCompiledCode(
+    ~schema,
+    ~op=#ReverseConvert,
+    `i=>{return {"kind":{"nestedKind":"test",},"field":i,}}`,
+  )
 
   t->U.assertReverseReversesBack(schema)
   t->U.assertReverseParsesBack(schema, true)
