@@ -2269,6 +2269,10 @@ and reverse = (schema: internal) => {
         }
       | None => ()
       }
+      switch mut.compactColumns {
+      | Some(compactColumns) => mut.compactColumns = Some(compactColumns->reverse)
+      | None => ()
+      }
       reversedHead := Some(mut)
       current := next
     }

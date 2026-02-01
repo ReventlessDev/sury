@@ -2099,6 +2099,19 @@ test("CompactColumns schema", (t) => {
     })
   );
 
+  // Test decoder (parser)
+  const decoder = S.decoder(schema);
+  const parsed = decoder([
+    ["0", "1"],
+    ["Hello", null],
+    [false, true],
+  ]);
+  t.deepEqual(parsed, [
+    { id: "0", name: "Hello", deleted: false },
+    { id: "1", name: undefined, deleted: true },
+  ]);
+
+  // Test encoder
   const encoder = S.encoder(schema);
   const value = encoder([
     { id: "0", name: "Hello", deleted: false },
@@ -2112,6 +2125,43 @@ test("CompactColumns schema", (t) => {
   ];
 
   t.deepEqual(value, expected);
+
+  expectType<
+    SchemaEqual<typeof schema, unknown[][], unknown[][]>
+  >(true);
+});
+
+test("CompactColumns with json and bigint", (t) => {
+  const schema = S.to(
+    S.compactColumns(S.json),
+    S.schema({
+      id: S.string,
+      amount: S.bigint,
+    })
+  );
+
+  // Test decoder - bigint should be parsed from string in json
+  const decoder = S.decoder(schema);
+  const parsed = decoder([
+    ["0", "1"],
+    ["12345678901234567890", "98765432109876543210"],
+  ]);
+  t.deepEqual(parsed, [
+    { id: "0", amount: 12345678901234567890n },
+    { id: "1", amount: 98765432109876543210n },
+  ]);
+
+  // Test encoder - bigint should be converted to string for json
+  const encoder = S.encoder(schema);
+  const value = encoder([
+    { id: "0", amount: 12345678901234567890n },
+    { id: "1", amount: 98765432109876543210n },
+  ]);
+
+  t.deepEqual(value, [
+    ["0", "1"],
+    ["12345678901234567890", "98765432109876543210"],
+  ]);
 });
 
 test("Set schema", (t) => {
