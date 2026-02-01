@@ -281,6 +281,7 @@ type internalDefault = {}
 
 type numberFormat = | @as("int32") Int32 | @as("port") Port
 type stringFormat = | @as("json") JSON
+type arrayFormat = | @as("compactColumns") CompactColumns
 
 type format = | ...numberFormat | ...stringFormat
 
@@ -401,7 +402,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      compactColumns?: t<unknown>,
+      arrayFormat?: arrayFormat,
       name?: string,
       title?: string,
       description?: string,
@@ -484,7 +485,7 @@ and internal = {
   mutable items?: array<internal>,
   mutable properties?: dict<internal>,
   mutable noValidation?: bool,
-  mutable compactColumns?: internal,
+  mutable arrayFormat?: arrayFormat,
   mutable space?: int,
   @as("$ref")
   mutable ref?: string,
@@ -518,7 +519,7 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  compactColumns?: t<unknown>,
+  arrayFormat?: arrayFormat,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
@@ -2267,10 +2268,6 @@ and reverse = (schema: internal) => {
           }
           mut.defs = Some(reversedDefs)
         }
-      | None => ()
-      }
-      switch mut.compactColumns {
-      | Some(compactColumns) => mut.compactColumns = Some(compactColumns->reverse)
       | None => ()
       }
       reversedHead := Some(mut)
@@ -5367,8 +5364,15 @@ let compactColumnsDecoder = Builder.make((~input, ~selfSchema) => {
 
 let compactColumns = inputSchema => {
   let inputSchema = inputSchema->castToInternal
-  let mut = base(unknownTag, ~selfReverse=false)
-  mut.compactColumns = Some(inputSchema)
+  // Create inner array schema with inputSchema as additionalItems
+  let innerArray = base(arrayTag, ~selfReverse=false)
+  innerArray.additionalItems = Some(Schema(inputSchema->castToPublic))
+  innerArray.items = Some(X.Array.immutableEmpty)
+  // Create outer array of arrays schema with arrayFormat = CompactColumns
+  let mut = base(arrayTag, ~selfReverse=false)
+  mut.additionalItems = Some(Schema(innerArray->castToPublic))
+  mut.items = Some(X.Array.immutableEmpty)
+  mut.arrayFormat = Some(CompactColumns)
   mut.decoder = compactColumnsDecoder
   mut.encoder = Some(compactColumnsEncoder)
   mut->castToPublic

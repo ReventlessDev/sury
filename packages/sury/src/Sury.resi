@@ -22,6 +22,7 @@ module Path: {
 
 type numberFormat = | @as("int32") Int32 | @as("port") Port
 type stringFormat = | @as("json") JSON
+type arrayFormat = | @as("compactColumns") CompactColumns
 
 type format = | ...numberFormat | ...stringFormat
 
@@ -160,7 +161,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      compactColumns?: t<unknown>,
+      arrayFormat?: arrayFormat,
       name?: string,
       title?: string,
       description?: string,
@@ -216,7 +217,7 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  compactColumns?: t<unknown>,
+  arrayFormat?: arrayFormat,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
@@ -309,7 +310,7 @@ let enableUint8Array: unit => unit
 
 let literal: 'value => t<'value>
 let array: t<'value> => t<array<'value>>
-let compactColumns: t<'value> => t<'value>
+let compactColumns: t<'value> => t<array<array<'value>>>
 let list: t<'value> => t<list<'value>>
 let instance: unknown => t<unknown>
 let dict: t<'value> => t<dict<'value>>

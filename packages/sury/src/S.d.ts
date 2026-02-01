@@ -201,7 +201,7 @@ export type Schema<Output, Input = unknown> = {
       readonly type: "array";
       readonly items: Schema<unknown>;
       readonly additionalItems: "strip" | "strict" | Schema<unknown>;
-      readonly compactColumns?: true;
+      readonly arrayFormat?: "compactColumns";
     }
   | {
       readonly type: "object";
