@@ -87,9 +87,8 @@ test("Fails to parse undefined", t => {
   )
 })
 
-// TODO: No need to recreate array or json values
 let jsonParseCode = `i=>{let v0;v0=e[0](i);return v0}
-JSON: i=>{if(Array.isArray(i)){let v3=new Array(i.length);for(let v0=0;v0<i.length;++v0){try{let v1;v1=e[0]["unknown->JSON--0"](i[v0]);v3[v0]=v1}catch(v2){v2.path='["'+v0+'"]'+v2.path;throw v2}}i=v3}else if(typeof i==="object"&&i&&!Array.isArray(i)){let v7={};for(let v4 in i){try{let v5;v5=e[1]["unknown->JSON--0"](i[v4]);v7[v4]=v5}catch(v6){v6.path='["'+v4+'"]'+v6.path;throw v6}}i=v7}else if(!(typeof i==="string"||typeof i==="boolean"||typeof i==="number"&&!Number.isNaN(i)||i===null)){e[2](i)}return i}`
+JSON: i=>{if(Array.isArray(i)){for(let v0=0;v0<i.length;++v0){try{let v1;v1=e[0]["unknown->JSON--0"](i[v0]);}catch(v2){v2.path='["'+v0+'"]'+v2.path;throw v2}}}else if(typeof i==="object"&&i&&!Array.isArray(i)){for(let v3 in i){try{let v4;v4=e[1]["unknown->JSON--0"](i[v3]);}catch(v5){v5.path='["'+v3+'"]'+v5.path;throw v5}}}else if(!(typeof i==="string"||typeof i==="boolean"||typeof i==="number"&&!Number.isNaN(i)||i===null)){e[2](i)}return i}`
 test("Compiled parse code snapshot", t => {
   let schema = S.json
 
