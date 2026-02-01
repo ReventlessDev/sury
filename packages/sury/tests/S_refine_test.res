@@ -67,7 +67,7 @@ test("Compiled parse code snapshot for simple object with refine", t => {
   t->U.assertCompiledCode(
     ~schema,
     ~op=#Parse,
-    `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["foo"],v1=i["bar"];if(typeof v0!=="string"){e[1](v0)}if(typeof v1!=="boolean"){e[2](v1)}let v2={"foo":v0,"bar":v1,};e[3](v2);return v2}`,
+    `i=>{if(typeof i!=="object"||!i){e[3](i)}let v0=i["foo"],v1=i["bar"],v2={"foo":v0,"bar":v1,};if(typeof v0!=="string"){e[0](v0)}if(typeof v1!=="boolean"){e[1](v1)}e[2](v2);return {"foo":v0,"bar":v1,}}`,
   )
 })
 
@@ -94,6 +94,8 @@ test("Succesfully uses reversed schema for parsing back to initial value", t => 
 
 // https://github.com/DZakh/rescript-schema/issues/79
 module Issue79 = {
+  S.enableJsonString()
+
   test("Successfully parses", t => {
     let schema = S.object(s => s.field("myField", S.nullable(S.string)))->S.refine(_ => _ => ())
     let jsonString = `{"myField": "test"}`
@@ -101,9 +103,9 @@ module Issue79 = {
     t->U.assertCompiledCode(
       ~schema,
       ~op=#Parse,
-      `i=>{if(typeof i!=="object"||!i){e[0](i)}let v0=i["myField"];if(!(typeof v0==="string"||v0===void 0||v0===null)){e[1](v0)}e[2](v0);return v0}`,
+      `i=>{if(typeof i!=="object"||!i){e[2](i)}let v0=i["myField"],v1={"myField":v0,};if(!(typeof v0==="string"||v0===void 0||v0===null)){e[0](v0)}e[1](v1);return v0}`,
     )
-    t->U.assertCompiledCode(~schema, ~op=#Convert, `i=>{let v0=i["myField"];e[0](v0);return v0}`)
+    t->U.assertCompiledCode(~schema, ~op=#Convert, `i=>{let v0=i["myField"];e[0](i);if(!(typeof v0==="string"||v0===void 0||v0===null)){e[1](v0)}return v0}`)
 
     t->Assert.deepEqual(jsonString->S.parseJsonStringOrThrow(schema), Value("test"))
   })
