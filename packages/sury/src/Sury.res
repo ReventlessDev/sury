@@ -777,11 +777,20 @@ let rec toExpression = schema => {
     ->(Obj.magic: array<internal> => array<t<'a>>)
     ->Js.Array2.map(toExpression)
     ->Js.Array2.joinWith(" | ")
+  | {format: CompactColumns, ?additionalItems} =>
+    // For forward compactColumns, show the inner element type
+    let additionalItems: internal = additionalItems->Obj.magic
+    // Get the inner array's additionalItems (the actual element type)
+    let innerItems: internal = (additionalItems.additionalItems)->Obj.magic
+    innerItems->castToPublic->toExpression
   | {format} => (format :> string)
   | {tag: Object, ?properties, ?additionalItems} =>
     let properties = properties->X.Option.getUnsafe
     let locations = properties->Js.Dict.keys
-    if locations->Js.Array2.length === 0 {
+    // Check if this is a reversed compactColumns schema
+    let toSchemaFormat: option<format> = %raw(`schema.to?.format`)
+    let isReversedCompactColumns = toSchemaFormat === Some(CompactColumns)
+    let objectExpr = if locations->Js.Array2.length === 0 {
       if additionalItems->Js.typeof === (objectTag :> string) {
         let additionalItems: internal = additionalItems->Obj.magic
         `{ [key: string]: ${additionalItems->castToPublic->toExpression}; }`
@@ -794,6 +803,11 @@ let rec toExpression = schema => {
           `${location}: ${properties->Js.Dict.unsafeGet(location)->castToPublic->toExpression};`
         })
         ->Js.Array2.joinWith(" ")} }`
+    }
+    if isReversedCompactColumns {
+      objectExpr ++ "[]"
+    } else {
+      objectExpr
     }
 
   | {tag: NaN} => "NaN"
@@ -2191,6 +2205,13 @@ and reverse = (schema: internal) => {
       | Some(parser) => mut.serializer = Some(parser)
       | None => %raw(`delete mut.serializer`)
       }
+      // Swap decoder and encoder (for schemas with custom builders like compactColumns)
+      let decoder = mut.decoder
+      switch mut.encoder {
+      | Some(encoder) => mut.decoder = encoder
+      | None => ()
+      }
+      mut.encoder = Some(decoder)
       // Swap inputRefiner and refiner
       let refiner = mut.refiner
       switch mut.inputRefiner {
@@ -5257,9 +5278,9 @@ let literal = js_schema
 
 let enum = values => Union.factory(values->Js.Array2.map(literal))
 
-let compactColumnsEncoder = Builder.make((~input, ~selfSchema) => {
-  let toSchema = selfSchema.to->X.Option.getUnsafe
-  switch toSchema {
+let compactColumnsEncoder = Builder.make((~input, ~selfSchema as _) => {
+  // Use input.schema to get properties (works for both forward encoding and reverse decoding)
+  switch input.schema {
   | {properties: ?Some(properties)} => {
       let keys = properties->Js.Dict.keys
       let inputVar = input.var()
@@ -5277,19 +5298,15 @@ let compactColumnsEncoder = Builder.make((~input, ~selfSchema) => {
       }
 
       input.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
-      input.codeAfterValidation =
-        input.codeAfterValidation ++
-        `for(let ${iteratorVar}=0;${iteratorVar}<${inputVar}.length;++${iteratorVar}){${settingCode.contents}}`
 
-      {
-        ...input,
-        var: B._var,
-        inline: outputVar,
-        flag: ValFlag.none,
-        schema: base(arrayTag, ~selfReverse=false),
-      }
+      let output = input->B.next(outputVar, ~schema=base(arrayTag, ~selfReverse=false))
+      output.var = B._var
+      output.codeFromPrev =
+        output.codeFromPrev ++
+        `for(let ${iteratorVar}=0;${iteratorVar}<${inputVar}.length;++${iteratorVar}){${settingCode.contents}}`
+      output
     }
-  | _ => input->B.unsupportedConversion(~from=selfSchema, ~target=toSchema)
+  | _ => input->B.unsupportedConversion(~from=input.schema, ~target=input.expected)
   }
 })
 
@@ -5340,19 +5357,14 @@ let compactColumnsDecoder = Builder.make((~input, ~selfSchema) => {
         }
 
         input.allocate(`${outputVar}=new Array(Math.max(${lengthCode.contents}))`)
-        input.codeAfterValidation =
-          input.codeAfterValidation ++
-          `for(let ${iteratorVar}=0;${iteratorVar}<${outputVar}.length;++${iteratorVar}){${outputVar}[${iteratorVar}]={${itemBuildCode.contents}};}`
 
-        let result = {
-          ...input,
-          var: B._var,
-          inline: outputVar,
-          flag: ValFlag.none,
-          schema: base(arrayTag, ~selfReverse=false),
-        }
-        result.skipTo = Some(true)
-        result
+        let output = input->B.next(outputVar, ~schema=base(arrayTag, ~selfReverse=false))
+        output.var = B._var
+        output.codeFromPrev =
+          output.codeFromPrev ++
+          `for(let ${iteratorVar}=0;${iteratorVar}<${outputVar}.length;++${iteratorVar}){${outputVar}[${iteratorVar}]={${itemBuildCode.contents}};}`
+        output.skipTo = Some(true)
+        output
       }
     | _ => input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
     }

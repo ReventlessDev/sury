@@ -161,12 +161,12 @@ export type Schema<Output, Input = unknown> = {
     }
   | {
       readonly type: "string";
-      readonly format?: "json";
+      readonly format?: StringFormat;
       readonly const?: string;
     }
   | {
       readonly type: "number";
-      readonly format?: "int32" | "port";
+      readonly format?: NumberFormat;
       readonly const?: number;
     }
   | {
@@ -206,7 +206,7 @@ export type Schema<Output, Input = unknown> = {
       readonly type: "array";
       readonly items: Schema<unknown>;
       readonly additionalItems: "strip" | "strict" | Schema<unknown>;
-      readonly format?: Format;
+      readonly format?: ArrayFormat;
     }
   | {
       readonly type: "object";

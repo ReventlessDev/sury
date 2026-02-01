@@ -17,6 +17,7 @@ export var nullish = S.nullable
 export var array = S.array
 export var instance = S.instance
 export var unnest = S.unnest
+export var compactColumns = S.compactColumns
 export var record = S.dict
 export var json = S.json
 export var enableJson = S.enableJson

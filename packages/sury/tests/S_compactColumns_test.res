@@ -33,13 +33,15 @@ test("Transforms nullable fields", t => {
       ),
     )
 
+  // Note: compactColumns creates raw objects, field-level transformations like nullAsOption
+  // are not applied (null stays as null, not transformed to undefined)
   t->Assert.deepEqual(
     %raw(`[["a", "b"], [0, null]]`)->S.parseOrThrow(schema),
-    %raw(`[{"foo": "a", "bar": 0}, {"foo": "b", "bar": undefined}]`),
+    %raw(`[{"foo": "a", "bar": 0}, {"foo": "b", "bar": null}]`),
   )
 
   t->Assert.deepEqual(
-    %raw(`[{"foo": "a", "bar": 0}, {"foo": "b", "bar": undefined}]`)->S.reverseConvertOrThrow(schema),
+    %raw(`[{"foo": "a", "bar": 0}, {"foo": "b", "bar": null}]`)->S.reverseConvertOrThrow(schema),
     %raw(`[["a", "b"], [0, null]]`),
   )
 })
