@@ -88,8 +88,8 @@ test("Handles non-object schemas", t => {
   )
 })
 
-test("Schema has arrayFormat field set to compactColumns", t => {
+test("Schema has format field set to compactColumns", t => {
   let schema = S.compactColumns(S.unknown)
   // Use Obj.magic to cast schema to untagged representation for testing internal field
-  t->Assert.deepEqual((schema->Obj.magic)["arrayFormat"], "compactColumns")
+  t->Assert.deepEqual((schema->Obj.magic)["format"], "compactColumns")
 })

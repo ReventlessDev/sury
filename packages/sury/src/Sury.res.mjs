@@ -944,18 +944,10 @@ function numberDecoder(input, param) {
       let match = input.e.format;
       let tmp;
       let exit = 0;
-      if (match !== undefined) {
-        switch (match) {
-          case "int32" :
-            tmp = (
-              negative ? "||" : "&&"
-            ) + int32FormatValidation(inputVar, negative);
-            break;
-          case "port" :
-          case "json" :
-            exit = 1;
-            break;
-        }
+      if (match === "int32") {
+        tmp = (
+          negative ? "||" : "&&"
+        ) + int32FormatValidation(inputVar, negative);
       } else {
         exit = 1;
       }
@@ -988,14 +980,8 @@ function numberDecoder(input, param) {
   output.v = _var;
   output.validation = (param, negative) => {
     let match = input.e.format;
-    if (match !== undefined) {
-      switch (match) {
-        case "int32" :
-          return int32FormatValidation(outputVar, negative);
-        case "port" :
-        case "json" :
-          break;
-      }
+    if (match === "int32") {
+      return int32FormatValidation(outputVar, negative);
     }
     return (
       negative ? "" : "!"
@@ -3653,7 +3639,7 @@ function compactColumnsDecoder(input, selfSchema) {
   let inputTagFlag = flags[input.s.type];
   let toSchema = selfSchema.to;
   if (toSchema === undefined) {
-    return input;
+    return arrayDecoder(input, selfSchema);
   }
   let properties = toSchema.properties;
   if (properties === undefined) {
@@ -3700,13 +3686,9 @@ function compactColumnsDecoder(input, selfSchema) {
 }
 
 function compactColumns(inputSchema) {
-  let innerArray = base(arrayTag, false);
-  innerArray.additionalItems = inputSchema;
-  innerArray.items = immutableEmpty$1;
-  let mut = base(arrayTag, false);
-  mut.additionalItems = innerArray;
-  mut.items = immutableEmpty$1;
-  mut.arrayFormat = "compactColumns";
+  let innerArray = array(inputSchema);
+  let mut = array(innerArray);
+  mut.format = "compactColumns";
   mut.decoder = compactColumnsDecoder;
   mut.encoder = compactColumnsEncoder;
   return mut;

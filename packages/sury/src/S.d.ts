@@ -95,6 +95,11 @@ export type JSON =
   | { [key: string]: JSON }
   | JSON[];
 
+export type NumberFormat = "int32" | "port";
+export type StringFormat = "json";
+export type ArrayFormat = "compactColumns";
+export type Format = NumberFormat | StringFormat | ArrayFormat;
+
 export type Schema<Output, Input = unknown> = {
   with<TargetOutput = unknown, TargetInput = unknown>(
     to: (
@@ -201,7 +206,7 @@ export type Schema<Output, Input = unknown> = {
       readonly type: "array";
       readonly items: Schema<unknown>;
       readonly additionalItems: "strip" | "strict" | Schema<unknown>;
-      readonly arrayFormat?: "compactColumns";
+      readonly format?: Format;
     }
   | {
       readonly type: "object";

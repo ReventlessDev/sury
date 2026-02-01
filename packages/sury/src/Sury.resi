@@ -24,7 +24,7 @@ type numberFormat = | @as("int32") Int32 | @as("port") Port
 type stringFormat = | @as("json") JSON
 type arrayFormat = | @as("compactColumns") CompactColumns
 
-type format = | ...numberFormat | ...stringFormat
+type format = | ...numberFormat | ...stringFormat | ...arrayFormat
 
 @unboxed
 type additionalItemsMode = | @as("strip") Strip | @as("strict") Strict
@@ -161,7 +161,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      arrayFormat?: arrayFormat,
+      format?: format,
       name?: string,
       title?: string,
       description?: string,
@@ -217,7 +217,6 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  arrayFormat?: arrayFormat,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
