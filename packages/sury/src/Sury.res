@@ -3040,19 +3040,43 @@ let noValidation = (schema, value) => {
   mut->castToPublic
 }
 
-let appendRefiner = (~existingDecoder: builder, refiner) => {
-  (~input, ~selfSchema) => {
-    let output = existingDecoder(~input, ~selfSchema)
-    output.codeAfterValidation = output.codeAfterValidation ++ refiner(~input=output, ~selfSchema)
-    output
+let appendRefiner = (~existingRefiner: option<builder>, newRefiner) => {
+  switch existingRefiner {
+  | Some(existingRefiner) =>
+    Some(
+      (~input, ~selfSchema) => {
+        let output = existingRefiner(~input, ~selfSchema)
+        output.codeAfterValidation =
+          output.codeAfterValidation ++ newRefiner(~input=output, ~selfSchema)
+        output
+      },
+    )
+  | None =>
+    Some(
+      (~input, ~selfSchema) => {
+        input.codeAfterValidation =
+          input.codeAfterValidation ++ newRefiner(~input, ~selfSchema)
+        input
+      },
+    )
   }
 }
 
 let internalRefine = (schema, refiner) => {
   let schema = schema->castToInternal
-  updateOutput(schema, mut => {
-    mut.decoder = appendRefiner(~existingDecoder=mut.decoder, refiner(mut))
-  })
+  // Copy the root schema and set refiner. According to AGENTS.md, the refiner runs
+  // after decoder but before parser, so it should be on the root schema, not the .to schema.
+  let root = schema->copySchema
+  // Also need to copy the .to chain if it exists, otherwise modifications would affect original
+  let mut = ref(root)
+  while mut.contents.to->Obj.magic {
+    let next = mut.contents.to->X.Option.getUnsafe->copySchema
+    mut.contents.to = Some(next)
+    mut := next
+  }
+  // Set refiner on the root schema, not the final .to
+  root.refiner = appendRefiner(~existingRefiner=root.refiner, refiner(root))
+  root->castToPublic
 }
 
 let refine: (t<'value>, s<'value> => 'value => unit) => t<'value> = (schema, refiner) => {
