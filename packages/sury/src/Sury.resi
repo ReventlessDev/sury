@@ -160,7 +160,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      compactColumns?: bool,
+      compactColumns?: t<unknown>,
       name?: string,
       title?: string,
       description?: string,
@@ -216,7 +216,7 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  compactColumns?: bool,
+  compactColumns?: t<unknown>,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
@@ -309,7 +309,7 @@ let enableUint8Array: unit => unit
 
 let literal: 'value => t<'value>
 let array: t<'value> => t<array<'value>>
-let compactColumns: t<unknown> => t<unknown>
+let compactColumns: t<'value> => t<'value>
 let list: t<'value> => t<list<'value>>
 let instance: unknown => t<unknown>
 let dict: t<'value> => t<dict<'value>>

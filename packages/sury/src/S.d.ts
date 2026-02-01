@@ -621,9 +621,9 @@ export const array: <Output, Input>(
   schema: Schema<Output, Input>
 ) => Schema<Output[], Input[]>;
 
-export const compactColumns: (
-  schema: Schema<unknown>
-) => Schema<unknown>;
+export const compactColumns: <Output, Input>(
+  schema: Schema<Output, Input>
+) => Schema<Output[][], Input[][]>;
 
 export const record: <Output, Input>(
   schema: Schema<Output, Input>

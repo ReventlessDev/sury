@@ -3699,9 +3699,9 @@ function compactColumnsDecoder(input, selfSchema) {
   return newrecord;
 }
 
-function compactColumns(_inputSchema) {
+function compactColumns(inputSchema) {
   let mut = base(unknownTag, false);
-  mut.compactColumns = true;
+  mut.compactColumns = inputSchema;
   mut.decoder = compactColumnsDecoder;
   mut.encoder = compactColumnsEncoder;
   return mut;

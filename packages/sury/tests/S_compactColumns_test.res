@@ -92,7 +92,8 @@ test("Handles non-object schemas", t => {
   )
 })
 
-test("Schema has compactColumns field set to true", t => {
-  let schema = S.compactColumns(S.unknown)
-  t->Assert.deepEqual((schema->S.toUntagged).compactColumns, Some(true))
+test("Schema has compactColumns field storing the input schema", t => {
+  let inputSchema = S.unknown
+  let schema = S.compactColumns(inputSchema)
+  t->Assert.deepEqual((schema->S.toUntagged).compactColumns, Some(inputSchema))
 })

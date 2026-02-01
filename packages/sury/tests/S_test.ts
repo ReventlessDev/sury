@@ -2099,7 +2099,7 @@ test("CompactColumns schema", (t) => {
     })
   );
 
-  const encoder = S.encoder(schema) as (input: unknown) => unknown;
+  const encoder = S.encoder(schema);
   const value = encoder([
     { id: "0", name: "Hello", deleted: false },
     { id: "1", name: undefined, deleted: true },

@@ -401,7 +401,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      compactColumns?: bool,
+      compactColumns?: t<unknown>,
       name?: string,
       title?: string,
       description?: string,
@@ -484,7 +484,7 @@ and internal = {
   mutable items?: array<internal>,
   mutable properties?: dict<internal>,
   mutable noValidation?: bool,
-  mutable compactColumns?: bool,
+  mutable compactColumns?: internal,
   mutable space?: int,
   @as("$ref")
   mutable ref?: string,
@@ -518,7 +518,7 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  compactColumns?: bool,
+  compactColumns?: t<unknown>,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
@@ -3990,7 +3990,6 @@ module Option = {
           | Some(s) => s
           }
 
-          // FIXME: Should delete schema.compactColumns on reverse?
           // FIXME: Ensure that default has the same type as the item
           // Or maybe not, but need to make it properly with JSON Schema
 
@@ -5362,9 +5361,10 @@ let compactColumnsDecoder = Builder.make((~input, ~selfSchema) => {
   }
 })
 
-let compactColumns = _inputSchema => {
+let compactColumns = inputSchema => {
+  let inputSchema = inputSchema->castToInternal
   let mut = base(unknownTag, ~selfReverse=false)
-  mut.compactColumns = Some(true)
+  mut.compactColumns = Some(inputSchema)
   mut.decoder = compactColumnsDecoder
   mut.encoder = Some(compactColumnsEncoder)
   mut->castToPublic
