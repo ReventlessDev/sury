@@ -5066,7 +5066,11 @@ module Schema = {
     ~path,
   ) => {
     switch acc {
-    | Some({val}) => val->B.Val.scope
+    | Some({val}) => {
+        let v = val->B.Val.scope
+        v.hasTransform = Some(true)
+        v
+      }
     | _ =>
       if targetSchema->isLiteral {
         let v = input->B.nextConst(~schema=targetSchema, ~expected=targetSchema)
@@ -5163,6 +5167,7 @@ module Schema = {
     prepareShapedSerializerAcc(~acc, ~input)
 
     let targetSchema = input.expected.to->X.Option.getUnsafe
+
     let output = getShapedSerializerOutput(~input, ~acc=Some(acc), ~targetSchema, ~path=Path.empty)
 
     output.prev = Some(input)
