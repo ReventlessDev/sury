@@ -4301,7 +4301,7 @@ let enableJson = () => {
     json.name = Some(jsonName)
     json.decoder = jsonDecoder
     json.encoder = Some(jsonEncoder)
-    let defs = Js.Dict.empty()
+
     let anyOf = [
       string,
       bool,
@@ -4314,16 +4314,16 @@ let enableJson = () => {
     anyOf->Js.Array2.forEach(schema => {
       has->Js.Dict.set((schema.tag :> string), true)
     })
-    defs->Js.Dict.set(
-      jsonName,
-      {
-        name: jsonName,
-        tag: unionTag,
-        anyOf,
-        has,
-        decoder: Union.unionDecoder,
-      },
-    )
+
+    let jsonDef = base(unionTag, ~selfReverse=true)
+    jsonDef.anyOf = Some(anyOf)
+    jsonDef.has = Some(has)
+    jsonDef.decoder = Union.unionDecoder
+    jsonDef.name = Some(jsonName)
+    jsonDef.tag = unionTag
+
+    let defs = Js.Dict.empty()
+    defs->Js.Dict.set(jsonName, jsonDef)
     json.defs = Some(defs)
   }
 }
