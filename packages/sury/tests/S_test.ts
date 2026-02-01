@@ -2089,8 +2089,9 @@ test("Env schema: Reggression version", (t) => {
   t.deepEqual(S.parser(env(S.boolean))("true"), true);
 });
 
-test("Unnest schema", (t) => {
-  const schema = S.unnest(
+test("CompactColumns schema", (t) => {
+  const schema = S.to(
+    S.compactColumns(S.unknown),
     S.schema({
       id: S.string,
       name: S.nullable(S.string),
@@ -2098,30 +2099,19 @@ test("Unnest schema", (t) => {
     })
   );
 
-  const value = S.encoder(schema)([
+  const encoder = S.encoder(schema) as (input: unknown) => unknown;
+  const value = encoder([
     { id: "0", name: "Hello", deleted: false },
     { id: "1", name: undefined, deleted: true },
   ]);
 
-  let expected: typeof value = [
+  const expected = [
     ["0", "1"],
     ["Hello", null],
     [false, true],
   ];
 
   t.deepEqual(value, expected);
-
-  expectType<
-    SchemaEqual<
-      typeof schema,
-      {
-        id: string;
-        name?: string | undefined;
-        deleted: boolean;
-      }[],
-      (string[] | boolean[] | (string | null)[])[]
-    >
-  >(true);
 });
 
 test("Set schema", (t) => {

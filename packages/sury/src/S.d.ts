@@ -201,7 +201,7 @@ export type Schema<Output, Input = unknown> = {
       readonly type: "array";
       readonly items: Schema<unknown>;
       readonly additionalItems: "strip" | "strict" | Schema<unknown>;
-      readonly unnest?: true;
+      readonly compactColumns?: true;
     }
   | {
       readonly type: "object";
@@ -621,14 +621,9 @@ export const array: <Output, Input>(
   schema: Schema<Output, Input>
 ) => Schema<Output[], Input[]>;
 
-export const unnest: <Output, Input extends Record<string, unknown>>(
-  schema: Schema<Output, Input>
-) => Schema<
-  Output[],
-  {
-    [K in keyof Input]: Input[K][];
-  }[keyof Input][]
->;
+export const compactColumns: (
+  schema: Schema<unknown>
+) => Schema<unknown>;
 
 export const record: <Output, Input>(
   schema: Schema<Output, Input>

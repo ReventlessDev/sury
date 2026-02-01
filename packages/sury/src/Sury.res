@@ -401,7 +401,7 @@ type rec t<'value> =
   Array({
       items: array<t<unknown>>,
       additionalItems: additionalItems,
-      unnest?: bool,
+      compactColumns?: bool,
       name?: string,
       title?: string,
       description?: string,
@@ -484,7 +484,7 @@ and internal = {
   mutable items?: array<internal>,
   mutable properties?: dict<internal>,
   mutable noValidation?: bool,
-  mutable unnest?: bool,
+  mutable compactColumns?: bool,
   mutable space?: int,
   @as("$ref")
   mutable ref?: string,
@@ -518,7 +518,7 @@ and untagged = private {
   deprecated?: bool,
   examples?: array<unknown>,
   default?: unknown,
-  unnest?: bool,
+  compactColumns?: bool,
   noValidation?: bool,
   items?: array<t<unknown>>,
   properties?: dict<t<unknown>>,
@@ -3990,7 +3990,7 @@ module Option = {
           | Some(s) => s
           }
 
-          // FIXME: Should delete schema.unnest on reverse?
+          // FIXME: Should delete schema.compactColumns on reverse?
           // FIXME: Ensure that default has the same type as the item
           // Or maybe not, but need to make it properly with JSON Schema
 
@@ -5259,97 +5259,56 @@ let literal = js_schema
 
 let enum = values => Union.factory(values->Js.Array2.map(literal))
 
-let unnestSerializer = Builder.make((~input, ~selfSchema) => {
-  let schema = selfSchema.additionalItems->(Obj.magic: option<additionalItems> => internal)
-  let items = schema.items->X.Option.getUnsafe
+let compactColumnsEncoder = Builder.make((~input, ~selfSchema) => {
+  let toSchema = selfSchema.to->X.Option.getUnsafe
+  switch toSchema {
+  | {properties: ?Some(properties)} => {
+      let keys = properties->Js.Dict.keys
+      let inputVar = input.var()
+      let iteratorVar = input.global->B.varWithoutAllocation
+      let outputVar = input.global->B.varWithoutAllocation
 
-  let inputVar = input.var()
-  let iteratorVar = input.global->B.varWithoutAllocation
-  let outputVar = input.global->B.varWithoutAllocation
-
-  let b = input
-
-  // let bb = b->B.scope(~path=b.path)
-  let bb = b
-  let itemInput = {
-    ...bb,
-    // FIXME: This is probably wrong
-    var: B._var,
-    inline: `${inputVar}[${iteratorVar}]`,
-    flag: ValFlag.none,
-    schema: unknown, // FIXME:
-  }
-  let itemOutput = B.withPathPrepend(
-    ~input=itemInput,
-    ~dynamicLocationVar=iteratorVar,
-    ~appendSafe=(~output) => {
       let initialArraysCode = ref("")
       let settingCode = ref("")
-      for idx in 0 to items->Js.Array2.length - 1 {
-        let toItem = items->Js.Array2.unsafe_get(idx)
+      for idx in 0 to keys->Js.Array2.length - 1 {
+        let key = keys->Js.Array2.unsafe_get(idx)
         initialArraysCode := initialArraysCode.contents ++ `new Array(${inputVar}.length),`
         settingCode :=
           settingCode.contents ++
-          `${outputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]=${(
-              output->B.Val.get("toItem.location") // FIXME:
-            ).inline};`
+          `${outputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]=${inputVar}[${iteratorVar}][${key->X.Inlined.Value.fromString}];`
       }
-      b.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
-      bb.codeAfterValidation = bb.codeAfterValidation ++ settingCode.contents
-    },
-    (~input) => {
-      // b->parse(~schema, ~input)
-      b->parse
-    },
-  )
-  let itemCode = bb->B.merge
 
-  b.codeAfterValidation =
-    b.codeAfterValidation ++
-    `for(let ${iteratorVar}=0;${iteratorVar}<${inputVar}.length;++${iteratorVar}){${itemCode}}`
+      input.allocate(`${outputVar}=[${initialArraysCode.contents}]`)
+      input.codeAfterValidation =
+        input.codeAfterValidation ++
+        `for(let ${iteratorVar}=0;${iteratorVar}<${inputVar}.length;++${iteratorVar}){${settingCode.contents}}`
 
-  if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-    {
-      ...b,
-      // FIXME: This is probably wrong
-      var: B._notVar,
-      inline: `Promise.all(${outputVar})`,
-      flag: ValFlag.async,
-      schema: base(arrayTag, ~selfReverse=false), // FIXME: full schema
+      {
+        ...input,
+        var: B._var,
+        inline: outputVar,
+        flag: ValFlag.none,
+        schema: base(arrayTag, ~selfReverse=false),
+      }
     }
-  } else {
-    {
-      ...b,
-      // FIXME: This is probably wrong
-      var: B._var,
-      inline: outputVar,
-      flag: ValFlag.none,
-      schema: base(arrayTag, ~selfReverse=false), // FIXME: full schema
-    }
+  | _ => input->B.unsupportedConversion(~from=selfSchema, ~target=toSchema)
   }
 })
 
-let unnest = schema => {
-  switch schema {
-  | Object({properties}) =>
-    let keys = properties->Js.Dict.keys
-    if keys->Js.Array2.length === 0 {
-      InternalError.panic("Invalid empty object for S.unnest schema.")
-    }
-    let schema = schema->castToInternal
-    let mut = base(arrayTag, ~selfReverse=false)
-    mut.items = Some(
-      keys->Js.Array2.map(key => {
-        array(properties->Js.Dict.unsafeGet(key))->castToInternal
-      }),
-    )
-    mut.additionalItems = Some(Strict)
-    mut.parser = Some(
-      Builder.make((~input, ~selfSchema) => {
-        let b = input
-        let inputTagFlag = input.schema.tag->TagFlag.get
+let compactColumnsDecoder = Builder.make((~input, ~selfSchema) => {
+  let inputTagFlag = input.schema.tag->TagFlag.get
+
+  switch selfSchema {
+  | {to: ?Some(toSchema)} =>
+    switch toSchema {
+    | {properties: ?Some(properties)} => {
+        let keys = properties->Js.Dict.keys
+        if keys->Js.Array2.length === 0 {
+          InternalError.panic("Invalid empty object for S.compactColumns schema.")
+        }
+
         if inputTagFlag->Flag.unsafeHas(TagFlag.unknown) {
-          b.validation = Some(
+          input.validation = Some(
             (~inputVar, ~negative) => {
               `${B.exp(~negative)}Array.isArray(${inputVar})` ++
               `${B.and_(~negative)}${inputVar}.length${B.eq(~negative)}${keys
@@ -5364,99 +5323,51 @@ let unnest = schema => {
                 ->Js.Array2.joinWith("")}`
             },
           )
-          let mut = base(arrayTag, ~selfReverse=false)
-          let itemSchema = array(unknown->castToPublic)
-          mut.items = Some(
-            keys->Js.Array2.map(_ => {
-              itemSchema->castToInternal
-            }),
-          )
-          mut.additionalItems = Some(Strict)
-          input.schema = mut
-        } else if (
-          inputTagFlag->Flag.unsafeHas(TagFlag.array) &&
-          input.schema.items->X.Option.getUnsafe->Js.Array2.length === keys->Js.Array2.length &&
-          input.schema.items
-          ->X.Option.getUnsafe
-          ->Js.Array2.every(s =>
-            s.tag === arrayTag &&
-              switch s.additionalItems {
-              | Some(Schema(_)) => true
-              | _ => false
-              }
-          )
-        ) {
-          ()
-        } else {
-          b->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
+        } else if !(inputTagFlag->Flag.unsafeHas(TagFlag.array)) {
+          input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
         }
 
         let inputVar = input.var()
-        let iteratorVar = b.global->B.varWithoutAllocation
+        let iteratorVar = input.global->B.varWithoutAllocation
+        let outputVar = input.global->B.varWithoutAllocation
 
-        // let bb = b->B.scope(~path=b.path) // FIXME: The path looks wrong here
-        let bb = b
-        let itemInput = bb->makeObjectVal(~schema)
         let lengthCode = ref("")
+        let itemBuildCode = ref("")
         for idx in 0 to keys->Js.Array2.length - 1 {
           let key = keys->Js.Array2.unsafe_get(idx)
-          itemInput->B.Val.Object.add(
-            ~location=key,
-            bb->B.next(
-              `${inputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}]`,
-              ~schema=(
-                input.schema.items->X.Option.getUnsafe->Js.Array2.unsafe_get(idx)
-              ).additionalItems->(Obj.magic: option<additionalItems> => internal),
-            ),
-          )
           lengthCode := lengthCode.contents ++ `${inputVar}[${idx->X.Int.unsafeToString}].length,`
+          itemBuildCode :=
+            itemBuildCode.contents ++
+            `${key->X.Inlined.Value.fromString}:${inputVar}[${idx->X.Int.unsafeToString}][${iteratorVar}],`
         }
 
-        let output =
-          b->B.next(
-            `new Array(Math.max(${lengthCode.contents}))`,
-            ~schema=selfSchema.to->X.Option.getUnsafe,
-          )
-        let outputVar = B.Val.var(output)
+        input.allocate(`${outputVar}=new Array(Math.max(${lengthCode.contents}))`)
+        input.codeAfterValidation =
+          input.codeAfterValidation ++
+          `for(let ${iteratorVar}=0;${iteratorVar}<${outputVar}.length;++${iteratorVar}){${outputVar}[${iteratorVar}]={${itemBuildCode.contents}};}`
 
-        let itemInput = itemInput->B.Val.Object.complete
-        let itemOutput = B.withPathPrepend(
-          ~input=itemInput,
-          ~dynamicLocationVar=iteratorVar,
-          ~appendSafe=(bb, ~output as itemOutput) => {
-            bb.codeAfterValidation =
-              bb.codeAfterValidation ++ output->B.Val.addKey(iteratorVar, itemOutput) ++ ";"
-          },
-          (~input) => {
-            // b->parse(~schema, ~input)
-            input->parse
-          },
-        )
-        let itemCode = bb->B.merge
-
-        b.codeAfterValidation =
-          b.codeAfterValidation ++
-          `for(let ${iteratorVar}=0;${iteratorVar}<${outputVar}.length;++${iteratorVar}){${itemCode}}`
-
-        if itemOutput.flag->Flag.unsafeHas(ValFlag.async) {
-          output->B.asyncVal(`Promise.all(${output.inline})`)
-        } else {
-          output
+        let result = {
+          ...input,
+          var: B._var,
+          inline: outputVar,
+          flag: ValFlag.none,
+          schema: base(arrayTag, ~selfReverse=false),
         }
-      }),
-    )
-
-    let to = base(arrayTag, ~selfReverse=false)
-    to.items = Some(X.Array.immutableEmpty)
-    to.additionalItems = Some(Schema(schema->castToPublic))
-    to.serializer = Some(unnestSerializer)
-
-    mut.unnest = Some(true)
-    mut.to = Some(to)
-
-    mut->castToPublic
-  | _ => InternalError.panic("S.unnest supports only object schemas.")
+        result.skipTo = Some(true)
+        result
+      }
+    | _ => input->B.unsupportedConversion(~from=input.schema, ~target=selfSchema)
+    }
+  | _ => input
   }
+})
+
+let compactColumns = _inputSchema => {
+  let mut = base(unknownTag, ~selfReverse=false)
+  mut.compactColumns = Some(true)
+  mut.decoder = compactColumnsDecoder
+  mut.encoder = Some(compactColumnsEncoder)
+  mut->castToPublic
 }
 
 // let inline = {

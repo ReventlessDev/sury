@@ -24,23 +24,26 @@ test("Expression of Array schema", t => {
   t->Assert.deepEqual(S.array(S.string)->S.toExpression, "string[]")
 })
 
-test("Expression of Unnest schema", t => {
+test("Expression of compactColumns schema", t => {
   t->Assert.deepEqual(
-    S.unnest(
+    S.compactColumns(S.unknown)
+    ->S.to(
       S.schema(s =>
         {
           "foo": s.matches(S.string),
           "bar": s.matches(S.int),
         }
       ),
-    )->S.toExpression,
-    "[string[], int32[]]",
+    )
+    ->S.toExpression,
+    "unknown",
   )
 })
 
-test("Expression of reversed Unnest schema", t => {
+test("Expression of reversed compactColumns schema", t => {
   t->Assert.deepEqual(
-    S.unnest(
+    S.compactColumns(S.unknown)
+    ->S.to(
       S.schema(s =>
         {
           "foo": s.matches(S.string),
