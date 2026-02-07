@@ -156,6 +156,32 @@ Ava("Tagged variant with inlined alias", t => U.assertEqualSchemas(t, taggedInli
   }))
 ]), undefined));
 
+let variantWithExposeSchema = S.union([
+  S.expose(S.literal("One")),
+  S.literal("Two")
+]);
+
+Ava("Variant with @s.expose on no-payload constructor", t => U.assertEqualSchemas(t, variantWithExposeSchema, S.union([
+  S.expose(S.literal("One")),
+  S.literal("Two")
+]), undefined));
+
+let variantWithExposePayloadSchema = S.union([
+  S.expose(S.schema(s => ({
+    TAG: "WithPayload",
+    _0: s.m(S.int)
+  }))),
+  S.literal("Without")
+]);
+
+Ava("Variant with @s.expose on payload constructor", t => U.assertEqualSchemas(t, variantWithExposePayloadSchema, S.union([
+  S.expose(S.schema(s => ({
+    TAG: "WithPayload",
+    _0: s.m(S.int)
+  }))),
+  S.literal("Without")
+]), undefined));
+
 export {
   variantSchema,
   variantWithSingleItemSchema,
@@ -166,5 +192,7 @@ export {
   variantWithMetaSchema,
   variantWithConstructorMetaSchema,
   taggedInlinedAliasSchema,
+  variantWithExposeSchema,
+  variantWithExposePayloadSchema,
 }
 /* variantSchema Not a pure module */

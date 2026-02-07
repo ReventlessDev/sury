@@ -3824,6 +3824,19 @@ let brand = (schema: t<'value>, id: string) => {
   mut->castToPublic
 }
 
+let exposeMetadataId: Metadata.Id.t<bool> = Metadata.Id.make(~namespace="sury", ~name="expose")
+
+let expose = (schema: t<'value>) => {
+  Metadata.set(schema, ~id=exposeMetadataId, true)
+}
+
+let isExposed = (schema: t<'value>): bool => {
+  switch Metadata.get(schema, ~id=exposeMetadataId) {
+  | Some(true) => true
+  | _ => false
+  }
+}
+
 module Schema = {
   type s = {@as("m") matches: 'value. t<'value> => 'value}
 

@@ -180,6 +180,10 @@ let extendJSONSchema = Sury.extendJSONSchema;
 
 let global = Sury.global;
 
+let expose = Sury.expose;
+
+let isExposed = Sury.isExposed;
+
 let ErrorClass = Sury.ErrorClass;
 
 export {
@@ -272,6 +276,8 @@ export {
   fromJSONSchema,
   extendJSONSchema,
   global,
+  expose,
+  isExposed,
   ErrorClass,
 }
 /* Sury Not a pure module */

@@ -97,3 +97,27 @@ test("Tagged variant with inlined alias", t => {
     ]),
   )
 })
+
+@schema
+type variantWithExpose = | @s.expose One | Two
+test("Variant with @s.expose on no-payload constructor", t => {
+  t->assertEqualSchemas(
+    variantWithExposeSchema,
+    S.union([
+      S.literal(One)->S.expose,
+      S.literal(Two),
+    ]),
+  )
+})
+
+@schema
+type variantWithExposePayload = | @s.expose WithPayload(int) | Without
+test("Variant with @s.expose on payload constructor", t => {
+  t->assertEqualSchemas(
+    variantWithExposePayloadSchema,
+    S.union([
+      S.schema(s => WithPayload(s.matches(S.int)))->S.expose,
+      S.literal(Without),
+    ]),
+  )
+})

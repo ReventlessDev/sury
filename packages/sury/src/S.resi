@@ -529,6 +529,9 @@ type globalConfigOverride = {
 
 let global: globalConfigOverride => unit
 
+let expose: t<'value> => t<'value>
+let isExposed: t<'value> => bool
+
 module ErrorClass: {
   type t
 

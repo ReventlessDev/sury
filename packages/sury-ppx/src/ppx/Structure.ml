@@ -168,6 +168,7 @@ and applySchemaAttributes loc option_factory_expression schema_expression
     | "s.deepStrict" -> [%expr S.deepStrict [%e schema_expr]]
     | "s.deepStrip" -> [%expr S.deepStrip [%e schema_expr]]
     | "s.noValidation" -> [%expr S.noValidation [%e schema_expr]]
+    | "s.expose" -> [%expr S.expose [%e schema_expr]]
     | "s.meta" ->
       let meta_value = getExpressionFromPayload attribute in
       [%expr S.meta [%e schema_expr] [%e meta_value]]

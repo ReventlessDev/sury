@@ -550,6 +550,9 @@ type jsResult<'value>
 
 let brand: (t<'value>, string) => t<'value>
 
+let expose: t<'value> => t<'value>
+let isExposed: t<'value> => bool
+
 let js_safe: (unit => 'v) => jsResult<'v>
 let js_safeAsync: (unit => promise<'v>) => promise<jsResult<'v>>
 

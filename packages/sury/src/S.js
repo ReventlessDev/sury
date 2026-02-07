@@ -72,3 +72,5 @@ export var enableJson = S.enableJson
 export var enableJsonString = S.enableJsonString
 export var global = S.global
 export var brand = S.brand
+export var expose = S.expose
+export var isExposed = S.isExposed

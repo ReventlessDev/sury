@@ -315,6 +315,14 @@ export function brand<ID extends string, Output = unknown, Input = unknown>(
   brandId: ID
 ): Schema<Brand<Output, ID>, Input>;
 
+export function expose<Output, Input>(
+  schema: Schema<Output, Input>
+): Schema<Output, Input>;
+
+export function isExposed<Output, Input>(
+  schema: Schema<Output, Input>
+): boolean;
+
 // Grok told that it makes things faster
 // TODO: Verify it with ArkType test framework
 type HasUndefined<T> = [T] extends [undefined]
