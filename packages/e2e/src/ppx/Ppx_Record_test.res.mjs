@@ -57,6 +57,20 @@ Ava("Record schema with optional fields", t => {
   });
 });
 
+let recordWithMetaSchema = S.meta(S.schema(s => ({
+  label: s.m(S.string),
+  value: s.m(S.int)
+})), {
+  description: "A record with meta"
+});
+
+Ava("Record with @s.meta", t => U.assertEqualSchemas(t, recordWithMetaSchema, S.meta(S.schema(s => ({
+  label: s.m(S.string),
+  value: s.m(S.int)
+})), {
+  description: "A record with meta"
+}), undefined));
+
 let recordWithNullableFieldSchema = S.schema(s => ({
   subscription: s.m(S.option(S.$$null(S.string)))
 }));
@@ -77,6 +91,7 @@ export {
   simpleRecordSchema,
   recordWithAliasSchema,
   recordWithOptionalSchema,
+  recordWithMetaSchema,
   recordWithNullableFieldSchema,
 }
 /* simpleRecordSchema Not a pure module */

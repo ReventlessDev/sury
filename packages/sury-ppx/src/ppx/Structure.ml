@@ -67,44 +67,51 @@ and generateVariantSchemaExpression constr_decls =
   in
   let union_items =
     constr_decls
-    |> List.map (fun {pcd_name = {txt = name; loc}; pcd_args} ->
-           match pcd_args with
-           | Pcstr_tuple [] ->
-             [%expr S.literal [%e Exp.construct (lid name) None]]
-           | Pcstr_tuple payload_core_types ->
-             [%expr
-               S.schema
-                 (Obj.magic (fun (s : S.Schema.s) ->
-                      [%e
-                        Exp.construct (lid name)
-                          (Some
-                             (match payload_core_types with
-                             | [payload_core_type] ->
-                               payloadCoreTypeToMatchesExpression
-                                 payload_core_type
-                             | payload_core_types ->
-                               Exp.tuple
-                                 (payload_core_types
-                                 |> List.map payloadCoreTypeToMatchesExpression
-                                 )))]))]
-           | Pcstr_record label_declarations ->
-             let fields =
-               label_declarations |> List.map parseLabelDeclaration
-             in
-             let field_expressions =
-               fields
-               |> List.map (fun field ->
-                      let schema_expression =
-                        generateFieldSchemaExpression field
-                      in
-                      (lid field.name, [%expr s.matches [%e schema_expression]]))
-             in
-             [%expr
-               S.schema
-                 (Obj.magic (fun (s : S.Schema.s) ->
-                      [%e
-                        Exp.construct (lid name)
-                          (Some (Exp.record field_expressions None))]))])
+    |> List.map
+         (fun {pcd_name = {txt = name; loc}; pcd_args; pcd_attributes} ->
+           let schema_expr =
+             match pcd_args with
+             | Pcstr_tuple [] ->
+               [%expr S.literal [%e Exp.construct (lid name) None]]
+             | Pcstr_tuple payload_core_types ->
+               [%expr
+                 S.schema
+                   (Obj.magic (fun (s : S.Schema.s) ->
+                        [%e
+                          Exp.construct (lid name)
+                            (Some
+                               (match payload_core_types with
+                               | [payload_core_type] ->
+                                 payloadCoreTypeToMatchesExpression
+                                   payload_core_type
+                               | payload_core_types ->
+                                 Exp.tuple
+                                   (payload_core_types
+                                   |> List.map
+                                        payloadCoreTypeToMatchesExpression)))]
+                        ))]
+             | Pcstr_record label_declarations ->
+               let fields =
+                 label_declarations |> List.map parseLabelDeclaration
+               in
+               let field_expressions =
+                 fields
+                 |> List.map (fun field ->
+                        let schema_expression =
+                          generateFieldSchemaExpression field
+                        in
+                        ( lid field.name,
+                          [%expr s.matches [%e schema_expression]] ))
+               in
+               [%expr
+                 S.schema
+                   (Obj.magic (fun (s : S.Schema.s) ->
+                        [%e
+                          Exp.construct (lid name)
+                            (Some (Exp.record field_expressions None))]))]
+           in
+           applySchemaAttributes loc [%expr S.option] schema_expr
+             pcd_attributes)
   in
   match union_items with
   | [item] -> item
@@ -138,6 +145,38 @@ and generateRecordSchema fields =
     S.schema
       (Obj.magic (fun (s : S.Schema.s) ->
            [%e Exp.record field_expressions None]))]
+
+and applySchemaAttributes loc option_factory_expression schema_expression
+    attributes =
+  let handle_attribute schema_expr ({attr_name = {Location.txt}} as attribute) =
+    match txt with
+    | "s.matches" | "s.null" | "s.nullable" -> schema_expr (* handled above *)
+    | "s.default" ->
+      let default_value = getExpressionFromPayload attribute in
+      [%expr
+        S.Option.getOr
+          ([%e option_factory_expression] [%e schema_expr])
+          [%e default_value]]
+    | "s.defaultWith" ->
+      let default_fn = getExpressionFromPayload attribute in
+      [%expr
+        S.Option.getOrWith
+          ([%e option_factory_expression] [%e schema_expr])
+          [%e default_fn]]
+    | "s.strict" -> [%expr S.strict [%e schema_expr]]
+    | "s.strip" -> [%expr S.strip [%e schema_expr]]
+    | "s.deepStrict" -> [%expr S.deepStrict [%e schema_expr]]
+    | "s.deepStrip" -> [%expr S.deepStrip [%e schema_expr]]
+    | "s.noValidation" -> [%expr S.noValidation [%e schema_expr]]
+    | "s.meta" ->
+      let meta_value = getExpressionFromPayload attribute in
+      [%expr S.meta [%e schema_expr] [%e meta_value]]
+    | txt when txt <> "" && String.length txt >= 2 && String.sub txt 0 2 = "s."
+      ->
+      fail loc ("Unsupported schema attribute: \"@" ^ txt ^ "\"")
+    | _ -> schema_expr
+  in
+  List.fold_left handle_attribute schema_expression attributes
 
 and generateCoreTypeSchemaExpression core_type =
   let {ptyp_desc; ptyp_loc; ptyp_attributes} = core_type in
@@ -187,35 +226,8 @@ and generateCoreTypeSchemaExpression core_type =
     | Ok (Some attribute) -> getExpressionFromPayload attribute
     | Error s -> fail ptyp_loc s
   in
-  let handle_attribute schema_expr ({attr_name = {Location.txt}} as attribute) =
-    match txt with
-    | "s.matches" | "s.null" | "s.nullable" -> schema_expr (* handled above *)
-    | "s.default" ->
-      let default_value = getExpressionFromPayload attribute in
-      [%expr
-        S.Option.getOr
-          ([%e option_factory_expression] [%e schema_expr])
-          [%e default_value]]
-    | "s.defaultWith" ->
-      let default_fn = getExpressionFromPayload attribute in
-      [%expr
-        S.Option.getOrWith
-          ([%e option_factory_expression] [%e schema_expr])
-          [%e default_fn]]
-    | "s.strict" -> [%expr S.strict [%e schema_expr]]
-    | "s.strip" -> [%expr S.strip [%e schema_expr]]
-    | "s.deepStrict" -> [%expr S.deepStrict [%e schema_expr]]
-    | "s.deepStrip" -> [%expr S.deepStrip [%e schema_expr]]
-    | "s.noValidation" -> [%expr S.noValidation [%e schema_expr]]
-    | "s.meta" ->
-      let meta_value = getExpressionFromPayload attribute in
-      [%expr S.meta [%e schema_expr] [%e meta_value]]
-    | txt when txt <> "" && String.length txt >= 2 && String.sub txt 0 2 = "s."
-      ->
-      fail ptyp_loc ("Unsupported schema attribute: \"@" ^ txt ^ "\"")
-    | _ -> schema_expr
-  in
-  List.fold_left handle_attribute schema_expression ptyp_attributes
+  applySchemaAttributes ptyp_loc option_factory_expression schema_expression
+    ptyp_attributes
 
 let generateTypeDeclarationSchemaExpression type_declaration =
   (* let {ptype_name = {txt = type_name}} = type_declaration in *)
@@ -243,10 +255,14 @@ let mapTypeDeclaration type_declaration =
   | Ok None -> []
   | Error err -> fail ptype_loc err
   | Ok _ ->
-    [
-      generateSchemaValueBinding type_name
-        (generateTypeDeclarationSchemaExpression type_declaration);
-    ]
+    let schema_expr =
+      generateTypeDeclarationSchemaExpression type_declaration
+    in
+    let schema_expr =
+      applySchemaAttributes ptype_loc [%expr S.option] schema_expr
+        ptype_attributes
+    in
+    [ generateSchemaValueBinding type_name schema_expr ]
 
 let mapStructureItem mapper ({pstr_desc} as structure_item) =
   match pstr_desc with

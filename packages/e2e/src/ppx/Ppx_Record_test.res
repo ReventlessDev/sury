@@ -62,6 +62,20 @@ test("Record schema with optional fields", t => {
   )
 })
 
+@schema @s.meta({description: "A record with meta"})
+type recordWithMeta = {
+  label: string,
+  value: int,
+}
+test("Record with @s.meta", t => {
+  t->assertEqualSchemas(
+    recordWithMetaSchema,
+    S.schema(s => {label: s.matches(S.string), value: s.matches(S.int)})->S.meta({
+      description: "A record with meta",
+    }),
+  )
+})
+
 @schema
 type recordWithNullableField = {
   subscription: @s.matches(S.option(S.null(S.string))) option<option<string>>,

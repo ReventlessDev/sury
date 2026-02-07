@@ -63,6 +63,28 @@ test("Tagged variant", t => {
   )
 })
 
+@schema @s.meta({description: "A variant with meta"})
+type variantWithMeta = One | Two
+test("Variant with @s.meta", t => {
+  t->assertEqualSchemas(
+    variantWithMetaSchema,
+    S.union([S.literal(One), S.literal(Two)])->S.meta({description: "A variant with meta"}),
+  )
+})
+
+@schema
+type variantWithConstructorMeta =
+  | @s.meta({description: "The first one"}) One | Two
+test("Variant with @s.meta on constructor", t => {
+  t->assertEqualSchemas(
+    variantWithConstructorMetaSchema,
+    S.union([
+      S.literal(One)->S.meta({description: "The first one"}),
+      S.literal(Two),
+    ]),
+  )
+})
+
 @schema @tag("type")
 type taggedInlinedAlias = Foo({@as("Foo") foo: string}) | Bar({@as("Bar") bar: string})
 

@@ -106,6 +106,34 @@ Ava("Tagged variant", t => U.assertEqualSchemas(t, taggedVariantSchema, S.union(
   }))
 ]), undefined));
 
+let variantWithMetaSchema = S.meta(S.union([
+  S.literal("One"),
+  S.literal("Two")
+]), {
+  description: "A variant with meta"
+});
+
+Ava("Variant with @s.meta", t => U.assertEqualSchemas(t, variantWithMetaSchema, S.meta(S.union([
+  S.literal("One"),
+  S.literal("Two")
+]), {
+  description: "A variant with meta"
+}), undefined));
+
+let variantWithConstructorMetaSchema = S.union([
+  S.meta(S.literal("One"), {
+    description: "The first one"
+  }),
+  S.literal("Two")
+]);
+
+Ava("Variant with @s.meta on constructor", t => U.assertEqualSchemas(t, variantWithConstructorMetaSchema, S.union([
+  S.meta(S.literal("One"), {
+    description: "The first one"
+  }),
+  S.literal("Two")
+]), undefined));
+
 let taggedInlinedAliasSchema = S.union([
   S.schema(s => ({
     type: "Foo",
@@ -135,6 +163,8 @@ export {
   variantWithPayloadsSchema,
   unboxedVariantSchema,
   taggedVariantSchema,
+  variantWithMetaSchema,
+  variantWithConstructorMetaSchema,
   taggedInlinedAliasSchema,
 }
 /* variantSchema Not a pure module */
