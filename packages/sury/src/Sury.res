@@ -2748,8 +2748,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema as _) => {
   switch def->Obj.magic->X.Dict.getUnsafeOption(key) {
   | Some(fn) =>
     // Circular reference (fn === 0) or already compiled
-    recOperation :=
-      if fn === %raw(`0`) {
+    recOperation := if fn === %raw(`0`) {
         input->B.embed(def) ++ `["${key}"]`
       } else {
         input->B.embed(fn)
@@ -2759,6 +2758,7 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema as _) => {
       let assumedHasTransform = ref(def.hasTransform->Option.getOr(false))
       let assumedIsAsync = ref(def.isAsync->Option.getOr(false))
       let compileNeeded = ref(true)
+      let finalFn = ref(Obj.magic(0))
 
       while compileNeeded.contents {
         compileNeeded := false
@@ -2783,22 +2783,27 @@ let recursiveDecoder = Builder.make((~input, ~selfSchema as _) => {
         valueOptions->Js.Dict.set(valKey, fn)
         let _ = X.Object.defineProperty(def, key, valueOptions->Obj.magic)
 
-        recOperation := input->B.embed(fn)
+        finalFn := fn
 
         // Check if actual values differ from assumed
         let actualHasTransform = def.hasTransform->X.Option.getUnsafe
         let actualIsAsync = def.isAsync->X.Option.getUnsafe
 
-        if actualHasTransform !== assumedHasTransform.contents ||
-          actualIsAsync !== assumedIsAsync.contents {
+        if (
+          actualHasTransform !== assumedHasTransform.contents ||
+            actualIsAsync !== assumedIsAsync.contents
+        ) {
           // Wrong assumption - update and recompile
           assumedHasTransform := actualHasTransform
           assumedIsAsync := actualIsAsync
           // Delete cached function to force recompilation
-          %raw(`delete def[key]`)
+          let _ = %raw(`delete def[key]`)
           compileNeeded := true
         }
       }
+
+      // Embed only the final compiled function to avoid wasting embed slots on recompiles
+      recOperation := input->B.embed(finalFn.contents)
     }
   }
 
